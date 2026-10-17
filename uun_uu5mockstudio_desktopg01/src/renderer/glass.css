@@ -48,3 +48,8 @@ body[data-glass] #selbar{top:calc(var(--glass-top,0px) + 12px)}
 
 /* an active toolbar toggle (inspector, component picker) stays blue: the white capsule above would hide its white icon */
 body[data-glass] #bar button.on:not(#x1):not(#x2):not(#x3):not(#x4),body[data-glass] #chat #form button.on:not(#x1):not(#x2):not(#x3):not(#x4){background:linear-gradient(180deg,#5b8cff,#3b6cf0)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
+
+/* drop-down menus are nearly opaque: inside the frosted chat a second blur does not hide the text behind them */
+body[data-glass]{--g-menu:rgba(255,255,255,.92)}
+:root[data-theme="dark"] body[data-glass]{--g-menu:rgba(34,36,48,.94)}
+body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions){background:var(--g-menu)!important}
