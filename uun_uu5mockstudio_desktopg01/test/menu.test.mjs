@@ -117,3 +117,13 @@ test("Glass Effect is a macOS-only checkbox in View > Appearance that follows th
   const sent = []; find(find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", send: (a) => sent.push(a) }), "View").submenu, "Appearance").submenu.find((i) => i.label === "Glass Effect").click();
   assert.deepEqual(sent, ["view:glass"]);
 });
+
+test("View holds the offline use items, with the checkbox following the state", () => {
+  const sent = [];
+  const view = (offline) => find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", offline, send: (a) => sent.push(a) }), "View").submenu;
+  const off = find(view(true), "Offline Use").submenu;
+  assert.equal(find(off, "Offline Mode").checked, true);
+  assert.equal(find(find(view(false), "Offline Use").submenu, "Offline Mode").checked, false);
+  find(off, "Offline Mode").click(); find(off, "Warm Up CDN Cache").click(); find(off, "Clear CDN Cache").click();
+  assert.deepEqual(sent, ["cdn:offline", "cdn:warmup", "cdn:clear"]);
+});

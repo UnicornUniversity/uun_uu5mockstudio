@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("studio", {
   closeProject: () => invoke("projects:close"),
   onMenu: on("menu:action"),
   onGlass: on("glass:set"),
+  toggleGlass: () => invoke("glass:toggle"),
   openProject: (name) => invoke("projects:open", name),
   createProject: (name) => invoke("projects:create", name),
   renameProject: (from, to) => invoke("projects:rename", from, to),

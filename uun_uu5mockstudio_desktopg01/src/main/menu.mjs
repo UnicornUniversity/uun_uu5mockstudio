@@ -3,7 +3,7 @@
  * Custom items only send an action id to the renderer, which owns the dialogs and UI state; Edit/Window items are
  * standard roles (text editing shortcuts in the chat field depend on them).
  */
-export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, isDev = false, send = () => {} }) {
+export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, send = () => {} }) {
   const mac = platform === "darwin";
   const has = Boolean(current);
   const act = (id) => () => send(id);
@@ -113,6 +113,10 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
         item("Automatic", "view:theme:auto"), item("Light", "view:theme:light"), item("Dark", "view:theme:dark"),
         // glass panels (translucent, blurred) are a macOS look; the app handles the toggle itself because it keeps the choice
         ...(mac ? [sep, { label: "Glass Effect", type: "checkbox", checked: glass, click: act("view:glass") }] : []),
+      ] },
+      { label: "Offline Use", submenu: [
+        { label: "Offline Mode", type: "checkbox", checked: offline, click: act("cdn:offline") },
+        item("Warm Up CDN Cache", "cdn:warmup"), item("Clear CDN Cache", "cdn:clear"),
       ] },
       ...(mac ? [] : [{ role: "togglefullscreen" }]), // macOS adds its own Enter Full Screen item to the View menu
       ...(isDev ? [sep, { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }] : []),

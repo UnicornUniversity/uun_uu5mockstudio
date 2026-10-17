@@ -3,7 +3,7 @@
  * Records a short, silent marketing video (~3 min) of uu5Mock Studio: it starts the app in an isolated profile and plays through
  * the story with real mouse input, a visible cursor and captions: project description -> linked git repository -> one sentence becomes
  * a live screen (Claude also records the business rules) -> rules (edit in place / Markdown) -> description and rule of a screen ->
- * second screen + arrange -> fullscreen with a note -> inspector -> share -> plugin check. The window is captured with the DevTools screencast and encoded to MP4 by Electron itself.
+ * second screen + arrange -> fullscreen with a note -> inspector -> share -> plugin check -> update notice -> Glass Effect. The window is captured with the DevTools screencast and encoded to MP4 by Electron itself.
  * No microphone, no screen-recording permission, no ffmpeg. The script is docs/DEMO.md in executable form.
  *
  *   node scripts/demo/record.mjs --out demo.mp4                      real run: Claude generates the screens (minutes, uses tokens: TWO agent runs)
@@ -11,6 +11,7 @@
  *   options: --lang en|cs  --packaged "/path/uu5Mock Studio.app"  --port 9460  --speed 8  --keep-frames
  */
 import { spawn, execFileSync } from "node:child_process";
+import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,7 +41,7 @@ const T = {
       prompt: "Describe the screen in plain words", sketch: "Paste or drop a screenshot or a sketch into the request", second: "More screens side by side: @ links to the first one", arrange: "Arrange screens in one click", fullscreen: "Try it fullscreen and pin a note to the screen", note: "Notes stay with the screen, right on the canvas", working: "Claude builds it (sped up)", done: "A live, interactive uu5 page", form: "Validation first, then fill the form: the record appears in the table", del: "Delete a record, with confirmation", rules: "Business rules are captured as you talk",
       rulesEdit: "Edit in place, or switch to Markdown", screen: "Describe any screen and add its rules", inspect: "Inspect real uu5 components, tweak props, pick icons",
       color: "Change a prop: the screen rewrites itself", icon: "Icons straight from the uuGDS catalog", share: "Export or share a screen, or the whole project as ZIP",
-      plugins: "Plugins stay current: check any time, update on your terms", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
+      plugins: "Plugins stay current: check any time, update on your terms", update: "New release? You are told: download it, read the notes, or postpone", glass: "Switch on the optional Glass Effect (macOS)", glass2: "Floating chat, toolbar and menus: translucent and blurred", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
     },
   },
   cs: {
@@ -59,7 +60,7 @@ const T = {
       prompt: "Zadání běžnou řečí", sketch: "Do zadání vlož i screenshot nebo náčrt", second: "Víc obrazovek vedle sebe: @ odkáže na první", arrange: "Uspořádání obrazovek jedním klikem", fullscreen: "Vyzkoušej fullscreen a připni k obrazovce poznámku", note: "Poznámky zůstávají u obrazovky, přímo na plátně", working: "Claude to staví (zrychleno)", done: "Živá, interaktivní uu5 stránka", form: "Nejdřív validace, pak vyplněný formulář: záznam se objeví v tabulce", del: "Smazání záznamu s potvrzením", rules: "Business pravidla se zapisují, jak mluvíš",
       rulesEdit: "Úprava přímo v textu, nebo přepnutí na Markdown", screen: "Popiš libovolnou obrazovku a přidej její pravidla", inspect: "Inspekce skutečných uu5 komponent, úpravy props, výběr ikon",
       color: "Změníš prop: obrazovka se přepíše", icon: "Ikony přímo z katalogu uuGDS", share: "Export nebo sdílení obrazovky, případně celého projektu jako ZIP",
-      plugins: "Pluginy zůstávají aktuální: kontrola kdykoli, aktualizace podle tebe", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
+      plugins: "Pluginy zůstávají aktuální: kontrola kdykoli, aktualizace podle tebe", update: "Nové vydání? Aplikace to řekne: stáhni, přečti poznámky, nebo odlož", glass: "Zapni volitelný Glass Effect (macOS)", glass2: "Plovoucí chat, lišta i menu: průhledné a rozmazané", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
     },
   },
 }[opts.lang];
@@ -100,8 +101,22 @@ function makeDemoRepo() {
   return dir;
 }
 
+/**
+ * A tiny stand-in for the GitHub releases API that announces the next minor version, so that the update notice can be shown without
+ * a really newer release (the app is pointed at it with STUDIO_UPDATE_API). The video says so in docs/DEMO.md.
+ */
+let apiServer;
+function startFakeReleases() {
+  const [maj, min] = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).version.split(".").map(Number), next = `${maj}.${min + 1}.0`;
+  const R = "UnicornUniversity/uun_uu5mockstudio", base = `https://github.com/${R}/releases`;
+  const body = JSON.stringify({ tag_name: `v${next}`, draft: false, prerelease: false, html_url: `${base}/tag/v${next}`, body: "Demo release", assets: [{ name: `uu5Mock-Studio-${next}-arm64.dmg`, size: 120e6, browser_download_url: `${base}/download/v${next}/uu5Mock-Studio-${next}-arm64.dmg` }] });
+  const apiPort = opts.port + 20;
+  apiServer = http.createServer((_req, res) => { res.setHeader("content-type", "application/json"); res.end(body); }).listen(apiPort, "127.0.0.1");
+  return `http://127.0.0.1:${apiPort}`;
+}
+
 async function launch() {
-  const env = { ...process.env, STUDIO_PROJECTS_DIR: projectsDir, STUDIO_PICK_REPO: makeDemoRepo() };
+  const env = { ...process.env, STUDIO_PROJECTS_DIR: projectsDir, STUDIO_PICK_REPO: makeDemoRepo(), STUDIO_UPDATE_API: startFakeReleases() };
   const args = [`--user-data-dir=${profile}`, `--remote-debugging-port=${opts.port}`];
   app = opts.packaged
     ? spawn(path.join(opts.packaged, "Contents", "MacOS", "uu5Mock Studio"), args, { env, stdio: "ignore" })
@@ -272,6 +287,13 @@ const steps = [
     await typeInto("#dlg-input", T.project, 60); await sleep(500); await click("#dlg-ok"); await sleep(1800);
     await caption("", 200);
   }],
+  ["glass on", async () => {
+    await caption(T.cap.glass);
+    if (!(await cdp.ev(`/Mac/.test(navigator.platform)`))) throw new Error("the glass switch exists on macOS only");
+    await cdp.ev(`window.studio.toggleGlass()`); await sleep(1500);   // View > Appearance > Glass Effect
+    await click("#chatmode"); await sleep(1400);                                                    // the chat floats over the canvas: translucent and blurred, for the whole video
+    await caption("", 200);
+  }],
   ["project description", async () => {
     await caption(T.cap.desc);
     await click("#ds-main"); await sleep(600);                        // the cursor is already in the project field
@@ -371,7 +393,7 @@ const steps = [
     if (await centre("#mentions button")) await click("#mentions button"); else await typeText("@", 50);
     await typeText((await cdp.ev(`document.getElementById("prompt").value`)).endsWith(" ") ? after.trimStart() : after, 14); await sleep(500);
     await submitAndWait(1);
-    await caption(T.cap.arrange); await click("#menubtn"); await click('#menu [data-act="arrange"]'); await sleep(2400);
+    await caption(T.cap.arrange); await cdp.ev(`__menuAction("view:arrange")`); await sleep(2400);
   }],
   ["fullscreen and note", async () => {
     await caption(T.cap.fullscreen);
@@ -435,10 +457,21 @@ const steps = [
     await caption(T.cap.plugins);
     // the account e-mail is shown in a neutral form: the video must not carry the real address of whoever records it
     const hideEmail = () => cdp.ev(`(() => { for (const el of document.querySelectorAll("#setup-text, #setup-steps *")) for (const n of el.childNodes) if (n.nodeType === 3) n.textContent = n.textContent.replace(/[\\w.+-]+@[\\w.-]+\\.\\w+/g, "you@university.example"); })()`);
-    await click("#menubtn"); await click('#menu [data-act="setup"]'); await sleep(500); await hideEmail(); await sleep(1700);  // Claude Code, sign-in and plugins at a glance
+    await cdp.ev(`__menuAction("claude:setup")`); await sleep(500); await hideEmail(); await sleep(1700);  // Claude Code, sign-in and plugins at a glance
     if (await centre("#setup-updates")) { await sleep(1200); await click("#setup-updates"); await hideEmail(); await caption("", 0); await sleep(2800); }  // the caption steps aside for the toast  // "Plugins are up to date" (or the update strip)
     if (await centre("#setup-close")) await click("#setup-close");
     await sleep(500);
+  }],
+  ["updates", async () => {
+    await caption(T.cap.update);
+    await cdp.ev(`__menuAction("update:check")`); await sleep(1800);       // the app asks the release feed: a newer version
+    await waitFor(async () => exists("#appupdate:not([hidden])"), { timeout: 8000 }); await sleep(3200); // the strip: Download, Notes, Later
+  }],
+  ["glass showcase", async () => {
+    await caption(T.cap.glass2);
+    const c = (await centre("#canvas")) ?? { x: 900, y: 500 }; await moveTo(c.x, c.y, 500);
+    for (let i = 0; i < 14; i++) { await wheelAt(c.x, c.y, 18, 0); await sleep(60); }              // the screen passes under the floating toolbar
+    await sleep(2600);
   }],
   ["outro", async () => { await caption(T.cap.outro, 3500); await caption("", 300); }],
 ];
@@ -460,7 +493,7 @@ async function main() {
   const end = now();
   await cdp.send("Page.stopScreencast").catch(() => {});
   recording = false;
-  cdp.close(); app.kill();
+  cdp.close(); app.kill(); apiServer?.close();
   log(`captured ${frames.length} frames, ${(end / 1000).toFixed(0)} s of recording`);
   if (!frames.length) throw new Error("No frames were captured.");
   fs.mkdirSync(path.dirname(opts.out), { recursive: true });

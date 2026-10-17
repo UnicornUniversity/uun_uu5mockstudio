@@ -334,15 +334,10 @@ function toast(msg, { reveal, err, action } = {}) {
 const mb = (n) => (n / 1048576).toFixed(1);
 async function refreshCdn(st) {
   st ??= await window.studio.cdnStatus();
-  $("cdn-info").textContent = `CDN cache: ${st.files} files · ${mb(st.bytes)} MB${st.offline ? " · OFFLINE" : ""}`;
-  $("offline-box").textContent = st.offline ? "☑" : "☐";
-  $("menubtn").classList.toggle("warn", st.offline);
+  $("offbadge").hidden = !st.offline;
 }
 /** Bring a frame fully into view (a hidden/clipped webview may not paint) before it is captured. */
 async function showFrame(file) { canvas.focus(file); await new Promise((r) => setTimeout(r, 700)); }
-const closeMenu = () => ($("menu").hidden = true);
-$("menubtn").onclick = (e) => { e.stopPropagation(); $("menu").hidden = !$("menu").hidden; if (!$("menu").hidden) refreshCdn(); };
-addEventListener("click", (e) => { if (!e.target.closest("#menu")) closeMenu(); });
 window.studio.onCdnProgress((p) => toast(`Warming up the cache (${p.index + 1}/${p.total}): ${p.name}…`));
 const report = (r, ok) => { if (r?.error) toast(r.error, { err: true }); else if (r?.path && !r.canceled) toast(ok(r), { reveal: r.path }); };
 const notifyShare = (r) => { if (r?.error) toast(r.error, { err: true }); else if (r?.method === "eml") toast("An e-mail draft with the attachment is open in your mail client."); };
@@ -649,25 +644,19 @@ $("selbar").onclick = (e) => {
 };
 addEventListener("click", (e) => { if (!e.target.closest("#selbar") && !e.target.closest("#selmenu")) $("selmenu").hidden = true; });
 
-$("menu").onclick = async (e) => {
-  const act = e.target.closest("button")?.dataset.act; if (!act) return; closeMenu();
-  if (act === "arrange") canvas.arrange();
-  else if (act === "projects-open" || act === "projects-change") { const r = await window.studio.projectsFolder(act.slice(9)); if (r?.error) toast(r.error, { err: true }); }
-  else if (act === "zip") report(await window.studio.exportZip(), (r) => `ZIP saved (${r.files} screens)`);
-  else if (act === "share-zip") notifyShare(await window.studio.shareMail("zip"));
-  else if (act === "offline") {
-    const st = await window.studio.cdnSetOffline(!$("offline-box").textContent.includes("☑"));
+/** Offline use (View > Offline Use): the CDN cache lets mockups keep rendering without a network. */
+const cdnActions = {
+  async offline() {
+    const st = await window.studio.cdnSetOffline(!(await window.studio.cdnStatus()).offline);
     refreshCdn(st); toast(st.offline ? "Offline mode on: everything loads from the cache only." : "Offline mode off.");
     canvas.all().forEach((f) => f.view.reload());
-  } else if (act === "warmup") {
+  },
+  async warmup() {
     const { results, status } = await window.studio.cdnWarmup(); refreshCdn(status);
     const bad = results.filter((r) => !r.ok);
     toast(bad.length ? `Cache ready, did not load: ${bad.map((b) => b.name).join(", ")}` : `Cache ready (${status.files} files, ${mb(status.bytes)} MB).`, { err: bad.length > 0 });
-  } else if (act === "folder") window.studio.revealProject();
-  else if (act === "update") checkAppUpdates();
-  else if (act === "setup") setup.open();
-  else if (act === "about") openAbout();
-  else if (act === "clear") { refreshCdn(await window.studio.cdnClear()); toast("CDN cache cleared."); }
+  },
+  async clear() { refreshCdn(await window.studio.cdnClear()); toast("CDN cache cleared."); },
 };
 refreshCdn();
 
@@ -729,7 +718,6 @@ $("ab-copy").onclick = async () => {
   const text = [`uu5Mock Studio ${meta.version} (${PLATFORM[meta.platform] ?? meta.platform})`, ...aboutRows().map(([k, t]) => `${k}: ${t}`), "Authors: Marek Beránek, Unicorn University", `License: ${LICENSE_TEXT}`].join("\n");
   try { await navigator.clipboard.writeText(text); toast("Details copied."); } catch { toast("Could not copy.", { err: true }); }
 };
-$("app-info").textContent = `uu5Mock Studio ${meta.version} · ${meta.platform}`;
 // ----- updates of the app itself: a newer release on GitHub is offered for download (the installer opens in the browser)
 let appUpdate = null;
 function showAppUpdate(u) {
@@ -876,7 +864,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
   const target = () => canvas.selected() ?? canvas.files()[0];
   const withScreen = (fn) => { const t = target(); if (t) fn(t); else toast("Select a screen first.", { err: true }); };
   const needProject = (fn) => (project ? fn() : toast("Open or create a project first.", { err: true }));
-  window.studio.onMenu(async (action) => {
+  const onMenuAction = async (action) => {
     if (action.startsWith("project:open:")) return changeProject(() => window.studio.openProject(action.slice("project:open:".length)));
     if (action.startsWith("view:theme:")) { window.__theme.set(action.slice("view:theme:".length)); return syncTheme(); }
     switch (action) {
@@ -917,8 +905,13 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "claude:setup": return setup.open();
       case "plugins:check": return setup.checkUpdates(true);
       case "update:check": return checkAppUpdates();
+      case "cdn:offline": return cdnActions.offline();
+      case "cdn:warmup": return cdnActions.warmup();
+      case "cdn:clear": return cdnActions.clear();
     }
-  });
+  };
+  window.studio.onMenu(onMenuAction);
+  window.__menuAction = onMenuAction; // the demo recorder and the checks drive the application menu through this
 }
 
 // ---------- Claude Code setup wizard (Claude Code, sign-in, plugins; plugin updates) ----------

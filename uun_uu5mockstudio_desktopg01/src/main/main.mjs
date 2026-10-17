@@ -79,15 +79,16 @@ app.whenReady().then(async () => {
   // Glass Effect (macOS): translucent blurred panels. The choice is kept in the app state; macOS 'Reduce transparency' switches the effect off.
   let glass = process.platform === "darwin" && Boolean(loadApp().glass);
   const glassOn = () => glass && !nativeTheme.prefersReducedTransparency;
+  function toggleGlass() { glass = !glass; saveApp({ glass }); projects.list().then(rebuildMenu); emit("glass:set", glassOn()); return glassOn(); }
   let repoLinked = false; // does the open project have a linked repository? (enables the Git items of the Project menu)
   function rebuildMenu(list) {
     Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate({
-      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, isDev: !app.isPackaged,
+      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged,
       send: (action) => {
         if (action === "project:reveal" && current) shell.openPath(dir());
         else if (action === "folder:projects-open") projectsFolder("open");
         else if (action === "folder:projects-change") projectsFolder("change");
-        else if (action === "view:glass") { glass = !glass; saveApp({ glass }); projects.list().then(rebuildMenu); emit("glass:set", glassOn()); }
+        else if (action === "view:glass") toggleGlass();
         else emit("menu:action", action);
       },
     })));
@@ -309,7 +310,7 @@ app.whenReady().then(async () => {
 
   const cdnStatus = async () => ({ offline, ...(await cdn.stats()) });
   ipcMain.handle("cdn:status", cdnStatus);
-  ipcMain.handle("cdn:offline", async (_e, v) => { offline = Boolean(v); saveApp({ offline }); return cdnStatus(); });
+  ipcMain.handle("cdn:offline", async (_e, v) => { offline = Boolean(v); saveApp({ offline }); projects.list().then(rebuildMenu); return cdnStatus(); });
   ipcMain.handle("cdn:clear", async () => { await cdn.clear(); return cdnStatus(); });
   ipcMain.handle("cdn:warmup", async () => {
     warming = true;
@@ -490,6 +491,7 @@ app.whenReady().then(async () => {
   }
   ipcMain.handle("update:check", () => (updater.enabled ? updater.check() : checkAppUpdate({ manual: true })));
   ipcMain.handle("update:install", () => updater.install());
+  ipcMain.handle("glass:toggle", () => (process.platform === "darwin" ? toggleGlass() : false)); // the same switch as View > Appearance > Glass Effect, for the ⋯ menu
   ipcMain.handle("update:later", (_e, version) => void saveApp({ updateLater: String(version) }));
   ipcMain.handle("update:open", (_e, url) => (isRepoUrl(url, UPDATE_REPO) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only pages of the project repository on GitHub can be opened." }));
   // versions of what the app is built from (for the About dialog)

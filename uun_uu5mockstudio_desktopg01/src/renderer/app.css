@@ -175,10 +175,7 @@ main{overflow:hidden}
 #canvas.dragging webview{pointer-events:none}
 
 .ctl{position:relative}
-#menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:260px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.5);display:flex;flex-direction:column}
-#menu button{text-align:left;border:0;background:none;padding:7px 10px;border-radius:6px}#menu button:hover{background:var(--bg)}
-#menu button:disabled{opacity:.5}#menu hr{border:0;border-top:1px solid var(--line);margin:5px 0;width:100%}
-#cdn-info{margin:4px 10px 4px;font-size:11px}#menubtn.warn{border-color:#e0a030;color:#e0a030}
+#offbadge{padding:3px 10px;border:1px solid #e0a030;border-radius:999px;color:#e0a030;font-size:12px;white-space:nowrap}
 #toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:15;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;gap:12px;align-items:center}
 #toast a{color:var(--acc);cursor:pointer}#toast.err{border-color:#ff7b7b}
 [data-platform="darwin"] #chat header{padding-left:84px}
@@ -200,7 +197,6 @@ body:not([data-platform="darwin"]) #projmenu{left:14px}
 #dialog h2{margin:0;font-size:15px}#dialog input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 #dialog #dlg-err{margin:0;color:#ff7b7b;min-height:1em}
 #dialog #dlg-ok{background:var(--acc);border-color:var(--acc);color:#fff}
-#menu h4{margin:6px 10px 2px;font-size:11px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
 #selbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 24px);z-index:12;display:flex;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 6px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #seldrag{display:inline-flex;align-items:center;gap:2px;padding:0 4px;border-left:1px solid var(--line);margin-left:2px}#seldrag .grip{color:var(--mute);padding:0 4px;font-size:13px}
 #seldrag .dchip{padding:3px 9px;border:1px solid transparent;border-radius:6px;font-size:12px;cursor:pointer;user-select:none;color:var(--mute)}#seldrag .dchip:hover{color:var(--fg);background:var(--bg)}

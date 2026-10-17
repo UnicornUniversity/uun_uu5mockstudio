@@ -12,7 +12,8 @@ Video je **tiché, anglicky** (titulky přes `--lang cs` česky). Natáčí ho s
 |---|---|---|
 | 0:00 | Prázdná aplikace | Design uu5 / uuGDS apps with AI |
 | 0:03 | Nový projekt `Demo` | One folder per project. One HTML file per screen. |
-| 0:08 | Klik na pruh nad plátnem, napíše se **popis projektu** | Give the project context |
+| 0:08 | Menu View › Appearance › **Glass Effect** (jen macOS): zapne se hned na začátku a **chat se přepne na plovoucí**, zbytek videa je skleněný | Switch on the optional Glass Effect (macOS) |
+| 0:15 | Klik na pruh nad plátnem, napíše se **popis projektu** | Give the project context |
 | 0:16 | Projekty → **Link git repository…**, lišta s repem a větví, rozbalené větve | Link your git repository. Claude reads it, never writes. |
 | 0:28 | Do chatu se **vloží screenshot (náčrt obrazovky)**, pak zadání jednou větou (včetně business pravidel a odkazu na repo), Claude pracuje (zrychleno) | Paste or drop a screenshot or a sketch into the request / Describe the screen in plain words / Claude builds it (sped up) |
 | 0:55 | Hotová obrazovka, **Add room**: prázdný formulář ukáže validaci, pak se vyplní všechna pole a záznam se **přidá do tabulky**; potom se **smaže** (koš a potvrzení) | A live, interactive uu5 page / Validation first, then fill the form: the record appears in the table / Delete a record, with confirmation |
@@ -22,17 +23,20 @@ Video je **tiché, anglicky** (titulky přes `--lang cs` česky). Natáčí ho s
 | 2:15 | **Fullscreen** obrazovky, **poznámka** k obrazovce, po zavření zůstane na plátně vedle obrazovky | Try it fullscreen and pin a note to the screen / Notes stay with the screen, right on the canvas |
 | 2:35 | **Inspektor**: tlačítko, změna `colorScheme` (obrazovka se hned přepíše), výběr ikony z katalogu uuGDS | Inspect real uu5 components, tweak props, pick icons / Change a prop: the screen rewrites itself / Icons straight from the uuGDS catalog |
 | 3:00 | **Share ▾**: obrázek, HTML, celý projekt jako ZIP | Export or share a screen, or the whole project as ZIP |
-| 3:05 | ⋯ → **Claude Code & plugins…**, přehled a **Check for plugin updates** | Plugins stay current: check any time, update on your terms |
-| 3:15 | Závěr | uu5Mock Studio · Marek Beránek, Unicorn University |
+| 3:05 | Help → **Claude Code & plugins…**, přehled a **Check for plugin updates** | Plugins stay current: check any time, update on your terms |
+| 3:10 | Help → **Check for Updates…**: pruh *Version X available* s tlačítky Download / Notes / Later (video na Download neklikne) | New release? You are told: download it, read the notes, or postpone |
+| 3:20 | Plovoucí chat, panel nástrojů a menu přes plátno, plátno se posouvá pod průhlednými panely | Floating chat, toolbar and menus: translucent and blurred |
+| 3:25 | Závěr | uu5Mock Studio · Marek Beránek, Unicorn University |
 
 Skutečný záznam je delší, protože čekání na agenta se zrychluje (výchozí 8×).
 
 ## 2. Příprava před natáčením
 
 - [ ] Claude Code je nainstalovaný a **přihlášený**, pluginy `uu5-mockup`, `uugds`, `uu5-development` jsou nainstalované (průvodce se při startu neobjeví).
-- [ ] Jsi **online**: uu5 stránky se načítají z CDN. Pro jistotu jednou `⋯` → *Warm up CDN cache*.
+- [ ] Jsi **online**: uu5 stránky se načítají z CDN. Pro jistotu jednou View › Offline Use › *Warm Up CDN Cache*.
 - [ ] Zavři ostatní aplikace a vypni notifikace (Nerušit); skript startuje vlastní okno s čistým profilem, **tvoje projekty ani nastavení se nedotknou**.
 - [ ] Skript si sám vytvoří **demo git repozitář** (dvě větve) v dočasné složce; tvoje skutečné repozitáře nepoužívá.
+- Oznámení o aktualizaci je **simulované**: skript spustí lokální falešný kanál vydání a aplikaci na něj nasměruje (`STUDIO_UPDATE_API`), ohlásí se další minor verze než ta skutečná. Nic se nestahuje.
 - Okno se nahrává, nesahej při natáčení na myš ani klávesnici.
 
 ## 3. Natáčení

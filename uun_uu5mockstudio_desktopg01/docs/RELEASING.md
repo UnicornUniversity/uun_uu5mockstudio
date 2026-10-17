@@ -41,7 +41,7 @@ Aktualizace jsou zapnuté jen v sestavě, která zná adresu feedu:
     UU5STUDIO_UPDATE_URL=https://example.com/uu5mock/ npm run dist:mac
 
 Builder pak přibalí `app-update.yml` a vygeneruje `latest-mac.yml` / `latest.yml`. Na uvedenou URL nahraj celý obsah `dist/`
-(instalátory, `.zip`, `.blockmap`, `latest*.yml`). Aplikace kontroluje 10 s po startu a v menu „⋯ → Zkontrolovat aktualizace“.
+(instalátory, `.zip`, `.blockmap`, `latest*.yml`). Aplikace kontroluje 10 s po startu a v menu Help › Check for Updates….
 Bez této proměnné menu hlásí, že aktualizace nejsou nastavené.
 
 macOS aktualizuje ze `.zip` a vyžaduje **podepsanou** aplikaci; u nepodepsané sestavy aktualizace selže.
