@@ -10,7 +10,7 @@ module.exports = {
   electronLanguages: ["en", "cs"],
   artifactName: "uu5Mock-Studio-${version}-${arch}.${ext}",
   // the license texts travel with every build (Contents/Resources on macOS)
-  extraResources: [{ from: "LICENSE", to: "LICENSE" }, { from: "NOTICE", to: "NOTICE" }],
+  extraResources: [{ from: "../LICENSE", to: "LICENSE" }, { from: "../NOTICE", to: "NOTICE" }], // they sit in the repository root, next to this folder
   files: [
     "src/**/*",
     "package.json",

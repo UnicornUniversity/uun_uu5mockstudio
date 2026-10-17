@@ -40,6 +40,20 @@ Bez této proměnné menu hlásí, že aktualizace nejsou nastavené.
 
 macOS aktualizuje ze `.zip` a vyžaduje **podepsanou** aplikaci; u nepodepsané sestavy aktualizace selže.
 
+## Publikace na GitHub
+
+Skript `scripts/publish-github.mjs` zveřejní aktuální verzi na veřejném GitHubu (`UnicornUniversity/uun_uu5mockstudio`): **jeden nový commit se zdrojáky** nad naposledy zveřejněným snímkem (nikdy vývojová historie) a **GitHub release** s instalátory z `dist/`. Zdrojový archiv release vzniká ze značky, kterou release vytvoří. Snímek je strom aktuálního commitu: `LICENSE`, `NOTICE` a `README.md` leží v kořeni repozitáře vedle složky aplikace, takže GitHub pozná licenci a zobrazí README (skript hlásí, když v kořeni chybí).
+
+Postup:
+
+1. Zvyš verzi v `package.json` (`npm version <verze> --no-git-tag-version`), napiš poznámky do `docs/release-notes/<verze>.md`, vše commitni.
+2. Sestav instalátory (`npm run dist:mac` ...).
+3. Jednou přihlas `gh` (`brew install gh`, `gh auth login`) a nastav autora veřejného commitu pro tento klon: `git config uu5studio.githubAuthor "Jméno <e-mail>"` (jinak se vezme `user.name` / `user.email`; **e-mail bude veřejný**).
+4. Suchý běh (jen kontroly a výpis): `node scripts/publish-github.mjs`
+5. Publikace: `node scripts/publish-github.mjs --yes`
+
+Skript odmítne publikovat při neuložených změnách, bez instalátorů dané verze, při už existujícím release se stejnou značkou nebo když se zdrojáky neliší od posledního snímku. Volby: `--author`, `--notes`, `--remote`. S `--no-release` se zveřejní jen snímek zdrojů (například oprava README), bez release a bez instalátorů.
+
 ## Umístění dat
 
 - Projekty: `~/Documents/uu5Mock Studio/<projekt>/` (dev: `./projects/<projekt>/`, přepsat lze `STUDIO_PROJECTS_DIR`). Projekt je složka a každá obrazovka je přímo `.html` soubor v ní (beze změny, žádná podsložka); skrytá `.studio/` drží chat, session a rozložení plátna. Starší `mockups/` podsložky se při startu automaticky vyplošťují; starý jediný projekt se při prvním startu přesune do „Výchozí projekt“.
