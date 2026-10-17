@@ -20,6 +20,8 @@ module.exports = {
     "!**/*.map",
   ],
 
+  afterSign: "build/adhocSign.cjs",
+
   mac: {
     category: "public.app-category.developer-tools",
     // zip is required next to dmg: electron-updater updates macOS apps from the zip
