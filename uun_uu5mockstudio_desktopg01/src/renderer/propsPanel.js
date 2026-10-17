@@ -1,11 +1,19 @@
-import { iconGlyph } from "./iconPicker.js";
+import { iconGlyph, isBmlCode } from "./iconPicker.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null)); return n; };
 const SKIP_ADD = new Set(["children", "elementRef", "elementAttrs", "uu5Tag"]);
 const CODE_TYPE = /func|object|array|node|element|ref|\[\]|shape/i;
 // props whose values come from uuGds palettes, even when the component has no reference page
 const WELL_KNOWN = { colorScheme: { type: "colorScheme" }, borderRadius: { type: "borderRadius" } };
-const isIconProp = (name, prop) => prop?.type === "icon" || /^icon(Right|Left|Start|End)?$/.test(name);
+// A prop that holds an icon: documented as one, or named like one (icon, typeIcon, rightIcon, iconRight, stateIcon ...). Names that only
+// mention an icon (iconSize, iconColorScheme, hideIcon ...) and props documented as another type are not icons.
+export function isIconProp(name, prop) {
+  if (prop?.type === "icon") return true;
+  if (prop?.type && /^(bool|number|object|array|func|node|element|ref|\[\]|shape)/i.test(prop.type)) return false;
+  return /icon/i.test(name) && !/(size|color|colorscheme|props|style|class|visible|position|gap|margin|align|tooltip|only|count)$/i.test(name) && !/^(hide|show|no|with|has|is|use)[A-Z]/.test(name);
+}
+/** stateIcon holds a uuBml state (`uubml-state-s02-active`), which has its own palette instead of the uuGDS icon catalog. */
+export const isStateIconProp = (name) => /stateicon/i.test(name);
 const ICON_SHAPES = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>`; // "choose from a catalog of shapes" (the old square glyph looked like a Stop button)
 const short = (name) => String(name ?? "").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "");
 
@@ -151,12 +159,13 @@ export function createPropsPanel({ api, onUse }) {
     input.onkeydown = (e) => { if (e.key === "Enter" && input.tagName === "INPUT" && input.type !== "checkbox") input.blur(); };
     if (kind === "text" && isIconProp(name, prop) && api.pickIcon) {
       // icon props: choose from the uuGDS catalog
-      const pickBtn = el("button", { type: "button", className: "pedit pico", title: "Choose an icon from the uuGDS catalog", innerHTML: ICON_SHAPES, onclick: async () => {
-        const v = await api.pickIcon({ current: attr?.type === "string" ? attr.value : null, text: pick.text, base: pick.assets?.gdsBase ?? null });
+      const state = isStateIconProp(name);
+      const pickBtn = el("button", { type: "button", className: "pedit pico", title: state ? "Choose a state (uuBml)" : "Choose an icon (uuGDS or uuBml)", innerHTML: ICON_SHAPES, onclick: async () => {
+        const v = await api.pickIcon({ current: attr?.type === "string" ? attr.value : null, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: state ? "state" : "icon" });
         if (v) setProp(name, { type: "string", value: v });
       } });
       const cur = attr?.type === "string" && attr.value ? attr.value : null;
-      return el("div", { className: "pcode" }, cur && pick.assets?.gdsBase ? iconGlyph(cur) : null, input, pickBtn);
+      return el("div", { className: "pcode" }, cur && (pick.assets?.gdsBase || isBmlCode(cur)) ? iconGlyph(cur) : null, input, pickBtn);
     }
     if (kind !== "code") return input;
     // objects, arrays, functions: a button opens the full value in a window
@@ -169,11 +178,12 @@ export function createPropsPanel({ api, onUse }) {
   function branchControl(name, prop, b, idx) {
     if (!b.editable) return el("code", { className: "pb-fixed", textContent: b.value, title: "Computed in code — change it in the chat or in the file" });
     if (isIconProp(name, prop) && b.type === "string") {
-      const pickBtn = el("button", { type: "button", className: "pedit pico", title: "Choose an icon from the uuGDS catalog", innerHTML: ICON_SHAPES, onclick: async () => {
-        const v = await api.pickIcon?.({ current: b.value, text: pick.text, base: pick.assets?.gdsBase ?? null });
+      const state = isStateIconProp(name);
+      const pickBtn = el("button", { type: "button", className: "pedit pico", title: state ? "Choose a state (uuBml)" : "Choose an icon (uuGDS or uuBml)", innerHTML: ICON_SHAPES, onclick: async () => {
+        const v = await api.pickIcon?.({ current: b.value, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: state ? "state" : "icon" });
         if (v) setBranchValue(name, idx, { type: "string", value: v });
       } });
-      return el("div", { className: "pcode" }, pick.assets?.gdsBase ? iconGlyph(b.value) : null, el("code", { className: "pb-val", textContent: b.value }), pickBtn);
+      return el("div", { className: "pcode" }, pick.assets?.gdsBase || isBmlCode(b.value) ? iconGlyph(b.value) : null, el("code", { className: "pb-val", textContent: b.value }), pickBtn);
     }
     const base = kindOf(prop, { type: b.type }, palettes());
     if (base.kind === "select" || b.type === "boolean") {
@@ -228,7 +238,8 @@ export function createPropsPanel({ api, onUse }) {
       d?.url ? el("a", { href: d.url, textContent: " Docs", onclick: (e) => { e.preventDefault(); api.openExternal(d.url); } }) : null); // opens in the system browser
     const props = $("insp-props"); props.replaceChildren();
     const attrs = info.element.attrs;
-    if (pick.assets?.gdsBase && attrs.some((a) => isIconProp(a.name, docProp(a.name)))) api.ensureIconFonts?.(pick.assets.gdsBase); // glyph previews
+    if (pick.assets?.gdsBase && attrs.some((a) => isIconProp(a.name, docProp(a.name)) && !isStateIconProp(a.name))) api.ensureIconFonts?.(pick.assets.gdsBase); // glyph previews
+    if (attrs.some((a) => isStateIconProp(a.name) || isBmlCode(a.value))) api.ensureBmlFonts?.(); // uuBml icons and states come from the uuBml icon font
     for (const a of attrs) {
       const doc = docProp(a.name);
       const label = el("label", { title: [doc?.type, doc?.description].filter(Boolean).join(" — ") || a.name }, el("span", { className: "pname", textContent: a.name }));

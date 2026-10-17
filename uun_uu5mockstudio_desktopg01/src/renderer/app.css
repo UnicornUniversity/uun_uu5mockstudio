@@ -292,7 +292,9 @@ body[data-chat="float"] #chatmode .when-float{display:inline-flex}
 
 /* chat during the fullscreen preview + minimized bar */
 body[data-fs] #chat{z-index:80}
-body[data-fs] #chatmode{display:none}
+/* docked during the fullscreen preview: a left column above it, the preview starts to its right */
+body[data-fs][data-chat="dock"] #chat{position:fixed;left:0;top:0;bottom:0;width:var(--fs-left,380px);z-index:80}
+body[data-fs][data-chat="dock"] #fs{left:var(--fs-left,380px)}
 #chatmin{display:none;align-items:center;justify-content:center;padding:5px 8px}
 body[data-chat="float"] #chatmin{display:inline-flex}
 #chatmin .when-min{display:none}
@@ -412,3 +414,20 @@ body[data-noproject] #descstrip{display:none}
 /* description of a screen: below it, constant on-screen size at any zoom */
 .fdesc{transform:scale(var(--iz,1));transform-origin:0 0;margin-top:calc(8px*var(--iz,1));padding:6px 10px;border-left:3px solid var(--acc);background:rgba(127,127,127,.1);border-radius:0 8px 8px 0;color:var(--fg);font:13px/1.45 system-ui,sans-serif;cursor:pointer;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;box-sizing:border-box}
 .fdesc[hidden]{display:none}.fdesc:hover{background:rgba(127,127,127,.18)}
+
+/* components marked together in the inspector */
+#insp-sel{margin:8px 0 10px;padding:8px;border:1px solid #e8590c;border-radius:8px;background:color-mix(in srgb,#e8590c 7%,transparent)}
+#insp-sel-head{font-size:12px;font-weight:600;margin-bottom:6px}
+#insp-sel-list{display:flex;flex-direction:column;gap:4px}
+#insp-sel-list .chip{border-color:var(--line);cursor:pointer}#insp-sel-list .chip.on{border-color:#e8590c}
+
+/* uuBml state icons (state number + kind): drawn with the uuBml icon font */
+.ib-bml{display:inline-block;font-size:30px;line-height:1;min-height:30px}
+.ib-icon.ib-state .ib-name{font-variant-numeric:tabular-nums}
+.pcode .ib-bml{font-size:20px;min-height:0;flex:none}
+
+/* chat header: only one of the dock / float icons shows (the general `span` rule above would show both), icons of one size */
+#chat header .tools #chatmode .when-float{display:none}
+body[data-chat="float"] #chat header .tools #chatmode .when-dock{display:none}
+body[data-chat="float"] #chat header .tools #chatmode .when-float{display:inline-flex}
+#chat header .tools .ico{width:18px;height:18px}

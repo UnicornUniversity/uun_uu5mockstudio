@@ -23,6 +23,22 @@ export function memoryPrompt({ cwd, repoDir, repoLabel = "", rules, description 
   ].join("\n");
 }
 
+/** The part of the system prompt that describes the app and its tools to the agent (the project memory block comes last). */
+export function studioPrompt({ cwd, urlBase, memory = "" }) {
+  return [
+    "You run inside uu5Mock Studio, a desktop app that previews mockups live.",
+    `Save every mockup (screen) as a single HTML file directly in ${cwd}/<kebab-name>.html: the project folder is the project, each .html file in it is one screen. Do not create subfolders.`,
+    `The app serves that folder at ${urlBase}/<name>.html and reloads the preview automatically on every file change. ${cwd} is one project of several; only work inside it.`,
+    "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot, browser_click (all take the mockup file name).",
+    "The app shows every .html file of the project as a separate frame on a canvas next to the others, so several screens can coexist: use one file per screen. The user picks device sizes (desktop/tablet/mobile) per frame, so layouts must be responsive.",
+    "Verification loop (mandatory): after writing or editing a mockup call browser_open/browser_reload; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge before use. Finish with one browser_screenshot.",
+    "Look before you change: when you are asked to change or improve a screen that already exists, first take a browser_screenshot (and browser_snapshot) of it to see its current look, and base your edit on that. What is not visible at first (a dialog, a form, a tab, a menu) you open with browser_click (by its visible text) and then check with browser_screenshot; browser_click never changes files and browser_reload resets the page.",
+    "The user may attach screenshots to a message: they are image files under .studio/attachments in the project folder and their paths are listed in the message. Open them with the Read tool before acting and base your work on what they show. Never copy, edit or delete them.",
+    "Use the uu5-mockup and uugds skills for composition and rules. Ask no questions unless essential; pick sensible defaults.",
+    memory,
+  ].join("\n");
+}
+
 export class ClaudeService {
   /** `repoDir`: the git repository linked to the project (read-only), or null. It can be changed while the service lives. */
   constructor({ cwd, urlBase, browserMcp, onEvent, sessionId, repoDir = null, repoLabel = "" }) {
@@ -54,17 +70,7 @@ export class ClaudeService {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: [
-            "You run inside uu5Mock Studio, a desktop app that previews mockups live.",
-            `Save every mockup (screen) as a single HTML file directly in ${this.cwd}/<kebab-name>.html: the project folder is the project, each .html file in it is one screen. Do not create subfolders.`,
-            `The app serves that folder at ${this.urlBase}/<name>.html and reloads the preview automatically on every file change. ${this.cwd} is one project of several; only work inside it.`,
-            "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot (all take the mockup file name).",
-            "The app shows every .html file of the project as a separate frame on a canvas next to the others, so several screens can coexist: use one file per screen. The user picks device sizes (desktop/tablet/mobile) per frame, so layouts must be responsive.",
-            "Verification loop (mandatory): after writing or editing a mockup call browser_open/browser_reload; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge before use. Finish with one browser_screenshot.",
-            "The user may attach screenshots to a message: they are image files under .studio/attachments in the project folder and their paths are listed in the message. Open them with the Read tool before acting and base your work on what they show. Never copy, edit or delete them.",
-            "Use the uu5-mockup and uugds skills for composition and rules. Ask no questions unless essential; pick sensible defaults.",
-            memory,
-          ].join("\n"),
+          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }),
         },
       },
     });

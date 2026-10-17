@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { memoryPrompt } from "../src/main/claudeService.mjs";
+import { memoryPrompt, studioPrompt } from "../src/main/claudeService.mjs";
 
 test("the prompt tells the agent to keep BUSINESS_RULES.md and carries its current content as data", () => {
   const p = memoryPrompt({ cwd: "/p/Demo", repoDir: null, rules: "# Business rules\n- R-001 Codes are unique.\n" });
@@ -20,4 +20,11 @@ test("a missing rules file is announced and a long one is truncated", () => {
 test("a linked repository is described as read-only", () => {
   const p = memoryPrompt({ cwd: "/p/Demo", repoDir: "/r/app", rules: "" });
   assert.match(p, /Linked git repository \(READ-ONLY\): \/r\/app/); assert.match(p, /Never write there/);
+});
+
+test("the studio prompt names every browser tool and asks to look before changing a screen", () => {
+  const p = studioPrompt({ cwd: "/p/Demo", urlBase: "http://127.0.0.1:1234/Demo", memory: "MEMORY BLOCK" });
+  for (const t of ["browser_open", "browser_reload", "browser_console", "browser_snapshot", "browser_screenshot", "browser_click"]) assert.ok(p.includes(t), t);
+  assert.match(p, /first take a browser_screenshot/); assert.match(p, /browser_click never changes files/);
+  assert.match(p, /\/p\/Demo\/<kebab-name>\.html/); assert.ok(p.endsWith("MEMORY BLOCK"), "the project memory comes last");
 });

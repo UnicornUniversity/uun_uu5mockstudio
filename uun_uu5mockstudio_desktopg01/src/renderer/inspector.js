@@ -70,6 +70,24 @@ export const INJECT = `(async () => {
   const box = document.createElement("div");
   box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #4f8cff;background:rgba(79,140,255,.14);border-radius:3px;display:none";
   document.documentElement.appendChild(box);
+  // the marked components (Shift / Cmd / Ctrl + click adds or removes one) keep an orange frame; a plain click marks just that one
+  const sel = new Map(), marks = [];
+  const keyOf = (T, sub) => ordOf(T) + "|" + (sub ? sub.prop + "[" + sub.index + "]" : "");
+  const paintSel = () => {
+    while (marks.length > sel.size) marks.pop().remove();
+    while (marks.length < sel.size) {
+      const m = document.createElement("div");
+      m.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #e8590c;background:rgba(232,89,12,.12);border-radius:3px;display:none";
+      document.documentElement.appendChild(m); marks.push(m);
+    }
+    let i = 0;
+    for (const fib of sel.values()) {
+      const r = rectOf(fib), m = marks[i++];
+      if (!r) { m.style.display = "none"; continue; }
+      Object.assign(m.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+    }
+  };
+  const selTimer = setInterval(paintSel, 400); // the page re-renders and scrolls: keep the frames on their components
   const move = (e) => {
     const hit = resolve(e.target), r = hit && rectOf(hit.sub ? hit.sub.fiber : hit.T);
     if (!r) { box.style.display = "none"; return; }
@@ -80,11 +98,15 @@ export const INJECT = `(async () => {
     stop(e);
     const hit = resolve(e.target); if (!hit) return;
     const f = hit.T, sub = hit.sub, shown = sub ? sub.fiber : f;
+    const key = keyOf(f, sub), additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (additive) { if (sel.has(key)) sel.delete(key); else sel.set(key, shown); } else { sel.clear(); sel.set(key, shown); }
+    paintSel();
     const r = rectOf(shown) || { width: 0, height: 0 }, props = {};
     for (const [k, v] of Object.entries(shown.memoizedProps || {})) if (k !== SRC && k !== "children") props[k] = sum(v);
     const ownerRuntime = {};
     if (sub) for (const [k, v] of Object.entries(f.memoizedProps || {})) if (k !== SRC && k !== "children") ownerRuntime[k] = sum(v);
     console.log("${PICK}" + JSON.stringify({
+      key, additive, selected: sel.has(key),
       chain: chainOf(f), runtime: props, ownerRuntime, propNames: Object.keys(typeProps(shown, "propTypes") || {}), ownerPropNames: Object.keys(typeProps(f, "propTypes") || {}),
       sub: sub ? { prop: sub.prop, index: sub.index, count: sub.count, name: sub.name } : null,
       assets: { gdsBase: (() => { const e = performance.getEntriesByType("resource").find((x) => /uu_gds_svgg01-icons\\.min\\.css/.test(x.name)); return e ? e.name.slice(0, e.name.lastIndexOf("/") + 1) : null; })() },
@@ -96,13 +118,18 @@ export const INJECT = `(async () => {
   const esc = (e) => { if (e.key === "Escape") console.log("__studio_esc__"); }; // the app listens for Escape, which the page swallows
   addEventListener("keydown", esc, true);
   addEventListener("mousemove", move, true); addEventListener("click", click, true);
+  addEventListener("scroll", paintSel, true); addEventListener("resize", paintSel);
   for (const t of events) addEventListener(t, swallow, true);
   document.documentElement.style.cursor = "crosshair";
-  window.__studioInspect = { off() {
-    removeEventListener("keydown", esc, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
-    for (const t of events) removeEventListener(t, swallow, true);
-    box.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
-  } };
+  window.__studioInspect = {
+    drop(key) { sel.delete(key); paintSel(); }, clear() { sel.clear(); paintSel(); },
+    off() {
+      removeEventListener("keydown", esc, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
+      removeEventListener("scroll", paintSel, true); removeEventListener("resize", paintSel); clearInterval(selTimer);
+      for (const t of events) removeEventListener(t, swallow, true);
+      box.remove(); for (const m of marks) m.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
+    },
+  };
 })()`;
 const OFF = `window.__studioInspect && window.__studioInspect.off()`;
 
@@ -113,6 +140,9 @@ export function createInspector({ onPick, onEscape }) {
     get on() { return on; },
     set(v, views) { on = v; for (const view of views) run(view, v ? INJECT : OFF); },
     injectIfOn: (view) => on && run(view, INJECT),
+    /** Takes the frame of one marked component off the page of `view` / takes all frames off the pages of `views`. */
+    drop: (view, key) => run(view, `window.__studioInspect && window.__studioInspect.drop(${JSON.stringify(key)})`),
+    clearIn: (views) => { for (const view of views) run(view, "window.__studioInspect && window.__studioInspect.clear()"); },
     /** Call from each webview's console-message event. Returns true when the message was an inspector pick. */
     handleConsole(file, message) {
       if (message === "__studio_esc__") { onEscape?.(); return true; }
@@ -121,6 +151,21 @@ export function createInspector({ onPick, onEscape }) {
       return true;
     },
   };
+}
+
+export const MAX_MARKED = 8;
+/**
+ * The components marked in the inspector. A plain click marks just that one; Shift / Cmd / Ctrl + click adds one or (when the page
+ * says it was marked before, `selected: false`) removes it. Returns the new list, the component the panel should show (null when
+ * nothing is left), the files whose pages still carry frames of the old selection and the pick that had to be refused (too many).
+ */
+export function updateSelection(list, p, max = MAX_MARKED) {
+  const k = (x) => `${x.file}|${x.key}`;
+  if (!p.additive) return { selection: [p], active: p, clearFiles: [...new Set(list.map((x) => x.file))].filter((f) => f !== p.file), refused: null };
+  if (p.selected === false) { const selection = list.filter((x) => k(x) !== k(p)); return { selection, active: selection.at(-1) ?? null, clearFiles: [], refused: null }; }
+  if (list.some((x) => k(x) === k(p))) return { selection: list, active: p, clearFiles: [], refused: null };
+  if (list.length >= max) return { selection: list, active: list.at(-1) ?? null, clearFiles: [], refused: p };
+  return { selection: [...list, p], active: p, clearFiles: [], refused: null };
 }
 
 /** Compact one-line description used in the chat chip and the sent message. */

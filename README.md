@@ -5,14 +5,15 @@ Desktop app for designing **uu5 / uuGDS user interfaces with an AI model**. Desc
 ## What it does
 
 - **Live canvas** of HTML screens (one file per screen): zoom, pan, device sizes, auto arrange, fullscreen preview.
-- **Chat that builds screens.** Describe a screen in plain words, paste or drop a screenshot or a sketch, mention other screens with `@`. The agent works in your project folder and checks its own result in the live preview.
-- **Inspector** for real uu5 components: change props (colors, icons from the uuGDS catalog, objects and arrays, conditional values), the change is written back into the HTML source.
+- **Chat that builds screens.** Describe a screen in plain words, paste or drop a screenshot or a sketch, mention other screens with `@`. The agent works in your project folder, looks at the screen (screenshot) before it changes it, checks its own result in the live preview and can open dialogs and forms by clicking.
+- **Inspector** for real uu5 components: change props (colors, icons from the uuGDS and uuBml catalogs, uuBml states, objects and arrays, conditional values), mark several components at once (Shift-click) and use them together in the chat. The change is written back into the HTML source.
 - **Project memory** kept as plain files next to the screens:
   - a linked **git repository** (read-only for Claude, any branch as a snapshot, files mentioned with `@repo/…`),
   - **business rules** (`BUSINESS_RULES.md`, rendered or as Markdown, edited in place),
   - **descriptions** of the project and of every screen (`PROJECT.md`),
   - sticky **notes** per screen (`<screen>.notes.md`).
 - **Export and share:** PNG / HTML / the whole project as ZIP, system share sheet on macOS.
+- **Glass Effect (macOS):** an optional translucent, blurred look (View → Appearance → Glass Effect), light and dark.
 - **First-run setup:** one-click Claude Code installer, sign-in, plugin install and update check (updates are offered, never applied silently).
 
 ## Requirements

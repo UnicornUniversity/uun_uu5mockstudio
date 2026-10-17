@@ -16,6 +16,7 @@ import { createProjects, readState, updateState, writeState } from "./projects.m
 import * as chats from "./chats.mjs";
 import { saveAttachments } from "./attachments.mjs";
 import { setupUpdater } from "./updater.mjs";
+import { loadBml } from "./uuBml.mjs";
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
@@ -73,13 +74,18 @@ app.whenReady().then(async () => {
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; }); // links go to the system browser, never into a new app window
   const emit = (channel, payload) => !win.isDestroyed() && win.webContents.send(channel, payload);
   // Application menu. Custom items just tell the renderer what to do; it owns the dialogs and the UI state.
+  // Glass Effect (macOS): translucent blurred panels. The choice is kept in the app state; macOS 'Reduce transparency' switches the effect off.
+  let glass = process.platform === "darwin" && Boolean(loadApp().glass);
+  const glassOn = () => glass && !nativeTheme.prefersReducedTransparency;
+  let repoLinked = false; // does the open project have a linked repository? (enables the Git items of the Project menu)
   function rebuildMenu(list) {
     Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate({
-      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, isDev: !app.isPackaged,
+      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, isDev: !app.isPackaged,
       send: (action) => {
         if (action === "project:reveal" && current) shell.openPath(dir());
         else if (action === "folder:projects-open") projectsFolder("open");
         else if (action === "folder:projects-change") projectsFolder("change");
+        else if (action === "view:glass") { glass = !glass; saveApp({ glass }); projects.list().then(rebuildMenu); emit("glass:set", glassOn()); }
         else emit("menu:action", action);
       },
     })));
@@ -114,6 +120,11 @@ app.whenReady().then(async () => {
     return inspectInfo(out, ordinals, sub);
   }));
   let iconCatalog;
+  let bml;
+  ipcMain.handle("icons:bml", async () => (bml ??= await loadBml({
+    fetchText: async (url) => { const r = await net.fetch(url, { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); },
+    cacheFile: path.join(app.getPath("userData"), "uubml.json"),
+  })));
   ipcMain.handle("icons:catalog", () => (iconCatalog === undefined ? (iconCatalog = loadIcons()) : iconCatalog));
   ipcMain.handle("jsx:inspect", guard((_e, { file, ordinals, sub }) => inspectInfo(fs.readFileSync(screenPath(file), "utf8"), ordinals, sub)));
   const editJsx = (change) => guard((_e, { file, ordinals, name, type, value, sub }) => {
@@ -189,6 +200,7 @@ app.whenReady().then(async () => {
   };
   const payload = async () => {
     const list = await projects.list();
+    repoLinked = current ? Boolean((await readState(dir()))?.repo?.path) : false;
     rebuildMenu(list); // every change of the open project / project list flows through here
     const base = { port, webviewPreload: pathToFileURL(path.join(here, "webviewPreload.cjs")).href, project: current, projects: list };
     if (!current) { currentChatId = null; return { ...base, screens: [], chat: [], chatId: null, chats: [], layout: null }; }
@@ -405,6 +417,7 @@ app.whenReady().then(async () => {
     const info = await validateRepo(r.filePaths[0]);
     const st = await updateState(dir(), (s) => { s.repo = { path: info.path }; return s; });
     await applyRepo(info.path, "");
+    repoLinked = true; rebuildMenu(await projects.list());
     return repoView(st);
   }));
   ipcMain.handle("repo:unlink", guard(async () => {
@@ -412,6 +425,7 @@ app.whenReady().then(async () => {
     await updateState(dir(), (s) => { delete s.repo; return s; });
     if (st.repo?.viewDir?.startsWith(VIEWS_DIR)) await fs.promises.rm(st.repo.viewDir, { recursive: true, force: true });
     await applyRepo(null, "");
+    repoLinked = false; rebuildMenu(await projects.list());
     return { ok: true };
   }));
   ipcMain.handle("repo:open", guard(async () => {
@@ -462,8 +476,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("update:install", () => updater.install());
   // versions of what the app is built from (for the About dialog)
   const depVersion = (name) => { try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "node_modules", name, "package.json"), "utf8")).version; } catch { return null; } };
+  nativeTheme.on("updated", () => emit("glass:set", glassOn())); // Reduce transparency was switched in System Settings
   ipcMain.handle("app:meta", () => ({
-    version: app.getVersion(), platform: process.platform, updates: updater.enabled,
+    version: app.getVersion(), platform: process.platform, glass: glassOn(), updates: updater.enabled,
     runtime: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     deps: Object.fromEntries(["@anthropic-ai/claude-agent-sdk", "@babel/parser", "fflate", "electron-updater"].map((n) => [n, depVersion(n)])),
   }));

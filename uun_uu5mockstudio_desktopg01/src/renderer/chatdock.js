@@ -7,17 +7,17 @@ const between = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 /**
  * The chat panel is docked (left column) or floating over the canvas: draggable by its header, resizable from all
  * edges, minimizable to a small bar in its corner (button or double-click on the header).
- * During the fullscreen preview the same panel is always a floating window above the preview with its own remembered
- * geometry and minimized state; leaving fullscreen puts it back exactly where it was.
+ * During the fullscreen preview the same panel is a floating window above the preview (or docked on the left, the preview then
+ * starts to its right) with its own remembered geometry, docked and minimized state; leaving fullscreen puts it back exactly where it was.
  * `onModeChange(mode, shiftX)`: shiftX is how far the canvas content has to move so it stays put on screen.
  */
 export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
   const a = read(KEY), f = read(KEY_FS);
   const st = { mode: a.mode === "float" ? "float" : "dock", x: a.x, y: a.y, w: num(a.w, 400), h: num(a.h, 0), collapsed: Boolean(a.collapsed) }; // normal context
-  const fsSt = { x: f.x, y: f.y, w: num(f.w, 380), h: num(f.h, 0), collapsed: Boolean(f.collapsed) }; // fullscreen context (always floating)
+  const fsSt = { x: f.x, y: f.y, w: num(f.w, 380), h: num(f.h, 0), collapsed: Boolean(f.collapsed), docked: Boolean(f.docked) }; // fullscreen context (floating unless docked)
   let fsActive = false, restoredAt = 0; // restoredAt: a dblclick right after restoring a minimized bar must not collapse it again
   const cur = () => (fsActive ? fsSt : st);
-  const floating = () => fsActive || st.mode === "float";
+  const floating = () => (fsActive ? !fsSt.docked : st.mode === "float");
   const save = () => { try { localStorage.setItem(fsActive ? KEY_FS : KEY, JSON.stringify(cur())); } catch {} };
 
   /** Geometry of the expanded panel, kept inside the window. Defaults: bottom left, or bottom right in fullscreen. */
@@ -33,11 +33,13 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     const c = cur(), fl = floating();
     document.body.dataset.chat = fl ? "float" : "dock";
     if (fsActive) document.body.dataset.fs = "1"; else delete document.body.dataset.fs;
+    // docked during the fullscreen preview: the panel is a left column above it and the preview starts right of it
+    if (fsActive && fsSt.docked) document.body.style.setProperty("--fs-left", `${Math.round(between(fsSt.w, MIN_W, innerWidth / 2))}px`); else document.body.style.removeProperty("--fs-left");
     header.classList.toggle("drag", !fl); // window drag region only while docked
     chat.classList.toggle("collapsed", fl && c.collapsed);
     if (minBtn) { const min = fl && c.collapsed; minBtn.title = min ? "Restore chat" : "Minimize chat"; minBtn.setAttribute("aria-label", minBtn.title); }
-    toggleBtn.title = st.mode === "float" ? "Dock the chat on the left" : "Switch the chat to a floating window"; toggleBtn.setAttribute("aria-label", toggleBtn.title);
-    toggleBtn.setAttribute("aria-pressed", String(st.mode === "float"));
+    toggleBtn.title = fl ? "Dock the chat on the left" : "Switch the chat to a floating window"; toggleBtn.setAttribute("aria-label", toggleBtn.title);
+    toggleBtn.setAttribute("aria-pressed", String(fl));
     if (!fl) { chat.style.cssText = ""; return; }
     if (!c.collapsed) { fit(); Object.assign(chat.style, { left: c.x + "px", top: c.y + "px", width: c.w + "px", height: c.h + "px" }); return; }
     // minimized: a small bar that keeps the bottom-right corner of the expanded panel. It is the bar that has to stay inside the
@@ -52,7 +54,8 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
   }
 
   function setMode(mode) {
-    if (fsActive || mode === st.mode) return;
+    if (fsActive) { const docked = mode === "dock"; if (fsSt.docked !== docked) { fsSt.docked = docked; apply(); save(); } return; } // the preview resizes itself (see ResizeObserver in the renderer)
+    if (mode === st.mode) return;
     const canvas = document.getElementById("canvas"), left0 = canvas.getBoundingClientRect().left;
     st.mode = mode; apply(); save();
     // the canvas starts right of a docked chat but at 0 when the chat floats: move the content so it stays put on screen
@@ -107,13 +110,13 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
       });
     });
   }
-  toggleBtn.addEventListener("click", () => setMode(st.mode === "float" ? "dock" : "float"));
+  toggleBtn.addEventListener("click", () => setMode(floating() ? "dock" : "float"));
   addEventListener("resize", () => floating() && apply());
   apply();
 
   return {
     mode: () => st.mode,
-    toggle: () => setMode(st.mode === "float" ? "dock" : "float"),
+    toggle: () => setMode(floating() ? "dock" : "float"),
     toggleCollapsed,
     collapsed: () => floating() && cur().collapsed,
     /** Fullscreen preview opened / closed: the chat becomes (and stops being) a floating window above it. */

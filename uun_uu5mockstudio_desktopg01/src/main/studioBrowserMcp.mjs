@@ -3,6 +3,7 @@ import { z } from "zod";
 import path from "node:path";
 import { webContents, nativeImage } from "electron";
 import { captureWithFallback } from "./screenshot.mjs";
+import { clickIn } from "./mockClick.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = (t) => ({ content: [{ type: "text", text: t }] });
@@ -58,6 +59,18 @@ export function createStudioBrowser({ baseUrl, onNavigated }) {
     return `file: ${name}\nrendered: ${n > 0 ? "yes" : "NO (#uu5 is empty - the page crashed or failed to load)"}\nconsole errors: ${buf.filter((m) => m.level === "error").length}, warnings: ${buf.filter((m) => m.level === "warning").length}`;
   };
 
+  /** Visible text plus the interactive elements of the page (shared by browser_snapshot and browser_click). */
+  const snapshotText = async (wc, name) => {
+    const snap = await wc.executeJavaScript(`(() => {
+      const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const label = (e) => (e.getAttribute("aria-label") || e.innerText || e.value || e.placeholder || e.name || "").trim().slice(0, 60);
+      const items = [...document.querySelectorAll("button, a[href], input, select, textarea, [role=button], [role=tab]")].filter(vis)
+        .map((e) => e.tagName.toLowerCase() + (e.type ? "[" + e.type + "]" : "") + ": " + label(e));
+      return { title: document.title, text: document.body.innerText.slice(0, 4000), items: items.slice(0, 80) };
+    })()`);
+    return `file: ${name}\ntitle: ${snap.title}\n\nVISIBLE TEXT:\n${snap.text}\n\nINTERACTIVE:\n${snap.items.join("\n")}`;
+  };
+
   const tools = [
     tool("browser_open", "Show a mockup (the .html file name in the project folder, e.g. 'user-form.html') on the app canvas, reload it, wait until uu5 has rendered, and report render status and console error count. The file must already exist.",
       { file: z.string().describe("File name of the .html screen in the project folder") },
@@ -89,14 +102,17 @@ export function createStudioBrowser({ baseUrl, onNavigated }) {
       { file: fileParam },
       async ({ file }) => {
         const { wc, name } = await resolve(file);
-        const snap = await wc.executeJavaScript(`(() => {
-          const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-          const label = (e) => (e.getAttribute("aria-label") || e.innerText || e.value || e.placeholder || e.name || "").trim().slice(0, 60);
-          const items = [...document.querySelectorAll("button, a[href], input, select, textarea, [role=button], [role=tab]")].filter(vis)
-            .map((e) => e.tagName.toLowerCase() + (e.type ? "[" + e.type + "]" : "") + ": " + label(e));
-          return { title: document.title, text: document.body.innerText.slice(0, 4000), items: items.slice(0, 80) };
-        })()`);
-        return text(`file: ${name}\ntitle: ${snap.title}\n\nVISIBLE TEXT:\n${snap.text}\n\nINTERACTIVE:\n${snap.items.join("\n")}`);
+        return text(await snapshotText(wc, name));
+      }),
+    tool("browser_click", "Click an element of a rendered mockup with real mouse input (a button, tab, link, menu item, checkbox ...) found by its visible text or by a CSS selector, then return the new visible state. Use it to open what is not visible at first (a dialog, a form, a tab, a menu) and check it with browser_screenshot. Nothing is saved: browser_reload resets the page, so clicking never changes the project files. Do not click destructive buttons just to see what happens.",
+      { file: fileParam, text: z.string().optional().describe("Visible text, label or tooltip of the element (case-insensitive; an exact match wins over a partial one)"), selector: z.string().optional().describe("CSS selector instead of text"), index: z.number().int().min(0).optional().describe("Which match to click when there are several (0 = the first)") },
+      async ({ file, text: label, selector, index = 0 }) => {
+        if (!label && !selector) return text("Pass `text` (the visible text of the element) or `selector`.");
+        const { wc, name } = await resolve(file);
+        const r = await clickIn(wc, { text: label, selector, index });
+        if (!r.ok) return text(`Nothing to click for ${label ? `text "${label}"` : `selector "${selector}"`}${r.count ? ` with index ${index} (${r.count} match${r.count > 1 ? "es" : ""})` : ""}. Clickable elements on the page:\n${r.items.join("\n")}`);
+        await sleep(700); // the page reacts (a dialog opens, a tab switches)
+        return text(`clicked: ${r.tag} "${r.label}"${r.count > 1 ? ` (match ${index + 1} of ${r.count})` : ""}${r.viaFallback ? " (through el.click())" : ""}\n\n${await snapshotText(wc, name)}`);
       }),
     tool("browser_screenshot", "Screenshot (PNG) of a mockup as shown in the app, at the frame's current device size. Use for the final visual check.",
       { file: fileParam },
@@ -111,5 +127,5 @@ export function createStudioBrowser({ baseUrl, onNavigated }) {
   ];
 
   const viewOf = (file) => { const id = views.get(norm(file)); const wc = id ? webContents.fromId(id) : undefined; return wc && !wc.isDestroyed() ? wc : undefined; };
-  return { server: createSdkMcpServer({ name: "studio-browser", version: "0.2.0", tools }), register, unregister, viewOf, baseUrl };
+  return { server: createSdkMcpServer({ name: "studio-browser", version: "0.3.0", tools }), register, unregister, viewOf, baseUrl };
 }

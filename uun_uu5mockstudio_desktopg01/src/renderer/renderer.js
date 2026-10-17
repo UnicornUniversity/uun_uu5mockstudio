@@ -1,5 +1,5 @@
 import { createCanvas, DEVICES } from "./canvas.js";
-import { createInspector, describePick, agentContext } from "./inspector.js";
+import { createInspector, describePick, agentContext, updateSelection, MAX_MARKED } from "./inspector.js";
 import { createPropsPanel } from "./propsPanel.js";
 import { createIconPicker } from "./iconPicker.js";
 import { createMemory } from "./memory.js";
@@ -176,8 +176,9 @@ const canvas = createCanvas({
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
+  getInset: () => (document.body.dataset.glass ? parseFloat(document.body.style.getPropertyValue("--glass-top")) || 0 : 0),
   onSelect: () => { renderTabs(); updateSelbar(); },
-  onPageReady: (f) => inspector.injectIfOn(f.view),
+  onPageReady: (f) => { inspector.injectIfOn(f.view); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
 function syncFrames(screens) {
   for (const f of screens) if (!canvas.get(f)) {
@@ -244,23 +245,63 @@ function setInspect(v, { chat = false } = {}) {
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v);
   $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
-  if (!v || chatPick) propsPanel.clear();
+  if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
-const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog() });
+const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml() });
 const propsPanel = createPropsPanel({
-  api: { pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
-  onUse: (p) => { addChip(p); $("prompt").focus(); },
+  api: { pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
+  onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
 });
-async function showPick(p) {
-  if (!chatPick) return propsPanel.show(p);
-  // chat mode: resolve names and the source of the component, then add it to the message
-  let r = await window.studio.jsxInspect(p.file, p.chain, p.sub);
-  let sub = p.sub;
+/** The chat chip of a pick: names and the source of the component from the file (an item of a list falls back to the whole component). */
+async function chipFrom(p) {
+  let r = await window.studio.jsxInspect(p.file, p.chain, p.sub), sub = p.sub;
   if (r?.error && p.sub) { sub = null; r = await window.studio.jsxInspect(p.file, p.chain, null); }
-  if (r?.error) return toast(r.error, { err: true });
-  addChip({ ...p, chain: r.chain, element: r.element, sub: r.element.item ? sub : null });
+  if (r?.error) return { error: r.error };
+  return { chip: { ...p, chain: r.chain, element: r.element, sub: r.element.item ? sub : null } };
+}
+// components marked in the inspector (Shift / Cmd / Ctrl + click adds or removes one); "Use in chat" takes all of them
+let marked = [], activeMarked = null;
+const viewOfFile = (file) => canvas.get(file)?.view;
+function renderMarked() {
+  const list = $("insp-sel-list");
+  $("insp-sel").hidden = marked.length < 2;
+  $("insp-use").textContent = marked.length > 1 ? `Use ${marked.length} in chat` : "Use in chat";
+  $("insp-sel-head").textContent = `${marked.length} components marked`;
+  list.replaceChildren(...marked.map((m) => {
+    const label = m.label ?? describePick(m), t = Object.assign(document.createElement("span"), { textContent: label, title: label });
+    const x = Object.assign(document.createElement("button"), { type: "button", title: "Unmark", textContent: "✕", onclick: (e) => { e.stopPropagation(); unmark(m); } });
+    const chip = Object.assign(document.createElement("div"), { className: `chip${m === activeMarked ? " on" : ""}`, onclick: () => { activeMarked = m; renderMarked(); propsPanel.show(m); } });
+    chip.append(t, x); return chip;
+  }));
+}
+function unmark(m) {
+  marked = marked.filter((x) => x !== m); inspector.drop(viewOfFile(m.file), m.key);
+  if (activeMarked === m) { activeMarked = marked.at(-1) ?? null; if (activeMarked) propsPanel.show(activeMarked); else propsPanel.clear(); }
+  renderMarked();
+}
+function resetMarked() { marked = []; activeMarked = null; renderMarked(); }
+async function showPick(p) {
+  if (chatPick) { // chat mode: resolve names and the source of the component, then add it to the message
+    const c = await chipFrom(p);
+    return c.error ? toast(c.error, { err: true }) : addChip(c.chip);
+  }
+  const r = updateSelection(marked, p);
+  marked = r.selection; activeMarked = r.active;
+  if (r.clearFiles.length) inspector.clearIn(r.clearFiles.map(viewOfFile).filter(Boolean)); // a plain click marks only this one, also across screens
+  if (r.refused) { inspector.drop(viewOfFile(r.refused.file), r.refused.key); toast(`At most ${MAX_MARKED} components can be marked at once.`); }
+  renderMarked();
+  if (r.active && !r.active.label) chipFrom(r.active).then((c) => { if (c.chip) { r.active.label = describePick(c.chip); renderMarked(); } }); // names of the component from the file
+  if (r.active) return propsPanel.show(r.active);
+  propsPanel.clear();
+}
+/** "Use N in chat": every marked component becomes a chip of the message being written. */
+async function useMarked() {
+  let added = 0, skipped = 0;
+  for (const m of marked) { const c = await chipFrom(m); if (!c.error && addChip(c.chip, { quiet: true })) added++; else skipped++; }
+  toast(added ? `${added} component${added > 1 ? "s" : ""} added to the message${skipped ? ` (${skipped} already there or not possible)` : ""}.` : "Those components are already in the message.");
+  $("prompt").focus();
 }
 // components picked for the message being written (several can be added)
 let chips = [];
@@ -275,10 +316,10 @@ function renderChips() {
     chip.append(t, x); box.append(chip);
   });
 }
-function addChip(p) {
-  if (chips.some((c) => chipKey(c) === chipKey(p))) return toast("That component is already in the message.");
-  if (chips.length >= MAX_CHIPS) return toast(`At most ${MAX_CHIPS} components per message.`);
-  chips.push(p); renderChips();
+function addChip(p, { quiet = false } = {}) {
+  if (chips.some((c) => chipKey(c) === chipKey(p))) { if (!quiet) toast("That component is already in the message."); return false; }
+  if (chips.length >= MAX_CHIPS) { if (!quiet) toast(`At most ${MAX_CHIPS} components per message.`); return false; }
+  chips.push(p); renderChips(); return true;
 }
 function clearChips() { chips = []; renderChips(); }
 
@@ -351,6 +392,7 @@ function layoutFullscreen() {
   const st = $("fsstage").getBoundingClientRect(), k = Math.min(1, (st.width - 40) / dev.w, (st.height - 40) / dev.h);
   Object.assign(fsWrap.style, { width: dev.w + "px", height: dev.h + "px", transform: `scale(${k})` });
 }
+new ResizeObserver(() => layoutFullscreen()).observe($("fsstage")); // the preview follows the stage when the chat docks / floats during fullscreen
 async function openFullscreen(file) {
   if (fsFile) closeFullscreen();
   fsFile = file; updateScreenCtx(); fsNote.open(); fsNote.set(memory.notesOf(file)); updateNoteButton(); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
@@ -528,7 +570,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], ["Mention in chat", () => insertMention(name)],
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], ["Reload screen", () => canvas.reload(file)], ["Mention in chat", () => insertMention(name)],
     ["Description…", () => openDesc(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
@@ -649,7 +691,16 @@ $("fschat").onclick = () => dock.toggleCollapsed();
 // ---------- app info + updates ----------
 document.body.dataset.platform = window.studio.platform;
 const meta = await window.studio.meta();
-if (meta.platform !== "darwin") $("share-zip").textContent = "E-mail project ZIP…"; // macOS opens the system share sheet, other systems an e-mail draft
+// Glass Effect (macOS): the toolbar and the description strip float over the canvas, so the canvas reserves their height (--glass-top)
+const updateGlassInset = () => { const b = $("bar").offsetHeight, s = $("descstrip").hidden ? 0 : $("descstrip").offsetHeight; document.body.style.setProperty("--glass-bar", `${b}px`); document.body.style.setProperty("--glass-top", `${b + s}px`); };
+new ResizeObserver(updateGlassInset).observe($("bar")); new ResizeObserver(updateGlassInset).observe($("descstrip"));
+function applyGlass(on) {
+  const top0 = $("canvas").getBoundingClientRect().top;
+  if (on) document.body.dataset.glass = "1"; else delete document.body.dataset.glass;
+  updateGlassInset();
+  const d = top0 - $("canvas").getBoundingClientRect().top; if (d) canvas.panBy(0, d); // the content stays where it is on screen
+}
+applyGlass(Boolean(meta.glass)); window.studio.onGlass((on) => applyGlass(Boolean(on)));
 // ---------- About ----------
 const PLATFORM = { darwin: "macOS", win32: "Windows", linux: "Linux" };
 const aboutRows = () => {
@@ -693,7 +744,7 @@ function loadProject(info) {
   closeFullscreen();
   loading = true;
   port = info.port; webviewPreload = info.webviewPreload; project = info.project; projectList = info.projects ?? projectList;
-  setBusy(false); clearChips();
+  setBusy(false); clearChips(); resetMarked();
   chatId = info.chatId; chatList = info.chats ?? [];
   entries = info.chat ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
@@ -833,7 +884,17 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "view:zoomout": return $("zout").click();
       case "view:fit": return $("fit").click();
       case "view:arrange": return canvas.arrange();
-      case "view:fullscreen": return withScreen((f) => toggleFullscreen(f));
+      case "view:fullscreen": case "screen:fullscreen": return withScreen((f) => toggleFullscreen(f));
+      case "screen:reload": return withScreen((f) => canvas.reload(f));
+      case "screen:note": return withScreen((f) => addNote(f));
+      case "screen:desc": return withScreen((f) => openDesc(f));
+      case "screen:rule": return withScreen((f) => openRules(f));
+      case "screen:mention": return withScreen((f) => insertMention(f.replace(/\.html$/, "")));
+      case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));
+      case "screen:delete": return withScreen((f) => deleteScreen(f));
+      case "repo:branch": return needProject(() => (repo ? $("rs-branch").click() : toast("No repository is linked.", { err: true })));
+      case "repo:open": return needProject(() => (repo ? $("rs-main").click() : toast("No repository is linked.", { err: true })));
+      case "repo:unlink": return needProject(() => (repo ? $("rs-unlink").click() : toast("No repository is linked.", { err: true })));
       case "view:inspector": return needProject(() => $("inspect").click());
       case "view:chatmode": return $("chatmode").click();
       case "app:about": return openAbout();

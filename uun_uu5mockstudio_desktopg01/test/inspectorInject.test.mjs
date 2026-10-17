@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { INJECT, describePick, agentContext } from "../src/renderer/inspector.js";
+import { INJECT, describePick, agentContext, updateSelection } from "../src/renderer/inspector.js";
 
 test("the script injected into the mockup page is valid JavaScript (it lives in a template literal, so escapes are easy to break)", () => {
   assert.doesNotThrow(() => new Function(`return ${INJECT}`));
@@ -51,4 +51,22 @@ test("several selected components are described together, each with its own sour
   assert.match(ctx, /<Uu5Elements.Button \/>/); assert.match(ctx, /\{ icon: "x" \}/);
   assert.equal([...ctx.matchAll(/React\/JSX/g)].length, 1); // the how-to is stated once
   assert.equal(agentContext([a]), agentContext(a));
+});
+
+test("updateSelection: a plain click marks one, Shift/Cmd/Ctrl-click adds and removes, the number is limited", () => {
+  const pick = (key, o = {}) => ({ file: "a.html", key, additive: false, selected: true, ...o });
+  let r = updateSelection([], pick("1|"));
+  assert.deepEqual(r.selection.map((x) => x.key), ["1|"]); assert.equal(r.active.key, "1|");
+  r = updateSelection(r.selection, pick("2|", { additive: true })); r = updateSelection(r.selection, pick("3|", { additive: true }));
+  assert.deepEqual(r.selection.map((x) => x.key), ["1|", "2|", "3|"]); assert.equal(r.active.key, "3|");
+  r = updateSelection(r.selection, pick("2|", { additive: true, selected: false })); // marked before: the page says it was taken off
+  assert.deepEqual(r.selection.map((x) => x.key), ["1|", "3|"]); assert.equal(r.active.key, "3|");
+  r = updateSelection(r.selection, pick("1|", { additive: true, selected: false })); r = updateSelection(r.selection, pick("3|", { additive: true, selected: false }));
+  assert.deepEqual(r.selection, []); assert.equal(r.active, null);
+  r = updateSelection([pick("1|"), pick("2|", { file: "b.html" })], pick("9|", { file: "c.html" })); // a plain click on another screen
+  assert.deepEqual(r.selection.map((x) => x.key), ["9|"]); assert.deepEqual(r.clearFiles.sort(), ["a.html", "b.html"]);
+  const full = Array.from({ length: 8 }, (_, i) => pick(`${i}|`));
+  r = updateSelection(full, pick("x|", { additive: true }), 8);
+  assert.equal(r.selection.length, 8); assert.equal(r.refused.key, "x|");
+  assert.equal(updateSelection(full, pick("3|", { additive: true })).selection.length, 8, "an already marked one is not added twice");
 });

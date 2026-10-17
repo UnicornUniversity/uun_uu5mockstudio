@@ -11,7 +11,7 @@ const GAP = 120, TITLE_H = 34, MIN_Z = 0.1, MAX_Z = 2;
  * Infinite canvas with one <webview> frame per mockup.
  * Unselected frames are covered by a "shield" so drag/pan work; a selected frame is interactive.
  */
-export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick }) {
+export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset }) {
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
   let cam = { x: 40, y: 40, z: 0.5 };
@@ -107,9 +107,9 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
       const d = size(f);
       return { x1: Math.min(a.x1, f.x), y1: Math.min(a.y1, f.y - TITLE_H), x2: Math.max(a.x2, f.x + d.w), y2: Math.max(a.y2, f.y + d.h) };
     }, { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity });
-    const r = root.getBoundingClientRect(), pad = 48;
-    const z = Math.min(1, Math.max(MIN_Z, Math.min((r.width - 2 * pad) / (b.x2 - b.x1), (r.height - 2 * pad) / (b.y2 - b.y1))));
-    cam = { z, x: (r.width - (b.x2 - b.x1) * z) / 2 - b.x1 * z, y: (r.height - (b.y2 - b.y1) * z) / 2 - b.y1 * z };
+    const r = root.getBoundingClientRect(), pad = 48, inset = getInset?.() ?? 0; // inset: the top of the canvas hidden under a floating toolbar (Glass Effect)
+    const z = Math.min(1, Math.max(MIN_Z, Math.min((r.width - 2 * pad) / (b.x2 - b.x1), (r.height - inset - 2 * pad) / (b.y2 - b.y1))));
+    cam = { z, x: (r.width - (b.x2 - b.x1) * z) / 2 - b.x1 * z, y: inset + (r.height - inset - (b.y2 - b.y1) * z) / 2 - b.y1 * z };
     applyCam(animate);
   }
 
