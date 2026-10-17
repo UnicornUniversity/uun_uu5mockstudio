@@ -1,0 +1,30 @@
+uu5Mock Studio
+Copyright (C) 2026 Unicorn Vysoká škola
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3 of the License (see the file LICENSE).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+
+Additional permission under GNU GPL version 3 section 7
+
+uu5Mock Studio uses the Claude Agent SDK (the npm package
+@anthropic-ai/claude-agent-sdk, (C) Anthropic PBC), which is not free software
+and is distributed under Anthropic's own terms. The licensors of uu5Mock Studio
+therefore grant you additional permission to link or combine this program with
+that library, and to convey the resulting work, under the following conditions:
+
+  * The Claude Agent SDK remains under its own license terms. This permission
+    does not change them and grants no rights to the SDK.
+  * The Corresponding Source of a combined work need not include the source
+    code of the Claude Agent SDK.
+  * Everything else in the combined work that is covered by this program
+    remains under the GNU General Public License version 3.
+
+If you modify this program, you may extend this exception to your version of the
+program, but you are not obligated to do so. If you do not wish to do so, delete
+this exception statement from your version.
