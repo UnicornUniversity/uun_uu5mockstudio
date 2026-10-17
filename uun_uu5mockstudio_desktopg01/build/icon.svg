@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- App icon derived from the uuGDS "uugds-uu5" glyph (U+E94F of uu_gds_svgg01-icons) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b9bff"/><stop offset="1" stop-color="#2f4fd0"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#sheen)"/>
+  <!-- glyph: font units (y up), centred at 512,512 and scaled x3.1 -->
+  <path transform="translate(139.8 890.2) scale(3.1 -3.1)" fill="#fff" d="M126 137Q130 137 133.0 140.0Q136 143 136.0 147.0Q136 151 133.0 154.0Q130 157 126 157H106Q102 157 99.0 160.0Q96 163 96 167V197Q96 201 99.0 204.0Q102 207 106 207H141Q145 207 148.0 204.0Q151 201 151.0 197.0Q151 193 148.0 190.0Q145 187 141 187H116V177H126Q138 177 147.0 168.0Q156 159 156.0 147.0Q156 135 147.0 126.0Q138 117 126 117H112Q103 117 95 122L94 123Q91 125 90.0 129.0Q89 133 91.5 136.5Q94 140 98.0 141.0Q102 142 106 139H107Q109 137 112 137ZM78 107Q98 96 120.0 96.0Q142 96 162 107L175 114Q179 116 183.0 114.5Q187 113 189.0 109.5Q191 106 189.5 102.0Q188 98 185 96L172 89Q148 76 120.5 76.0Q93 76 68 89L55 96Q52 98 50.5 102.0Q49 106 51.0 109.5Q53 113 57.0 114.5Q61 116 65 114ZM189 75Q157 57 120.0 57.0Q83 57 51 75L45 79Q41 81 37.0 80.0Q33 79 31.0 75.0Q29 71 30.0 67.0Q31 63 35 61L42 58Q78 37 120.0 37.0Q162 37 198 58L205 61Q209 63 210.0 67.0Q211 71 209.0 75.0Q207 79 203.0 80.0Q199 81 195 79Z"/>
+</svg>

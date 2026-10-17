@@ -1,0 +1,9 @@
+node_modules/
+projects/*/.studio/
+.DS_Store
+*.log
+dist/
+
+# demo recordings
+*.mp4
+demo-output/

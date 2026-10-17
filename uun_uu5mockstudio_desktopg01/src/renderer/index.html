@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://*.plus4u.net; font-src 'self' https://*.plus4u.net; frame-src http://127.0.0.1:*; script-src 'self'">
+<title>uu5Mock Studio</title>
+<link rel="stylesheet" href="app.css"><script src="theme.js"></script></head>
+<body>
+<aside id="chat">
+  <div id="drophint" hidden>Drop an image here</div>
+  <div class="crs crs-n"></div><div class="crs crs-s"></div><div class="crs crs-e"></div><div class="crs crs-w"></div><div class="crs crs-ne"></div><div class="crs crs-nw"></div><div class="crs crs-se"></div><div class="crs crs-sw"></div>
+  <header class="drag"><button id="projbtn" type="button" title="Projects">Project ▾</button>
+    <span id="chatbusy" class="dots" hidden role="status" aria-label="Claude is working"><i></i><i></i><i></i></span>
+    <div class="tools"><button id="chathist" type="button" title="Chat history" aria-label="Chat history"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg></button><button id="newchat" type="button" title="New chat (the previous one stays in the history)" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/></svg></button><span class="wsep" aria-hidden="true"></span><button id="chatmode" type="button" title="Switch the chat to a floating window" aria-label="Floating window / docked panel" aria-pressed="false"><span class="when-dock"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 9V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/><rect x="12" y="13" width="10" height="7" rx="2"/></svg></span><span class="when-float"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></span></button><button id="chatmin" type="button" class="icon" title="Minimize chat" aria-label="Minimize chat"><span class="when-open"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span><span class="when-min"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span></button></div>
+  </header>
+  <div id="repostrip" hidden><button id="rs-main" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span id="rs-name"></span></button><button id="rs-branch" type="button" aria-haspopup="menu"></button><span id="rs-note"></span><button id="rs-unlink" type="button" title="Unlink this repository from the project" aria-label="Unlink repository">✕</button></div><div id="updatestrip" hidden><span id="us-text"></span><button id="us-update" type="button">Update</button><button id="us-later" type="button">Later</button></div><div id="branchmenu" hidden></div><div id="ctxmenu" hidden></div>
+  <div id="log"></div>
+  <div id="working" hidden role="status" aria-live="polite"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="work-label">Thinking…</span><span id="work-time" class="mute"></span></div>
+  <form id="form"><div id="mentions" hidden></div><div id="attachments" hidden></div><div id="screenctx" hidden></div><div id="chips" hidden></div><div id="pickhint" hidden>Click components in the preview to add them to this message. <b>Esc</b> to finish.</div><div class="inputbox"><textarea id="prompt" rows="3" placeholder="Describe the screen you want to design…"></textarea><button id="attach" type="button" class="icon" title="Attach a screenshot (or paste it with ⌘V / drop it here)" aria-label="Attach an image"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.1l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></svg></button><button id="pickcomp" type="button" class="icon" title="Pick components in the preview and add them to this message" aria-label="Pick components"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg></button><input id="attachfile" type="file" accept="image/*" multiple hidden></div>
+    <div class="row"><select id="model" title="Model for this request. Default = the model configured in your Claude Code (no override)."><option value="">Default</option><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select><button id="stop" type="button" hidden>Stop</button><button id="send">Send</button></div></form>
+</aside>
+<main>
+  <div id="bar" class="drag"><nav id="tabs"></nav>
+    <div class="ctl">
+      <select id="alldev" title="Device for all screens"><option value="">Device…</option><option value="desktop">Desktop</option><option value="laptop">Laptop</option><option value="tablet">Tablet</option><option value="mobile">Mobile</option></select>
+      <button id="zout" title="Zoom out">−</button><button id="zpct" title="Reset to 100%">50%</button><button id="zin" title="Zoom in">＋</button>
+      <button id="fit" title="Fit all screens">Fit</button><button id="rulesbtn" class="icon" title="Business rules of this project" aria-label="Business rules"><span id="rulesbadge" class="rbadge" hidden></span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5z"/><path d="M9 3v18"/><path d="M13 8h3M13 12h3"/></svg></button><button id="inspect" class="icon" title="Inspect components (I)" aria-label="Inspect components"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M12.6 12.6l3.4 8.4 1.6-3.6 3.6-1.6z" fill="currentColor"/></svg></button>
+      <button id="themebtn" title="Appearance: auto / light / dark">◐</button><button id="menubtn" title="Export and offline mode">⋯</button>
+      <div id="menu" hidden>
+        <h4>Project</h4>
+        <button data-act="zip">Export as ZIP</button>
+        <button data-act="share-zip" id="share-zip">Share project ZIP…</button>
+        <hr>
+        <button data-act="offline"><span id="offline-box">☐</span> Offline mode</button>
+        <button data-act="warmup">Warm up CDN cache</button>
+        <button data-act="clear">Clear CDN cache</button>
+        <hr>
+        <button data-act="arrange">Arrange screens</button>
+        <button data-act="projects-open">Open projects folder</button>
+        <button data-act="projects-change">Change projects folder…</button>
+        <button data-act="folder">Reveal project folder</button>
+        <button data-act="setup">Claude Code &amp; plugins…</button>
+        <button data-act="update">Check for updates</button>
+        <button data-act="about">About application</button>
+        <p id="cdn-info" class="mute"></p>
+        <p id="app-info" class="mute"></p>
+      </div>
+    </div></div>
+  <div id="descstrip" hidden><button id="ds-main" type="button" title="Project description (click to edit)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="8" r=".6" fill="currentColor"/></svg><span id="ds-text"></span></button></div>
+  <div id="work">
+    <div id="canvas"><div id="toast" hidden></div>
+      <div id="welcome" hidden><div class="card"><h2>No project is open</h2><p class="mute">Open an existing project or start a new one.</p>
+        <div id="w-list"></div><div class="row"><button id="w-new" type="button">＋ New project…</button></div></div></div>
+      <div id="selbar" hidden><span id="selname"></span><button data-menu="export">Export ▾</button><button data-menu="share">Share ▾</button><span id="seldrag" title="Choose Image or HTML, then drag the highlighted one into a chat, a mail or a folder"><span class="grip" aria-hidden="true">⠿</span><span class="dchip" data-drag="png">Image</span><span class="dchip" data-drag="html">HTML</span></span><button data-act="more" id="morebtn" title="More: add a note, open fullscreen, mention in chat, show in Finder, delete (the same menu opens on a right click on the screen)" aria-label="More actions">⋯</button></div>
+      <div id="selmenu" hidden></div><div id="world"></div><div id="empty"><span id="empty-text">No mockup yet. Describe it in the chat.</span></div></div>
+    <aside id="inspector" hidden>
+      <h3>Inspector</h3>
+      <p id="insp-hint" class="mute">Click a uu5 component in the mockup.</p>
+      <div id="insp-comp" hidden>
+        <div id="insp-crumbs"></div>
+        <h4 id="insp-name"></h4><div id="insp-text" class="mute"></div>
+        <p id="insp-desc" class="mute"></p>
+        <h5>Props</h5>
+        <div id="insp-props"></div>
+        <select id="insp-add" aria-label="Add prop"></select>
+        <p id="insp-err" class="err"></p>
+        <button id="insp-use">Use in chat</button>
+      </div>
+    </aside>
+  </div>
+</main>
+<div id="fs" hidden>
+  <div id="fsbar"><span id="fsname"></span>
+    <select id="fsdev" title="Device size"><option value="">Full window</option><option value="desktop">Desktop 1440×900</option><option value="laptop">Laptop 1280×800</option><option value="tablet">Tablet 820×1180</option><option value="mobile">Mobile 390×844</option></select>
+    <button id="fsnotebtn" type="button" title="A note for this screen (the same note as on the canvas)">Add note</button><button id="fschat" type="button" class="icon" title="Show / minimize chat" aria-label="Show or minimize chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button><button id="fsreload" type="button">Reload</button><button id="fsclose" type="button" class="icon" title="Shrink back (⌘⇧F / Ctrl+Shift+F)" aria-label="Shrink back"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
+  <div id="fsstage"></div>
+</div>
+<div id="sizebox" hidden><form class="card"><h2>Custom screen size</h2>
+  <div class="sizes"><label>Width (px)<input id="sz-w" type="number" min="200" max="10000" inputmode="numeric"></label><span class="mute">×</span><label>Height (px)<input id="sz-h" type="number" min="200" max="10000" inputmode="numeric"></label></div>
+  <p id="sz-err"></p><div class="row"><button id="sz-cancel" type="button">Cancel</button><button id="sz-ok">Apply</button></div></form></div>
+<div id="confirm" hidden><div class="card" role="alertdialog" aria-labelledby="cf-title" aria-describedby="cf-detail">
+  <h2 id="cf-title"></h2><p id="cf-detail" class="mute"></p>
+  <div class="row"><button id="cf-cancel" type="button">Cancel</button><button id="cf-ok" type="button" class="danger">Delete</button></div></div></div>
+<div id="projmenu" hidden></div>
+<div id="histmenu" hidden></div>
+<div id="about" hidden><div class="card" role="dialog" aria-labelledby="ab-title">
+  <header><img src="assets/icon.png" alt="" width="64" height="64"><div><h2 id="ab-title">uu5Mock Studio</h2><p id="ab-version" class="mute"></p></div></header>
+  <p id="ab-about"></p>
+  <h5>Technologies</h5><dl id="ab-tech"></dl>
+  <h5>Authors</h5><p id="ab-authors"></p>
+  <div class="row"><button id="ab-copy" type="button">Copy details</button><span class="grow"></span><button id="ab-close" type="button">Close</button></div></div></div>
+<div id="iconbox" hidden><div class="card" role="dialog" aria-labelledby="ib-title">
+  <h2 id="ib-title">Choose an icon</h2>
+  <div class="ib-tools"><input id="ib-search" type="search" placeholder="Search icons (name, keyword)…" autocomplete="off" spellcheck="false"><select id="ib-cat" aria-label="Category"></select><label><input id="ib-dep" type="checkbox"> deprecated</label></div>
+  <div id="ib-grid"></div><p id="ib-note" class="mute"></p>
+  <div class="row"><span id="ib-cur" class="mute grow"></span><button id="ib-cancel" type="button">Cancel</button></div></div></div>
+<div id="jsonbox" hidden><div class="card" role="dialog" aria-labelledby="jb-title">
+  <h2 id="jb-title"></h2><p id="jb-mode" class="mute"></p><textarea id="jb-text" spellcheck="false"></textarea><p id="jb-err" class="err"></p>
+  <div class="row"><button id="jb-format" type="button">Format</button><span class="grow"></span><button id="jb-cancel" type="button">Cancel</button><button id="jb-ok" type="button">Save</button></div></div></div>
+<div id="dialog" hidden><form class="card"><h2 id="dlg-title"></h2><input id="dlg-input" autocomplete="off" spellcheck="false"><p id="dlg-err" class="mute"></p>
+  <div class="row"><button id="dlg-cancel" type="button">Cancel</button><button id="dlg-ok">OK</button></div></form></div>
+<div id="setup" hidden><div class="card" role="dialog" aria-labelledby="setup-title">
+  <h2 id="setup-title"></h2><p id="setup-text"></p>
+  <ol id="setup-steps"></ol><ul id="setup-plugins" hidden></ul>
+  <pre id="setup-code" hidden></pre><pre id="setup-log" hidden></pre>
+  <details id="setup-more" hidden><summary>Other sign-in options</summary>
+    <label><input type="radio" name="setup-method" value="claudeai" checked> Claude subscription</label>
+    <label><input type="radio" name="setup-method" value="console"> Anthropic Console (API billing)</label>
+    <label><input type="radio" name="setup-method" value="sso"> Single sign-on (SSO)</label>
+    <input id="setup-email" type="email" placeholder="E-mail to pre-fill (optional)" autocomplete="off" spellcheck="false"></details>
+  <div class="row"><a id="setup-link" href="#" hidden></a><span class="grow"></span><button id="setup-copy" type="button" hidden>Copy command</button><button id="setup-cancel" type="button" hidden>Cancel</button><button id="setup-updates" type="button" hidden>Check for plugin updates</button><button id="setup-recheck" type="button">Check again</button><button id="setup-close" type="button" hidden>Close</button><button id="setup-action" type="button"></button></div>
+  <p id="setup-msg" class="mute"></p></div></div>
+<script type="module" src="renderer.js"></script>
+</body></html>

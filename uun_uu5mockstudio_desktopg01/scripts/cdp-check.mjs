@@ -1,0 +1,18 @@
+const targets = await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT ?? 9333}/json`)).json();
+const t = targets.find((x) => x.type === (process.argv[2] ?? "webview"));
+const ws = new WebSocket(t.webSocketDebuggerUrl);
+await new Promise((r) => (ws.onopen = r));
+let id = 0; const pending = new Map(); const logs = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data);
+  if (m.id && pending.has(m.id)) pending.get(m.id)(m.result ?? m.error);
+  if (m.method === "Runtime.consoleAPICalled") logs.push(m.params.type + ": " + m.params.args.map((a) => a.value ?? a.description).join(" "));
+  if (m.method === "Runtime.exceptionThrown") logs.push("EXC: " + m.params.exceptionDetails.text + " " + (m.params.exceptionDetails.exception?.description ?? "")); };
+const call = (method, params = {}) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
+await call("Runtime.enable"); await call("Page.enable");
+await new Promise((r) => setTimeout(r, 8000));
+const txt = await call("Runtime.evaluate", { expression: "document.body.innerText.slice(0,600)", returnByValue: true });
+console.log("BODY:", txt.result?.value);
+console.log("LOGS:", logs.slice(0, 10));
+const shot = await call("Page.captureScreenshot", { format: "png" });
+(await import("node:fs")).writeFileSync(process.argv[3] ?? "/tmp/claude-501/shot.png", Buffer.from(shot.data, "base64"));
+ws.close();
