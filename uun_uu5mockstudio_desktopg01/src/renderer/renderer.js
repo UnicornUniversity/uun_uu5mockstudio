@@ -664,10 +664,8 @@ $("menu").onclick = async (e) => {
     const bad = results.filter((r) => !r.ok);
     toast(bad.length ? `Cache ready, did not load: ${bad.map((b) => b.name).join(", ")}` : `Cache ready (${status.files} files, ${mb(status.bytes)} MB).`, { err: bad.length > 0 });
   } else if (act === "folder") window.studio.revealProject();
-  else if (act === "update") {
-    if (!meta.updates) toast("Updates are not configured in this build (UU5STUDIO_UPDATE_URL was missing at build time).", { err: true });
-    else window.studio.checkUpdates();
-  } else if (act === "setup") setup.open();
+  else if (act === "update") checkAppUpdates();
+  else if (act === "setup") setup.open();
   else if (act === "about") openAbout();
   else if (act === "clear") { refreshCdn(await window.studio.cdnClear()); toast("CDN cache cleared."); }
 };
@@ -732,11 +730,29 @@ $("ab-copy").onclick = async () => {
   try { await navigator.clipboard.writeText(text); toast("Details copied."); } catch { toast("Could not copy.", { err: true }); }
 };
 $("app-info").textContent = `uu5Mock Studio ${meta.version} · ${meta.platform}`;
+// ----- updates of the app itself: a newer release on GitHub is offered for download (the installer opens in the browser)
+let appUpdate = null;
+function showAppUpdate(u) {
+  appUpdate = u; $("appupdate").hidden = !u;
+  if (u) { $("au-text").textContent = `Version ${u.version} available`; $("au-text").title = `uu5Mock Studio ${u.version} is available (you have ${meta.version})`; }
+}
+$("au-download").onclick = async () => { const r = await window.studio.openUpdate(appUpdate?.asset?.url ?? appUpdate?.url); if (r?.error) toast(r.error, { err: true }); };
+$("au-notes").onclick = async () => { const r = await window.studio.openUpdate(appUpdate?.url); if (r?.error) toast(r.error, { err: true }); };
+$("au-later").onclick = async () => { if (appUpdate) await window.studio.updateLater(appUpdate.version); showAppUpdate(null); };
+async function checkAppUpdates() {
+  toast("Checking for updates…");
+  const r = await window.studio.checkUpdates();
+  if (r?.status === "current") toast(`You are up to date (version ${r.version}).`);
+  else if (r?.status === "available") { showAppUpdate(r); toast(`Version ${r.version} is available.`); }
+  else if (r?.status === "error") toast(r.message ?? "The update check failed.", { err: true });
+}
+if (meta.appUpdate) showAppUpdate(meta.appUpdate);
 window.studio.onUpdate((u) => {
-  if (u.type === "available") toast(`Stahuji aktualizaci ${u.version}…`);
+  if (u.type === "available" && u.source === "github") showAppUpdate(u);
+  else if (u.type === "available") toast(`Downloading update ${u.version}…`);
   else if (u.type === "ready") { toast(`Update ${u.version} is ready. `); const a = Object.assign(document.createElement("a"), { textContent: "Restart" }); a.onclick = () => window.studio.installUpdate(); $("toast").append(a); }
   else if (u.type === "none") toast("You are up to date.");
-  else if (u.type === "error") toast(`Aktualizace selhala: ${u.message}`, { err: true });
+  else if (u.type === "error") toast(`The update failed: ${u.message}`, { err: true });
 });
 
 // ---------- projects ----------
@@ -900,7 +916,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "app:about": return openAbout();
       case "claude:setup": return setup.open();
       case "plugins:check": return setup.checkUpdates(true);
-      case "update:check": return meta.updates ? window.studio.checkUpdates() : toast("Updates are not configured in this build.", { err: true });
+      case "update:check": return checkAppUpdates();
     }
   });
 }

@@ -28,7 +28,7 @@ Download the installer from the [latest release](../../releases/latest):
 
 - macOS (Apple Silicon): `uu5Mock-Studio-<version>-arm64.dmg` (or the `.zip`).
 
-The builds are **not code-signed**. On macOS open the app with right click, then *Open*, the first time. Windows and Linux builds can be produced from the source (see below) but are not published yet.
+The app tells you when a newer release is published (*Check for Updates…* and a check in the background): a strip above the chat offers the download. The builds are **not code-signed**. On macOS open the app with right click, then *Open*, the first time. Windows and Linux builds can be produced from the source (see below) but are not published yet.
 
 ## Run from source
 

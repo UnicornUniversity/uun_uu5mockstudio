@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld("studio", {
   meta: () => invoke("app:meta"),
   checkUpdates: () => invoke("update:check"),
   installUpdate: () => invoke("update:install"),
+  updateLater: (version) => invoke("update:later", version),
+  openUpdate: (url) => invoke("update:open", url),
   onUpdate: on("update:event"),
   openExternal: (url) => invoke("open:external", url),
   onEvent: on("claude:event"),

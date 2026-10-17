@@ -47,6 +47,9 @@ details.steps ul{margin:0;padding:2px 10px 8px;list-style:none;display:flex;flex
 #updatestrip{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px 6px 14px;border-bottom:1px solid var(--line);background:var(--bg);font-size:12px;color:var(--fg)}
 #updatestrip[hidden]{display:none}#updatestrip #us-text{flex:1;min-width:0}#updatestrip button{padding:3px 10px;font-size:12px}#updatestrip #us-update{background:var(--acc);border-color:var(--acc);color:#fff}#updatestrip button:disabled{opacity:.5}
 #chat.collapsed #updatestrip,body[data-noproject] #updatestrip{display:none}
+#appupdate{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px 6px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--acc) 10%,var(--bg));font-size:12px;color:var(--fg)}
+#appupdate[hidden]{display:none}#appupdate #au-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}#appupdate button{padding:3px 10px;font-size:12px}#appupdate #au-download{background:var(--acc);border-color:var(--acc);color:#fff}
+#chat.collapsed #appupdate{display:none}
 
 main{overflow:hidden}
 #bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);min-height:45px}

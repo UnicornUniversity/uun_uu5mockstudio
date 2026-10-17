@@ -28,7 +28,13 @@ Nepodepsanou aplikaci Gatekeeper zablokuje (pravý klik → Otevřít). Pro dist
 `APPLE_TEAM_ID` zapíná notarizaci (`electron-builder.config.cjs`). Entitlements jsou v `build/entitlements.mac.plist`.
 Windows podpis: `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD`.
 
-## Automatické aktualizace
+## Kontrola aktualizací proti GitHubu
+
+*Check for Updates…* (menu aplikace / Help) a kontrola na pozadí (po startu, nejvýš jednou za 6 hodin, jen v zabalené aplikaci) se ptají na nejnovější **release na GitHubu** (`UnicornUniversity/uun_uu5mockstudio`, jiné repo přes `STUDIO_UPDATE_REPO`). Když je novější než běžící verze, nad chatem se objeví pruh *Version X available* s tlačítky **Download** (instalátor pro tento systém se otevře v prohlížeči), **Notes** (stránka release) a **Later** (odloží tuto verzi; ruční kontrola ji ukáže znovu). Nepotřebuje podpis ani soubory `latest*.yml`; instalace je ruční, protože nepodepsaná aplikace se na macOS sama aktualizovat nemůže. Otevírají se jen stránky a soubory repozitáře na github.com.
+
+Sestavení s feedem (níže) nadále používá `electron-updater`. Pro zkoušku proti jinému API existuje `STUDIO_UPDATE_API`.
+
+## Automatické aktualizace (feed, vyžaduje podpis na macOS)
 
 Aktualizace jsou zapnuté jen v sestavě, která zná adresu feedu:
 
