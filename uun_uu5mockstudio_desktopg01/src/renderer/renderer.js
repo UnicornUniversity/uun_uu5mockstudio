@@ -565,7 +565,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], ["Reload screen", () => canvas.reload(file)], ["Mention in chat", () => insertMention(name)],
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ["Mention in chat", () => insertMention(name)],
     ["Description…", () => openDesc(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
