@@ -32,6 +32,8 @@ Windows podpis: `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD`.
 
 *Check for Updates…* (menu aplikace / Help) a kontrola na pozadí (po startu, nejvýš jednou za 6 hodin, jen v zabalené aplikaci) se ptají na nejnovější **release na GitHubu** (`UnicornUniversity/uun_uu5mockstudio`, jiné repo přes `STUDIO_UPDATE_REPO`). Když je novější než běžící verze, nad chatem se objeví pruh *Version X available* s tlačítky **Download** (instalátor pro tento systém se otevře v prohlížeči), **Notes** (stránka release) a **Later** (odloží tuto verzi; ruční kontrola ji ukáže znovu). Nepotřebuje podpis ani soubory `latest*.yml`; instalace je ruční, protože nepodepsaná aplikace se na macOS sama aktualizovat nemůže. Otevírají se jen stránky a soubory repozitáře na github.com.
 
+**Instalace aktualizace sama (macOS, nepodepsaná sestava):** v zabalené aplikaci na macOS, která leží ve složce zapisovatelné pro uživatele, tlačítko **Download** aplikaci aktualizuje samo. Stáhne `.zip` release (velikost a SHA-256 z GitHubu se kontrolují), rozbalí ho vedle aplikace, zkontroluje identifikátor, verzi a podpis, aplikace se ukončí a malý skript (`src/main/selfUpdate.mjs`) balíček vymění a spustí novou verzi (při chybě zůstane stará). Soubor stažený aplikací nemá příznak karantény, takže Gatekeeper nic neřeší. Jinde (Windows, Linux, složka bez práv zápisu) tlačítko otevře instalátor v prohlížeči. První verze s touto funkcí se musí nainstalovat ručně z DMG. Zkouška: `STUDIO_UPDATE_API` a `STUDIO_UPDATE_DOWNLOADS` míří na lokální server, `RELAUNCH` na skript místo `open`.
+
 Sestavení s feedem (níže) nadále používá `electron-updater`. Pro zkoušku proti jinému API existuje `STUDIO_UPDATE_API`.
 
 ## Automatické aktualizace (feed, vyžaduje podpis na macOS)

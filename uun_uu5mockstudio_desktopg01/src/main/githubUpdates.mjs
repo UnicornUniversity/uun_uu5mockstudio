@@ -16,15 +16,21 @@ export function pickAsset(assets = [], platform = process.platform, arch = proce
   const archOk = (n) => (arch === "arm64" ? /arm64/i.test(n) : !/arm64/i.test(n));
   const by = (re, needArch = true) => list.find((a) => re.test(a.name) && (!needArch || archOk(a.name)));
   const found = platform === "darwin" ? by(/\.dmg$/i) ?? by(/\.zip$/i) : platform === "win32" ? by(/\.exe$/i, false) : by(/\.AppImage$/i, false);
-  return found ? { name: found.name, url: found.browser_download_url, size: found.size ?? null } : null;
+  return found ? { name: found.name, url: found.browser_download_url, size: found.size ?? null, digest: found.digest ?? null } : null;
 }
+
+/** The .zip of the right architecture (macOS installs an update from it by itself, see selfUpdate.mjs), or null. */
+export const pickZip = (assets = [], arch = process.arch) => {
+  const z = assets.find((a) => a?.name && a.browser_download_url && /\.zip$/i.test(a.name) && (arch === "arm64" ? /arm64/i.test(a.name) : !/arm64/i.test(a.name)));
+  return z ? { name: z.name, url: z.browser_download_url, size: z.size ?? null, digest: z.digest ?? null } : null;
+};
 
 /** The GitHub API answer for a release -> { version, url, notes, asset } or null (drafts, pre-releases and releases without a tag are ignored). */
 export function parseRelease(json, { platform, arch } = {}) {
   if (!json || json.draft || json.prerelease) return null;
   const version = parseTag(json.tag_name);
   if (!/^\d+(\.\d+)*/.test(version)) return null;
-  return { version, url: json.html_url ?? null, notes: String(json.body ?? "").slice(0, 4000), asset: pickAsset(json.assets, platform, arch) };
+  return { version, url: json.html_url ?? null, notes: String(json.body ?? "").slice(0, 4000), asset: pickAsset(json.assets, platform, arch), zip: pickZip(json.assets, arch) };
 }
 
 /** Only pages and files of this repository on github.com are ever opened for the user. */

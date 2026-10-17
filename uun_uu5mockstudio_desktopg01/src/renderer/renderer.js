@@ -724,7 +724,18 @@ function showAppUpdate(u) {
   appUpdate = u; $("appupdate").hidden = !u;
   if (u) { $("au-text").textContent = `Version ${u.version} available`; $("au-text").title = `uu5Mock Studio ${u.version} is available (you have ${meta.version})`; }
 }
-$("au-download").onclick = async () => { const r = await window.studio.openUpdate(appUpdate?.asset?.url ?? appUpdate?.url); if (r?.error) toast(r.error, { err: true }); };
+let selfInstalling = false;
+const setAuBusy = (text) => { selfInstalling = Boolean(text); for (const id of ["au-download", "au-notes", "au-later"]) $(id).disabled = selfInstalling; if (text) $("au-text").textContent = text; else if (appUpdate) $("au-text").textContent = `Version ${appUpdate.version} available`; };
+$("au-download").onclick = async () => {
+  if (selfInstalling) return;
+  if (meta.selfUpdate && appUpdate?.zip) { // the app installs the update itself and restarts
+    setAuBusy("Downloading…");
+    const r = await window.studio.selfInstallUpdate();
+    if (r?.error) { setAuBusy(null); toast(`${r.error} You can still download the installer.`, { err: true }); const a = Object.assign(document.createElement("a"), { textContent: "Download" }); a.onclick = () => window.studio.openUpdate(appUpdate?.asset?.url ?? appUpdate?.url); $("toast").append(a); }
+    return;
+  }
+  const r = await window.studio.openUpdate(appUpdate?.asset?.url ?? appUpdate?.url); if (r?.error) toast(r.error, { err: true });
+};
 $("au-notes").onclick = async () => { const r = await window.studio.openUpdate(appUpdate?.url); if (r?.error) toast(r.error, { err: true }); };
 $("au-later").onclick = async () => { if (appUpdate) await window.studio.updateLater(appUpdate.version); showAppUpdate(null); };
 async function checkAppUpdates() {
@@ -736,7 +747,9 @@ async function checkAppUpdates() {
 }
 if (meta.appUpdate) showAppUpdate(meta.appUpdate);
 window.studio.onUpdate((u) => {
-  if (u.type === "available" && u.source === "github") showAppUpdate(u);
+  if (u.type === "progress") { if (selfInstalling) $("au-text").textContent = `Downloading… ${u.percent} %`; }
+  else if (u.type === "installing") setAuBusy("Restarting…");
+  else if (u.type === "available" && u.source === "github") showAppUpdate(u);
   else if (u.type === "available") toast(`Downloading update ${u.version}…`);
   else if (u.type === "ready") { toast(`Update ${u.version} is ready. `); const a = Object.assign(document.createElement("a"), { textContent: "Restart" }); a.onclick = () => window.studio.installUpdate(); $("toast").append(a); }
   else if (u.type === "none") toast("You are up to date.");

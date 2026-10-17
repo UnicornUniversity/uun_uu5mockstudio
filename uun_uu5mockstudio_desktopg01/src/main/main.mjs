@@ -19,6 +19,7 @@ import { setupUpdater } from "./updater.mjs";
 import { loadBml } from "./uuBml.mjs";
 import { checkGithub, isRepoUrl, DEFAULT_REPO } from "./githubUpdates.mjs";
 import { compareVersions } from "./prerequisites.mjs";
+import { bundlePath, canSelfUpdate, downloadTo, digestHex, unpackAndCheck, startSwap } from "./selfUpdate.mjs";
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
@@ -485,20 +486,44 @@ app.whenReady().then(async () => {
     if (!manual && !shouldCheck(loadApp().updateCheckedAt)) return { status: "skipped" }; // in the background at most every 6 hours
     const r = await checkGithub({ current: app.getVersion(), repo: UPDATE_REPO, fetchJson, api: process.env.STUDIO_UPDATE_API || undefined }); // STUDIO_UPDATE_API: tests point it at a local server
     if (r.status === "error") return r; // a failure is only reported to someone who asked
-    saveApp({ updateCheckedAt: Date.now(), appUpdate: r.status === "available" ? { version: r.version, url: r.url, notes: r.notes, asset: r.asset } : null });
+    saveApp({ updateCheckedAt: Date.now(), appUpdate: r.status === "available" ? { version: r.version, url: r.url, notes: r.notes, asset: r.asset, zip: r.zip } : null });
     if (r.status === "available" && (manual || loadApp().updateLater !== r.version)) emit("update:event", { type: "available", source: "github", ...r });
     return r;
   }
   ipcMain.handle("update:check", () => (updater.enabled ? updater.check() : checkAppUpdate({ manual: true })));
   ipcMain.handle("update:install", () => updater.install());
   ipcMain.handle("glass:toggle", () => (process.platform === "darwin" ? toggleGlass() : false)); // the same switch as View > Appearance > Glass Effect, for the ⋯ menu
+  // macOS without a Developer ID certificate: the app downloads the release zip, checks it, and a script swaps the bundle after it quits
+  let selfInstalling = false;
+  const selfUpdateOk = () => canSelfUpdate({ packaged: app.isPackaged, hasFeed: updater.enabled });
+  ipcMain.handle("update:selfinstall", async () => {
+    if (selfInstalling) return { error: "The update is already being installed." };
+    const u = loadApp().appUpdate;
+    if (!u?.zip || compareVersions(app.getVersion(), u.version) >= 0) return { error: "There is no newer version to install." };
+    if (!isRepoUrl(u.zip.url, UPDATE_REPO) && !(process.env.STUDIO_UPDATE_DOWNLOADS && u.zip.url.startsWith(process.env.STUDIO_UPDATE_DOWNLOADS))) return { error: "The update is not from the project repository." };
+    if (!(await selfUpdateOk())) return { error: "This app cannot replace itself here. Download the installer instead." };
+    selfInstalling = true;
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), "uu5mock-update-")), bundle = bundlePath(process.execPath), stageDir = path.join(path.dirname(bundle), `.uu5mock-update-${process.pid}`);
+    try {
+      const zip = path.join(work, u.zip.name);
+      await downloadTo(zip, u.zip.url, { fetchFn: net.fetch, size: u.zip.size, sha256: digestHex(u.zip.digest), onProgress: (percent) => emit("update:event", { type: "progress", percent }) });
+      emit("update:event", { type: "installing", version: u.version });
+      const staged = await unpackAndCheck(zip, stageDir, { bundleId: "net.uu5mock.studio", version: u.version });
+      startSwap({ target: bundle, staged, stageDir });
+      setTimeout(() => app.quit(), 400);
+      return { ok: true };
+    } catch (e) {
+      fs.rmSync(stageDir, { recursive: true, force: true }); selfInstalling = false;
+      return { error: e?.message ?? "The update failed." };
+    } finally { fs.rmSync(work, { recursive: true, force: true }); }
+  });
   ipcMain.handle("update:later", (_e, version) => void saveApp({ updateLater: String(version) }));
   ipcMain.handle("update:open", (_e, url) => (isRepoUrl(url, UPDATE_REPO) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only pages of the project repository on GitHub can be opened." }));
   // versions of what the app is built from (for the About dialog)
   const depVersion = (name) => { try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "node_modules", name, "package.json"), "utf8")).version; } catch { return null; } };
   nativeTheme.on("updated", () => emit("glass:set", glassOn())); // Reduce transparency was switched in System Settings
-  ipcMain.handle("app:meta", () => ({
-    version: app.getVersion(), platform: process.platform, glass: glassOn(), updates: updater.enabled, appUpdate: updater.enabled ? null : knownUpdate(),
+  ipcMain.handle("app:meta", async () => ({
+    version: app.getVersion(), platform: process.platform, glass: glassOn(), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
     runtime: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     deps: Object.fromEntries(["@anthropic-ai/claude-agent-sdk", "@babel/parser", "fflate", "electron-updater"].map((n) => [n, depVersion(n)])),
   }));
