@@ -9,6 +9,8 @@ module.exports = {
   asar: true,
   electronLanguages: ["en", "cs"],
   artifactName: "uu5Mock-Studio-${version}-${arch}.${ext}",
+  // the license texts travel with every build (Contents/Resources on macOS)
+  extraResources: [{ from: "LICENSE", to: "LICENSE" }, { from: "NOTICE", to: "NOTICE" }],
   files: [
     "src/**/*",
     "package.json",

@@ -1,6 +1,6 @@
 {
   "name": "uu5mockapp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "main": "src/main/main.mjs",
@@ -28,5 +28,5 @@
   },
   "description": "Desktop app for designing uu5 / uuGDS user interfaces with an AI model (Claude Code)",
   "author": "uu5Mock Studio",
-  "license": "UNLICENSED"
+  "license": "GPL-3.0-only"
 }

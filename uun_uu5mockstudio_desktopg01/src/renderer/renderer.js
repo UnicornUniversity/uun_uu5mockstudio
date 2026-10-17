@@ -663,11 +663,13 @@ const aboutRows = () => {
     ["Export and updates", `fflate${v(d.fflate)} (ZIP), electron-updater${v(d["electron-updater"])}`],
   ];
 };
+const LICENSE_TEXT = "Copyright © 2026 Unicorn Vysoká škola. GNU General Public License v3 with an additional permission for the Claude Agent SDK (files LICENSE and NOTICE in the application resources).";
 function openAbout() {
   $("ab-version").textContent = `Version ${meta.version} · ${PLATFORM[meta.platform] ?? meta.platform}`;
   $("ab-about").textContent = "A desktop app for designing uu5 / uuGDS user interfaces with an AI model. Describe a screen in the chat and Claude Code builds it as an interactive uu5 mockup, shown live on an infinite canvas next to your other screens. Screens are plain HTML files in a project folder; the inspector shows the uu5 components of a screen and edits their props straight in the file.";
   $("ab-tech").replaceChildren(...aboutRows().flatMap(([k, t]) => [Object.assign(document.createElement("dt"), { textContent: k }), Object.assign(document.createElement("dd"), { textContent: t })]));
   $("ab-authors").textContent = "Marek Beránek, Unicorn University";
+  $("ab-license").textContent = LICENSE_TEXT;
   $("about").hidden = false; $("ab-close").focus();
 }
 const closeAbout = () => { $("about").hidden = true; };
@@ -675,7 +677,7 @@ $("ab-close").onclick = closeAbout;
 $("about").addEventListener("mousedown", (e) => { if (e.target === $("about")) closeAbout(); });
 $("about").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closeAbout(); } });
 $("ab-copy").onclick = async () => {
-  const text = [`uu5Mock Studio ${meta.version} (${PLATFORM[meta.platform] ?? meta.platform})`, ...aboutRows().map(([k, t]) => `${k}: ${t}`), "Authors: Marek Beránek, Unicorn University"].join("\n");
+  const text = [`uu5Mock Studio ${meta.version} (${PLATFORM[meta.platform] ?? meta.platform})`, ...aboutRows().map(([k, t]) => `${k}: ${t}`), "Authors: Marek Beránek, Unicorn University", `License: ${LICENSE_TEXT}`].join("\n");
   try { await navigator.clipboard.writeText(text); toast("Details copied."); } catch { toast("Could not copy.", { err: true }); }
 };
 $("app-info").textContent = `uu5Mock Studio ${meta.version} · ${meta.platform}`;
