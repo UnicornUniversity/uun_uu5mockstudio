@@ -561,11 +561,15 @@ async function linkRepoFlow() {
 }
 
 // ---------- right click on a screen ----------
+/** With components marked in the inspector, "Mention in chat" addresses them (they become chips of the message); the screen itself stays one click further. */
+const mentionItems = (name) => marked.length
+  ? [[marked.length > 1 ? `Mention ${marked.length} components in chat` : "Mention component in chat", () => useMarked()], ["Mention screen in chat", () => insertMention(name)]]
+  : [["Mention in chat", () => insertMention(name)]];
 function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ["Mention in chat", () => insertMention(name)],
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
     ["Description…", () => openDesc(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
@@ -906,7 +910,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:note": return withScreen((f) => addNote(f));
       case "screen:desc": return withScreen((f) => openDesc(f));
       case "screen:rule": return withScreen((f) => openRules(f));
-      case "screen:mention": return withScreen((f) => insertMention(f.replace(/\.html$/, "")));
+      case "screen:mention": return withScreen((f) => (marked.length ? useMarked() : insertMention(f.replace(/\.html$/, ""))));
       case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));
       case "screen:delete": return withScreen((f) => deleteScreen(f));
       case "repo:branch": return needProject(() => (repo ? $("rs-branch").click() : toast("No repository is linked.", { err: true })));
