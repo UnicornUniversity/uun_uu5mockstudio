@@ -634,3 +634,9 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 #form .row #model{field-sizing:content;width:auto;min-width:0;max-width:190px;text-align:left;padding:4px 8px;border-radius:999px;outline:none}
 #form .row #model:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
 #form .row #modebtn:focus-visible{outline:none;background:color-mix(in srgb,var(--acc) 10%,transparent)}
+/* the tools are a strip under the text, not on top of it: the field grows with the text (then scrolls), the strip stays below */
+.inputbox{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:4px;padding-bottom:8px}
+.inputbox textarea{grid-column:1/-1;grid-row:1;padding:10px 14px 6px;field-sizing:content;min-height:3.4em;max-height:min(40vh,320px);overflow-y:auto;width:100%}
+.inputbox #pickcomp,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
+.inputbox #pickcomp{grid-column:1;margin-left:8px}.inputbox #attach{grid-column:2}.inputbox #libbtn{grid-column:3}
+.inputbox #send,.inputbox #stop{position:static;grid-column:5;grid-row:2;margin-right:8px}
