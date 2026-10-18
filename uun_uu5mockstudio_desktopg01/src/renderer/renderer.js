@@ -394,7 +394,7 @@ async function chipFrom(p) {
   let r = await window.studio.jsxInspect(p.file, p.chain, p.sub), sub = p.sub;
   if (r?.error && p.sub) { sub = null; r = await window.studio.jsxInspect(p.file, p.chain, null); }
   if (r?.error) return { error: r.error };
-  return { chip: { ...p, chain: r.chain, element: r.element, sub: r.element.item ? sub : null } };
+  return { chip: { ...p, chain: r.chain, element: r.element, sub: r.element.item ? sub : null, pickKey: p.key ?? null } }; // pickKey: which item of a list was clicked, also when the file cannot show the item and the chip falls back to the whole component
 }
 // components marked in the inspector (Shift / Cmd / Ctrl + click adds or removes one); "Use in chat" takes all of them
 let marked = [], activeMarked = null;
@@ -448,7 +448,7 @@ async function useMarked() {
 // components picked for the message being written (several can be added)
 let chips = [];
 const MAX_CHIPS = 8;
-const chipKey = (p) => `${p.file}#${(p.chain ?? []).map((c) => (typeof c === "number" ? c : c.ordinal)).join(",")}|${p.sub ? `${p.sub.prop}[${p.sub.index}]` : ""}`;
+const chipKey = (p) => `${p.file}#${(p.chain ?? []).map((c) => (typeof c === "number" ? c : c.ordinal)).join(",")}|${p.sub ? `${p.sub.prop}[${p.sub.index}]` : ""}|${p.pickKey ?? ""}`;
 function renderChips() {
   const box = $("chips"); box.hidden = !chips.length; box.replaceChildren();
   chips.forEach((c, i) => {
