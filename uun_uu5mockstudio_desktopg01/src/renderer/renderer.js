@@ -258,9 +258,9 @@ addEventListener("keydown", (e) => {
 
 // ---------- inspector ----------
 // chat mode: the picker works without the side panel; every click adds the component to the message being written
-let chatPick = false;
+let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick session added (a plain click replaces them)
 function setInspect(v, { chat = false } = {}) {
-  chatPick = v && chat;
+  chatPick = v && chat; pickedKeys.clear();
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v);
   $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
@@ -304,7 +304,13 @@ function resetMarked() { marked = []; activeMarked = null; renderMarked(); }
 async function showPick(p) {
   if (chatPick) { // chat mode: resolve names and the source of the component, then add it to the message
     const c = await chipFrom(p);
-    return c.error ? toast(c.error, { err: true }) : addChip(c.chip);
+    if (c.error) return toast(c.error, { err: true });
+    const k = chipKey(c.chip);
+    // like in the inspector: a plain click picks just this component, Shift / Cmd / Ctrl + click adds one or (when it was picked before) takes it off again
+    if (p.additive && p.selected === false) { chips = chips.filter((x) => chipKey(x) !== k); pickedKeys.delete(k); return renderChips(); }
+    if (!p.additive) { chips = chips.filter((x) => !pickedKeys.has(chipKey(x))); pickedKeys.clear(); }
+    if (addChip(c.chip, { quiet: true })) pickedKeys.add(k); else renderChips();
+    return;
   }
   const r = updateSelection(marked, p);
   marked = r.selection; activeMarked = r.active;
@@ -340,7 +346,7 @@ function addChip(p, { quiet = false } = {}) {
   if (chips.length >= MAX_CHIPS) { if (!quiet) toast(`At most ${MAX_CHIPS} components per message.`); return false; }
   chips.push(p); renderChips(); return true;
 }
-function clearChips() { chips = []; renderChips(); }
+function clearChips() { chips = []; pickedKeys.clear(); renderChips(); }
 
 // ---------- project menu: export + offline CDN cache ----------
 let toastTimer;
