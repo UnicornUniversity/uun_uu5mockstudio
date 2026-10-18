@@ -20,7 +20,7 @@ aplikace spouští vlastní Claude Code uživatele (`pathToClaudeCodeExecutable`
 
 ## Podpis a notarizace (macOS)
 
-Nepodepsanou aplikaci Gatekeeper zablokuje (pravý klik → Otevřít). Pro distribuci:
+Nepodepsanou (nenotarizovanou) aplikaci Gatekeeper zablokuje. Postup pro uživatele je jednorázově po přetažení do Aplikací spustit `xattr -dr com.apple.quarantine "/Applications/uu5Mock Studio.app"` (je uvedený v poznámkách k vydání). Aktualizace z aplikace už tento krok nepotřebují. Pro distribuci bez toho:
 
     CSC_LINK=<Developer ID .p12> CSC_KEY_PASSWORD=… \
     APPLE_ID=… APPLE_APP_SPECIFIC_PASSWORD=… APPLE_TEAM_ID=… npm run dist:mac

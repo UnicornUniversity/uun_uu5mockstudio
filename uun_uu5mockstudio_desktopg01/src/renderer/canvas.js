@@ -105,11 +105,15 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     if (!list.length) return;
     const b = list.reduce((a, f) => {
       const d = size(f);
-      return { x1: Math.min(a.x1, f.x), y1: Math.min(a.y1, f.y - TITLE_H), x2: Math.max(a.x2, f.x + d.w), y2: Math.max(a.y2, f.y + d.h) };
+      const n = { x1: Math.min(a.x1, f.x), y1: Math.min(a.y1, f.y - TITLE_H), x2: Math.max(a.x2, f.x + d.w), y2: Math.max(a.y2, f.y + d.h) };
+      for (const [id, el] of f.noteEls) { const p = notePos(f, id); n.y1 = Math.min(n.y1, f.y + p.y); n.x2 = Math.max(n.x2, f.x + p.x + el.offsetWidth); n.y2 = Math.max(n.y2, f.y + p.y + el.offsetHeight); } // the notes beside a screen belong to the picture
+      return n;
     }, { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity });
-    const r = root.getBoundingClientRect(), pad = 48, inset = getInset?.() ?? 0; // inset: the top of the canvas hidden under a floating toolbar (Glass Effect)
-    const z = Math.min(1, Math.max(MIN_Z, Math.min((r.width - 2 * pad) / (b.x2 - b.x1), (r.height - inset - 2 * pad) / (b.y2 - b.y1))));
-    cam = { z, x: (r.width - (b.x2 - b.x1) * z) / 2 - b.x1 * z, y: inset + (r.height - inset - (b.y2 - b.y1) * z) / 2 - b.y1 * z };
+    // inset: the parts of the canvas hidden under a floating toolbar (Glass Effect, top) or a floating chat (left or right); a number means the top only
+    const ins = getInset?.() ?? 0, top = typeof ins === "number" ? ins : ins.top ?? 0, left = typeof ins === "number" ? 0 : ins.left ?? 0, right = typeof ins === "number" ? 0 : ins.right ?? 0;
+    const r = root.getBoundingClientRect(), pad = 48, aw = r.width - left - right, ah = r.height - top;
+    const z = Math.min(1, Math.max(MIN_Z, Math.min((aw - 2 * pad) / (b.x2 - b.x1), (ah - 2 * pad) / (b.y2 - b.y1))));
+    cam = { z, x: left + (aw - (b.x2 - b.x1) * z) / 2 - b.x1 * z, y: top + (ah - (b.y2 - b.y1) * z) / 2 - b.y1 * z };
     applyCam(animate);
   }
 

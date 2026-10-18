@@ -176,7 +176,15 @@ const canvas = createCanvas({
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
-  getInset: () => (document.body.dataset.glass ? parseFloat(document.body.style.getPropertyValue("--glass-top")) || 0 : 0),
+  // what a fit must keep clear: the floating toolbar (Glass Effect) on top, a floating chat on its side of the canvas
+  getInset: () => {
+    const top = document.body.dataset.glass ? parseFloat(document.body.style.getPropertyValue("--glass-top")) || 0 : 0, out = { top, left: 0, right: 0 };
+    if (document.body.dataset.chat !== "float") return out;
+    const c = $("chat").getBoundingClientRect(), k = $("canvas").getBoundingClientRect();
+    if (c.width < 40 || c.height < 40 || dock.collapsed()) return out; // hidden or collapsed to a bar
+    if (c.left + c.width / 2 < k.left + k.width / 2) out.left = Math.max(0, c.right - k.left + 12); else out.right = Math.max(0, k.right - c.left + 12);
+    return out;
+  },
   onSelect: () => { renderTabs(); updateSelbar(); },
   onPageReady: (f) => { inspector.injectIfOn(f.view); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });

@@ -35,11 +35,10 @@ const T = {
     typed: "A-205", values: ["Main building", "Lecture room", "Floor 2"], number: "40",
     ruleEdit: " (case-insensitive)",
     screenDesc: "The main list of all rooms with filters. Entry point for adding a room.",
-    extraRule: "Rooms are sorted by building, then by code.",
     cap: {
       intro: "Design uu5 / uuGDS apps with AI", project: "One folder per project. One HTML file per screen.", desc: "Give the project context", git: "Link your git repository. Claude reads it, never writes.",
       prompt: "Describe the screen in plain words", sketch: "Paste or drop a screenshot or a sketch into the request", second: "More screens side by side: @ links to the first one", arrange: "Arrange screens in one click", fullscreen: "Try it fullscreen and pin a note to the screen", note: "Notes stay with the screen, right on the canvas", working: "Claude builds it (sped up)", done: "A live, interactive uu5 page", form: "Validation first, then fill the form: the record appears in the table", del: "Delete a record, with confirmation", rules: "Business rules are captured as you talk",
-      rulesEdit: "Edit in place, or switch to Markdown", screen: "Describe any screen and add its rules", inspect: "Inspect real uu5 components, tweak props, pick icons",
+      rulesEdit: "Edit in place, or switch to Markdown", screen: "Describe any screen: the description sits right below it", inspect: "Inspect real uu5 components, tweak props, pick icons",
       color: "Change a prop: the screen rewrites itself", icon: "Icons straight from the uuGDS catalog", share: "Export or share a screen, or the whole project as ZIP",
       plugins: "Plugins stay current: check any time, update on your terms", update: "New release? You are told: download it, read the notes, or postpone", glass: "Switch on the optional Glass Effect (macOS)", glass2: "Floating chat, toolbar and menus: translucent and blurred", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
     },
@@ -54,11 +53,10 @@ const T = {
     typed: "A-205", values: ["Hlavní budova", "Přednáškový sál", "2. patro"], number: "40",
     ruleEdit: " (bez ohledu na velikost písmen)",
     screenDesc: "Hlavní seznam všech místností s filtry. Vstupní bod pro přidání místnosti.",
-    extraRule: "Místnosti jsou řazeny podle budovy a potom podle kódu.",
     cap: {
       intro: "Návrh uu5 / uuGDS aplikací s AI", project: "Jedna složka na projekt. Jeden HTML soubor na obrazovku.", desc: "Dej projektu kontext", git: "Napoj git repozitář. Claude čte, nikdy nepíše.",
       prompt: "Zadání běžnou řečí", sketch: "Do zadání vlož i screenshot nebo náčrt", second: "Víc obrazovek vedle sebe: @ odkáže na první", arrange: "Uspořádání obrazovek jedním klikem", fullscreen: "Vyzkoušej fullscreen a připni k obrazovce poznámku", note: "Poznámky zůstávají u obrazovky, přímo na plátně", working: "Claude to staví (zrychleno)", done: "Živá, interaktivní uu5 stránka", form: "Nejdřív validace, pak vyplněný formulář: záznam se objeví v tabulce", del: "Smazání záznamu s potvrzením", rules: "Business pravidla se zapisují, jak mluvíš",
-      rulesEdit: "Úprava přímo v textu, nebo přepnutí na Markdown", screen: "Popiš libovolnou obrazovku a přidej její pravidla", inspect: "Inspekce skutečných uu5 komponent, úpravy props, výběr ikon",
+      rulesEdit: "Úprava přímo v textu, nebo přepnutí na Markdown", screen: "Popiš libovolnou obrazovku: popis je hned pod ní", inspect: "Inspekce skutečných uu5 komponent, úpravy props, výběr ikon",
       color: "Změníš prop: obrazovka se přepíše", icon: "Ikony přímo z katalogu uuGDS", share: "Export nebo sdílení obrazovky, případně celého projektu jako ZIP",
       plugins: "Pluginy zůstávají aktuální: kontrola kdykoli, aktualizace podle tebe", update: "Nové vydání? Aplikace to řekne: stáhni, přečti poznámky, nebo odlož", glass: "Zapni volitelný Glass Effect (macOS)", glass2: "Plovoucí chat, lišta i menu: průhledné a rozmazané", outro: "uu5Mock Studio · Marek Beránek, Unicorn University",
     },
@@ -320,8 +318,10 @@ const steps = [
     const SEL = `'[role=dialog], dialog, [class*=modal], [class*=Modal]'`; // several dialogs may exist in the page, only the open (visible) one counts
     const VIS = `const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 18 && r.height > 14 && r.top >= 0 && r.top < innerHeight - 30 && r.left >= 0 && r.left < innerWidth - 10 && getComputedStyle(e).visibility !== "hidden"; };`;
     // buttons and fields of the open dialog: a closed dialog can leave an empty container behind, so look at all visible candidates and prefer those inside a dialog
-    const FIELDS = `const ok = (e) => vis(e) && !e.disabled && !/^(hidden|checkbox|radio|submit|button|file)$/.test(e.type); const allF = [...document.querySelectorAll("input, textarea, select")].filter(ok); const inM = allF.filter((e) => e.closest(${SEL})); const f = inM.length ? inM : allF;`;
-    const PICK = (re) => `const re = ${re}; const all = [...document.querySelectorAll("button")].filter(vis); const inM = all.filter((b) => b.closest(${SEL})); const pool = inM.length ? inM : all; return [...pool].reverse().find((b) => re.test(b.innerText)) || pool[0];`;
+    // every field of the open form (also those below the fold: the form can be taller than the screen), scrolled into view when it is used
+    const FIELDS = `const sized = (e) => { const r = e.getBoundingClientRect(); return r.width > 18 && r.height > 10 && getComputedStyle(e).visibility !== "hidden"; }; const ok = (e) => sized(e) && !e.disabled && !/^(hidden|checkbox|radio|submit|button|file)$/.test(e.type); const allF = [...document.querySelectorAll("input, textarea, select")].filter(ok); const inM = allF.filter((e) => e.closest(${SEL})); const f = inM.length ? inM : allF;`;
+    // a button of the open dialog (its Save button can sit below the fold of a tall form), scrolled into view
+    const PICK = (re) => `const re = ${re}; const sized = (e) => { const r = e.getBoundingClientRect(); return r.width > 18 && r.height > 14 && getComputedStyle(e).visibility !== "hidden"; }; const all = [...document.querySelectorAll("button")].filter(sized); const inM = all.filter((b) => b.closest(${SEL})); const pool = inM.length ? inM : all.filter(vis); const hit = [...pool].reverse().find((b) => re.test(b.innerText)) || pool[0]; hit?.scrollIntoView({ block: "center" }); return hit;`;
     const modalOpen = () => guest(`(() => { ${VIS} return [...document.querySelectorAll(${SEL})].some(vis); })()`);
     const SUBMIT = PICK("/(ulo[žz]|ode[šs]|submit|save|přidat|add|vytvo|create)/i");
     const CONFIRM = PICK("/(delete|remove|smazat|odstranit|yes|ano|confirm|potvrdit|ok)/i");
@@ -335,24 +335,33 @@ const steps = [
     const kinds = await guest(`(() => { ${VIS} ${FIELDS} return f.map((e) => (e.tagName === "SELECT" ? "select" : e.type === "number" ? "number" : "text")); })()`);
     let t = 0;
     for (let i = 0; i < (kinds ?? []).length; i++) {
-      const p = await guestPoint(`${FIELDS} return f[${i}];`).catch(() => null); if (!p) continue;
+      const p = await guestPoint(`${FIELDS} f[${i}]?.scrollIntoView({ block: "center" }); return f[${i}];`).catch(() => null); if (!p) continue;
       await clickAt(p.x, p.y, { pause: 250, ms: 450 });
+      await guest(`document.activeElement?.select?.()`).catch(() => {});                       // a prefilled value is replaced, not extended
       if (kinds[i] === "select") await guest(`(() => { const s = document.activeElement; if (!s || s.tagName !== "SELECT") return; const o = [...s.options].find((x) => x.value && !x.disabled) || s.options[0]; s.value = o.value; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
       else await guestTypeActive(kinds[i] === "number" ? T.number : t === 0 ? T.typed : T.values[(t - 1) % T.values.length], 55), t += kinds[i] === "text" ? 1 : 0;
       await sleep(250);
     }
     await sleep(500);
     await guestClick(SUBMIT, 0, { pause: 1800 }).catch(() => {});                  // submit: the record is added to the table
-    if (await modalOpen()) { await escape(); await sleep(400); }
+    // the form must not stay open on the screen (the inspector would probe the page behind it): close it by its own button, then Escape inside the page
+    if (await modalOpen()) await guestClick(PICK("/(cancel|close|zav[řr]|zru[šs]|storno|×|✕)/i"), 0, { pause: 700 }).catch(() => {});
+    if (await modalOpen()) { await guest(`document.activeElement?.blur?.(); for (const t of ["keydown", "keyup"]) document.dispatchEvent(new KeyboardEvent(t, { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }))`).catch(() => {}); await sleep(700); }
+    if (await modalOpen()) log("  ! the form is still open");
+    // show the new record: scroll the page to it, so the viewer sees it was really added
+    await guest(`(() => { const e = [...document.querySelectorAll("body *")].find((n) => !n.children.length && n.textContent.includes(${JSON.stringify(T.typed)}) && n.getBoundingClientRect().width > 0); e?.scrollIntoView({ block: "center", behavior: "smooth" }); })()`).catch(() => {});
+    await sleep(2200);
     log(`  rows: ${before} -> ${await rows()}`);
+    await guest(`window.scrollTo({ top: 0, behavior: "smooth" })`).catch(() => {}); await sleep(900);
+    log(`  new record visible: ${await guest(`document.body.innerText.includes(${JSON.stringify(T.typed)})`).catch(() => false)}`);
     await sleep(1200);
     // delete the new record: its trash button, then the confirmation
-    await caption(T.cap.del);
     // the trash button of the new row. uu5 rows can be `display: contents` (no size), so find the icon-only delete buttons and use the row only to tell them apart
-    const TRASH = `const re = /(delete|remove|trash|smazat|odstranit)/i; const btns = [...document.querySelectorAll("button, [role=button]")].filter((b) => !b.innerText.trim() && re.test((b.getAttribute("aria-label") || "") + (b.title || "") + b.className + b.innerHTML.slice(0, 600))); const mine = btns.filter((b) => b.closest("tr, [role=row]")?.innerText.includes(${JSON.stringify(T.typed)})); const pick = mine[mine.length - 1] || btns[btns.length - 1];`;
-    await guest(`(() => { ${TRASH} pick?.scrollIntoView({ block: "center" }); })()`); await sleep(600);
-    await guestClick(`${TRASH.replace('const btns = [...document.querySelectorAll("button, [role=button]")]', 'const btns = [...document.querySelectorAll("button, [role=button]")].filter(vis)')} return pick;`, 0, { pause: 1500 }).catch(() => {});
-    await guestClick(CONFIRM, 0, { pause: 1600 }).catch(() => {});
+    const TRASH = `const re = /(delete|remove|trash|smazat|odstranit)/i; const btns = [...document.querySelectorAll("button, [role=button]")].filter((b) => !b.innerText.trim() && re.test((b.getAttribute("aria-label") || "") + (b.title || "") + b.className + b.innerHTML.slice(0, 600))); const mine = btns.filter((b) => b.closest("tr, [role=row]")?.innerText.includes(${JSON.stringify(T.typed)})); const pick = mine[mine.length - 1]; /* only the trash button of the record that was just added: nothing else on the page is clicked */`;
+    const hasTrash = await guest(`(() => { ${TRASH} return Boolean(pick); })()`).catch(() => false);   // a page without such a row (no trash buttons) skips the deletion
+    if (hasTrash) { await caption(T.cap.del); await guest(`(() => { ${TRASH} pick?.scrollIntoView({ block: "center" }); })()`); await sleep(600); }
+    if (hasTrash) await guestClick(`${TRASH.replace('const btns = [...document.querySelectorAll("button, [role=button]")]', 'const btns = [...document.querySelectorAll("button, [role=button]")].filter(vis)')} return pick;`, 0, { pause: 1500 }).catch(() => {});
+    if (hasTrash) await guestClick(CONFIRM, 0, { pause: 1600 }).catch(() => {});
     log(`  rows after delete: ${await rows()}`);
     await sleep(900);
     await caption("", 200);
@@ -380,9 +389,6 @@ const steps = [
     await click("#descdlg .dd-close"); await sleep(900);
     await click("#fit"); await sleep(900);                                                       // the description now sits below the screen: keep it clear of the caption
     const cv = (await centre("#canvas")) ?? { x: 900, y: 500 }; await wheelAt(cv.x, cv.y, 70, 0); await sleep(1800);
-    await click("#morebtn"); await click("#ctxmenu button", { text: "Add rule" }); await sleep(600);
-    await typeText(T.extraRule, 24); await key("Enter", "Enter", 13); await sleep(1400);
-    await click("#rules .rc-close"); await sleep(700);
     await caption("", 200);
   }],
   ["second screen", async () => {
@@ -407,28 +413,26 @@ const steps = [
     await typeText(T.note, 26); await sleep(1600);
     await click("#fsclose"); await sleep(1400);                                                   // Esc does not leave fullscreen: the shrink button does
     if (await cdp.ev(`!document.getElementById("fs").hidden`)) throw new Error("fullscreen did not close");
+    await click("#fit"); await sleep(1500);                                                       // all screens and the note beside this one, clear of the floating chat
     await caption(T.cap.note); await sleep(2600);                                                 // the note now sits beside the screen on the canvas
     await caption("", 200);
   }],
   ["inspector", async () => {
     await caption(T.cap.inspect);
-    const first = await cdp.ev(`document.querySelector(".frame .fname")?.textContent ?? ""`);     // the first screen: the one with the button
+    // the screen with the "Add" button (the list, not the detail): the order of the screens in the page is alphabetical, so look for it
+    const ADD = "/(přidat|nov[ýáé]|vytvo|add|create|new)/i";
+    const SEE = `const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 18 && r.height > 14 && r.top >= 0 && r.top < innerHeight - 30 && r.left >= 0 && r.left < innerWidth - 10 && getComputedStyle(e).visibility !== "hidden"; };`;
+    const count = await cdp.ev(`document.querySelectorAll("webview").length`);
+    let fi = 0;
+    for (let i = 0; i < count; i++) { if (await guest(`(() => { ${SEE} return [...document.querySelectorAll("button")].filter(vis).some((b) => ${ADD}.test(b.innerText)); })()`, i).catch(() => false)) { fi = i; break; } }
+    const first = await cdp.ev(`document.querySelectorAll(".frame .fname")[${fi}]?.textContent ?? ""`);
     await click("#inspect"); await sleep(900);
     await click("#tabs .tab", { text: `^${first}$` }); await sleep(1300);                          // its tab zooms into it, inside the canvas the panel left free
-    await guest(`window.scrollTo(0, 0)`).catch(() => {}); await sleep(300);
-    // find a real component that has both colorScheme and icon: try the buttons of the screen one by one
-    const rows = () => cdp.ev(`[...document.querySelectorAll("#insp-props .prow .pname")].map((n) => n.textContent)`);
-    let found = false;
-    // candidates: buttons that show an icon next to their text come first (they have an icon prop), then the rest; probing is sped up in the video
-    const ORDER = `const ok = (e) => vis(e) && e.innerText.trim(); const hasIcon = (e) => !!e.querySelector('[class*="uugds"], [class*="mdi"], svg'); const all = [...document.querySelectorAll("button")].filter(ok); const ordered = [...all.filter(hasIcon), ...all.filter((e) => !hasIcon(e))];`;
-    const total = await guest(`(() => { const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 18 && r.height > 14 && r.top >= 0 && r.top < innerHeight - 30 && r.left >= 0 && r.left < innerWidth - 10 && getComputedStyle(e).visibility !== "hidden"; }; ${ORDER} return ordered.length; })()`);
-    await fast(async () => {
-      for (let i = 0; i < Math.min(total, 10) && !found; i++) {
-        await guestClick(`${ORDER} return ordered[${i}];`, 0, { pause: 1300, ms: 350 }).catch(() => {});
-        const r = await rows(); found = r.includes("colorScheme") && r.includes("icon");
-      }
-    }, 5);
-    if (!found) throw new Error("no button with colorScheme and icon on the screen — ask for one in the prompt");
+    await guest(`window.scrollTo(0, 0)`, fi).catch(() => {}); await sleep(300);
+    // the form is closed: with the inspector on, a click marks the "Add" button instead of pressing it
+    await guestClick(BUTTON(ADD), fi, { pause: 1300, ms: 650 });
+    const names = await cdp.ev(`[...document.querySelectorAll("#insp-props .prow .pname")].map((n) => n.textContent)`);
+    if (!(names.includes("colorScheme") && names.includes("icon"))) throw new Error(`the marked button has no colorScheme and icon (${names.join(", ")}) — ask for a button with both in the prompt`);
     await sleep(1400);
     const row = (name) => cdp.ev(`(() => { const r = [...document.querySelectorAll("#insp-props .prow")].find((x) => x.querySelector(".pname")?.textContent === ${JSON.stringify(name)}); const e = r?.querySelector("select, input"); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
     await caption(T.cap.color);
@@ -443,7 +447,12 @@ const steps = [
     await caption(T.cap.icon);
     await click("#insp-props .pico"); await sleep(1300);
     await typeInto("#ib-search", "calendar", 110); await sleep(1000);
-    await click("#ib-grid .ib-icon", { pause: 2200 });
+    // the icon in use is always listed first (and marked): pick another one, or the click would change nothing
+    const was = await cdp.ev(`document.querySelector("#ib-grid .ib-icon.on")?.title?.split("\\n")[0] ?? null`);
+    const picked = await cdp.ev(`document.querySelector("#ib-grid .ib-icon:not(.on)")?.title?.split("\\n")[0] ?? null`);
+    if (!picked) throw new Error("the icon dialog shows no other icon");
+    await click("#ib-grid .ib-icon:not(.on)", { pause: 2200 });
+    log(`  icon: ${was} -> ${picked}`);
     await caption("", 300);
     await click("#inspect"); await sleep(600);                                                   // leave the inspector
   }],
