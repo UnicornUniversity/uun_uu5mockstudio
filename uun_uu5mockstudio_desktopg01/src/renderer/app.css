@@ -615,7 +615,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 
 /* ---- composer like in Claude Desktop: one rounded box with the tools inside, a quiet row under it with the mode and the model */
 .inputbox textarea{padding:10px 14px 46px}
-.inputbox #attach{left:8px;right:auto}.inputbox #pickcomp{left:44px;right:auto}.inputbox #libbtn{left:80px;right:auto}
+.inputbox #pickcomp{left:8px;right:auto}.inputbox #attach{left:44px;right:auto}.inputbox #libbtn{left:80px;right:auto} /* inspector (pick), file, catalog of components */
 .inputbox #send,.inputbox #stop{position:absolute;right:8px;bottom:8px;width:32px;min-width:32px;height:32px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .inputbox #send[hidden],.inputbox #stop[hidden]{display:none}.inputbox #send .ico,.inputbox #stop .ico{width:17px;height:17px;stroke-width:2.2}
 .inputbox #send .lbl,.inputbox #stop .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
