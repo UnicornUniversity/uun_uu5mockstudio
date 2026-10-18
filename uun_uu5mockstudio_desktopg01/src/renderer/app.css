@@ -630,3 +630,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .inputbox:focus-within{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 20%,transparent),0 2px 10px rgba(0,0,0,.08)}
 .inputbox textarea{border:0!important;background:transparent!important;box-shadow:none!important;outline:none!important;border-radius:18px;resize:none}
 .mm-item.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+/* the model is only as wide as its text; the focus is a soft pill, not the wide orange ring */
+#form .row #model{field-sizing:content;width:auto;min-width:0;max-width:190px;text-align:left;padding:4px 8px;border-radius:999px;outline:none}
+#form .row #model:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
+#form .row #modebtn:focus-visible{outline:none;background:color-mix(in srgb,var(--acc) 10%,transparent)}
