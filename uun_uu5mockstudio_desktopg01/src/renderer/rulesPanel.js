@@ -3,6 +3,8 @@ import { markdown, esc } from "./markdown.js";
 import { parseRules, editItem, deleteItem, countRules } from "./rulesDoc.js";
 
 const MODE_KEY = "uu5studio.rulesMode";
+const SCOPE_KEY = "uu5studio.rulesScope";
+const readScope = () => { try { return localStorage.getItem(SCOPE_KEY) === "global" ? "global" : "project"; } catch { return "project"; } };
 const readMode = () => { try { return localStorage.getItem(MODE_KEY) === "code" ? "code" : "rendered"; } catch { return "rendered"; } };
 
 /**
@@ -11,16 +13,21 @@ const readMode = () => { try { return localStorage.getItem(MODE_KEY) === "code" 
  * `onCount(n)` tells the toolbar icon how many rules there are, so that it can show a badge while the dialog is closed.
  */
 export function createRulesPanel({ api, getScreens, onCount }) {
-  let md = "", dirty = false, mode = readMode(), loaded = false;
+  let md = "", dirty = false, mode = readMode(), loaded = false, scope = readScope(), globalCount = 0;
+  // the rules of this project (BUSINESS_RULES.md) or of all projects (GLOBAL_RULES.md): the same dialog works on either
+  const S = () => (scope === "global"
+    ? { get: () => api.rulesGetGlobal(), set: (t) => api.rulesSetGlobal(t), add: (t) => api.rulesAddGlobal(t) }
+    : { get: () => api.rulesGet(), set: (t) => api.rulesSet(t), add: (t, s) => api.rulesAdd(t, s) });
   const box = document.createElement("div");
   box.id = "rules"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-labelledby="ru-title">
     <div class="ru-head"><h2 id="ru-title">Business rules</h2>
+      <div class="rc-scope" role="tablist" aria-label="Which rules"><button type="button" data-scope="project">This project</button><button type="button" data-scope="global">All projects</button></div>
       <button class="rc-toggle icon" type="button"></button><button class="rc-x dlg-x icon" type="button" title="Close (Esc)" aria-label="Close"></button></div>
-    <p class="mute">Kept in <code>BUSINESS_RULES.md</code> in the project folder. Claude records rules that come up in your requests; later tasks that build the target components read this file.</p>
+    <p class="mute rc-about"></p>
     <div class="rc-view"></div>
     <textarea class="rc-code" spellcheck="false" aria-label="BUSINESS_RULES.md"></textarea>
-    <div class="rc-add"><input class="rc-new" autocomplete="off" spellcheck="false" placeholder="Add a rule and press Enter…"><select class="rc-screen" aria-label="Section"></select><button class="rc-addbtn" type="button">Add</button></div>
+    <div class="rc-add"><div class="rc-sugg" hidden></div><input class="rc-new" autocomplete="off" spellcheck="false" placeholder="Add a rule and press Enter…"><select class="rc-screen" aria-label="Section"></select><button class="rc-addbtn" type="button">Add</button></div>
     <p class="rc-err err"></p>
     <div class="row"><span class="rc-meta mute grow"></span><button class="rc-save" type="button">Save</button></div></div>`;
   document.body.append(box);
@@ -43,15 +50,18 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   }
   function fill() {
     code.value = md; paint();
+    for (const b of box.querySelectorAll(".rc-scope button")) { b.classList.toggle("on", b.dataset.scope === scope); if (b.dataset.scope === "global") b.textContent = globalCount ? `All projects (${globalCount})` : "All projects"; }
+    q(".rc-about").innerHTML = scope === "global" ? "Kept in <code>GLOBAL_RULES.md</code> in the folder of your projects. These rules apply in every project; Claude records a rule here when you say it holds always, for every screen or in all projects." : "Kept in <code>BUSINESS_RULES.md</code> in the project folder. Claude records rules that come up in your requests; later tasks that build the target components read this file.";
+    q(".rc-screen").hidden = scope === "global";
     screenSel.replaceChildren(new Option("General", ""), ...getScreens().map((s) => new Option(`Screen: ${s.replace(/\.html$/, "")}`, s.replace(/\.html$/, ""))));
     box.dataset.mode = mode;
     const t = q(".rc-toggle"), toCode = mode === "rendered"; // the icon shows where a click leads
     t.innerHTML = toCode ? ICON_CODE : ICON_VIEW; t.title = toCode ? "Show the Markdown code" : "Show the rendered rules"; t.setAttribute("aria-label", t.title);
     saveBtn.hidden = mode !== "code"; q(".rc-add").hidden = mode !== "rendered";
-    onCount?.(countRules(md));
+    if (scope === "project") onCount?.(countRules(md)); else globalCount = countRules(md);
   }
   async function write(next) {
-    const r = await api.rulesSet(next);
+    const r = await S().set(next);
     if (r?.error) { err.textContent = r.error; return false; }
     err.textContent = ""; md = next; return true;
   }
@@ -82,12 +92,42 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   });
   async function addRule() {
     const text = addIn.value.trim(); if (!text) return;
-    const r = await api.rulesAdd(text, screenSel.value);
+    const r = await S().add(text, screenSel.value);
     if (r?.error) { err.textContent = r.error; return; }
     err.textContent = ""; addIn.value = ""; md = r.content; fill(); setMeta(`Added ${r.id}`);
     view.scrollTop = view.scrollHeight;
   }
-  addIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addRule(); } };
+  // `@` in the new rule: the components of the libraries (Plus4U5Elements.ContentContainer, …), so that a rule can name what screens are composed of
+  const sugg = q(".rc-sugg");
+  let suggIdx = 0, suggSeq = 0;
+  const atWord = () => { const m = addIn.value.slice(0, addIn.selectionStart).match(/(^|\s)@([A-Za-z0-9.]*)$/); return m ? { start: addIn.selectionStart - m[2].length - 1, q: m[2] } : null; };
+  async function updateSugg() {
+    const w = atWord(), seq = ++suggSeq;
+    if (!w || w.q.length < 2) { sugg.hidden = true; return; }
+    const r = await api.docsSearch(w.q).catch(() => null);
+    if (seq !== suggSeq) return;
+    const items = (r?.results ?? []).slice(0, 6);
+    if (!items.length) { sugg.hidden = true; return; }
+    suggIdx = Math.min(suggIdx, items.length - 1);
+    sugg.replaceChildren(...items.map((c, i) => Object.assign(document.createElement("button"), { type: "button", className: i === suggIdx ? "on" : "", textContent: "@" + c.name, onmousedown: (e) => { e.preventDefault(); pickSugg(c.name); } })));
+    sugg.hidden = false;
+  }
+  function pickSugg(name) {
+    const w = atWord(); if (!w) return;
+    addIn.value = addIn.value.slice(0, w.start) + "@" + name + " " + addIn.value.slice(addIn.selectionStart);
+    addIn.selectionStart = addIn.selectionEnd = w.start + name.length + 2; sugg.hidden = true; addIn.focus();
+  }
+  addIn.addEventListener("input", () => { suggIdx = 0; updateSugg(); });
+  addIn.addEventListener("blur", () => setTimeout(() => (sugg.hidden = true), 120));
+  addIn.onkeydown = (e) => {
+    if (!sugg.hidden) {
+      const n = sugg.children.length;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); suggIdx = (suggIdx + (e.key === "ArrowDown" ? 1 : n - 1)) % n; updateSugg(); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSugg(sugg.children[suggIdx].textContent.slice(1)); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); sugg.hidden = true; return; }
+    }
+    if (e.key === "Enter") { e.preventDefault(); addRule(); }
+  };
   q(".rc-addbtn").onclick = addRule;
 
   // ---- Markdown view: explicit Save
@@ -107,17 +147,27 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   }
   q(".rc-toggle").onclick = () => setMode(mode === "rendered" ? "code" : "rendered");
 
+  async function setScope(next) {
+    if (next === scope) return;
+    if (mode === "code" && dirty && !(await saveCode())) return;
+    scope = next; try { localStorage.setItem(SCOPE_KEY, scope); } catch { /* not remembered */ }
+    md = (await S().get()) ?? ""; dirty = false; saveBtn.disabled = true; setMeta(""); fill(); (mode === "code" ? code : addIn).focus();
+  }
+  for (const b of box.querySelectorAll(".rc-scope button")) b.onclick = () => setScope(b.dataset.scope);
+
   // ---- open / close
   const isOpen = () => !box.hidden;
   async function reload() {
+    if (scope === "global") onCount?.(countRules((await api.rulesGet().catch(() => "")) ?? "")); // the badge of the icon is always the project's
     if (dirty || (isOpen() && box.contains(document.activeElement) && document.activeElement.matches?.(".rc-text, .rc-code"))) return; // not from under the cursor
-    md = (await api.rulesGet()) ?? ""; loaded = true; fill();
+    md = (await S().get()) ?? ""; loaded = true; fill();
   }
   /** `screen`: a screen file name; the dialog opens ready to add a rule of that screen (rendered view, section preselected). */
   async function open({ screen } = {}) {
     err.textContent = ""; setMeta(""); dirty = false; saveBtn.disabled = true;
     if (screen && mode !== "rendered") { mode = "rendered"; try { localStorage.setItem(MODE_KEY, mode); } catch { /* not remembered */ } }
-    md = (await api.rulesGet()) ?? ""; loaded = true; fill();
+    if (screen && scope !== "project") scope = "project"; // a rule of a screen belongs to the project
+    md = (await S().get()) ?? ""; loaded = true; globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); fill();
     if (screen) screenSel.value = screen.replace(/\.html$/, "");
     box.hidden = false;
     (mode === "code" ? code : addIn).focus();
@@ -137,6 +187,11 @@ export function createRulesPanel({ api, getScreens, onCount }) {
       box.hidden = true; dirty = false; md = "";
       if (!hasProject) { loaded = false; onCount?.(0); return; }
       md = (await api.rulesGet()) ?? ""; loaded = true; onCount?.(countRules(md));
+    },
+    /** GLOBAL_RULES.md changed (by the agent or by hand). */
+    async reloadGlobal() {
+      if (scope === "global") return reload();
+      globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); box.querySelector('.rc-scope [data-scope="global"]').textContent = globalCount ? `All projects (${globalCount})` : "All projects";
     },
     isLoaded: () => loaded,
   };

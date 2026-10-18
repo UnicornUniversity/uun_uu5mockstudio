@@ -2,7 +2,7 @@
  * BUSINESS_RULES.md as a list of lines the rendered view can edit one by one. The text stays the single source of truth:
  * every edit rewrites exactly one line (or removes it), so everything the user or the agent wrote by hand survives.
  */
-const RULE = /^(\s*[-*]\s+(?:(R-\d+)(?:\s+\(screen:\s*([^)]*)\))?\s+)?)(.*)$/;
+const RULE = /^(\s*[-*]\s+(?:([RG]-\d+)(?:\s+\(screen:\s*([^)]*)\))?\s+)?)(.*)$/;
 
 /** [{ i, kind: "h1"|"h2"|"item"|"text"|"blank"|"code", ... }]; an item has `prefix` (kept as it is), `id`, `screen` and the editable `text`. */
 export function parseRules(md) {

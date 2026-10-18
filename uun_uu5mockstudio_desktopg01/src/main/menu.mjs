@@ -76,6 +76,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       sep,
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
       item("Description…", "screen:desc", { enabled: has }),
+      item("Structure…", "screen:structure", { enabled: has }),
       item("Add Rule…", "screen:rule", { enabled: has }),
       item("Mention in Chat", "screen:mention", { enabled: has }),
       sep,

@@ -431,3 +431,34 @@ test("replaceItem swaps the whole item for code, and refuses invalid code", () =
   assert.throws(() => replaceItem(MULTI, o, "actionList", 0, "  "), /is empty/);
   assert.throws(() => replaceItem(MULTI, o, "actionList", 9, "{}"), /no longer exists/);
 });
+
+import { structureOf, structureOutline, parseElements as parseEls } from "../src/main/jsxSource.mjs";
+test("structure of a screen: sequence, iteration, conditions, local components, ordinals", () => {
+  const html = `<script type="text/babel">
+import { Utils } from 'uu5g05'; import { Block, Button, Text } from 'uu5g05-elements'; import { Grid } from 'uu5tilesg02-elements';
+const Tile = ({ item }) => <Block header={item.name}><Text>{item.text}</Text><Button disabled={!item.canEdit} onClick={() => {}} /></Block>;
+function List({ data, loading }) {
+  if (loading) return <Text>Loading</Text>;
+  return <div><Grid>{data.map((it) => <Tile item={it} />)}</Grid>{data.length === 0 && <Text>Empty</Text>}{open ? <Button /> : <Text />}</div>;
+}
+const App = () => <><List data={[]} /></>;
+Utils.Dom.render(<App />, document.getElementById('root'));
+</script>`;
+  const t = structureOf(html, "demo"), els = parseEls(html);
+  assert.equal(t.name, "Screen: demo"); assert.equal(t.children[0].name, "App");
+  const list = t.children[0].children[0];
+  assert.equal(list.name, "List");
+  assert.deepEqual(list.children.map((c) => c.name), ["Text", "Grid", "Text", "Button", "Text"]);
+  assert.equal(list.children[0].render, "loading", "a return under if is a condition");
+  assert.equal(list.children[1].render, "!(loading)", "the return after it holds when the if does not");
+  const tile = list.children[1].children[0];
+  assert.equal(tile.name, "Tile"); assert.equal(tile.relation, "1:N"); assert.equal(tile.data, "item of data");
+  const block = tile.children[0];
+  assert.equal(block.name, "Block"); assert.equal(block.kind, "library");
+  const button = block.children[1];
+  assert.equal(button.disabled, "!item.canEdit");
+  assert.equal(els[button.ordinal].name, "Button", "the ordinal is the one of parseElements");
+  assert.match(list.children[3].render, /open/); assert.match(list.children[4].render, /!\(open\)/);
+  assert.match(structureOutline(t), /Tile ×N[\s\S]*Button \[D: !item\.canEdit\]/);
+  assert.equal(structureOf("<p>no script</p>"), null);
+});

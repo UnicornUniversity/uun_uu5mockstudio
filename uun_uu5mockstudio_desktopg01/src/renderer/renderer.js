@@ -10,6 +10,9 @@ import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
 import { createActionListEditor } from "./actionListEditor.js";
+import { renderPlan } from "./planView.js";
+import { createStructureDialog } from "./structureDialog.js";
+import { extractPlan, approvalMessage, answersText, serializeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
 
@@ -45,9 +48,11 @@ function entryEl(e) {
       e.steps.map((s) => `<li><span class="st ${s.status}"></span> ${esc(s.label)}</li>`).join("")}</ul>`;
     return d;
   }
+  if (e.kind === "plan") return renderPlan(e, planCtx);
   const el = document.createElement("div");
   el.className = `msg ${e.kind === "note" ? "note" : e.kind === "err" ? "err" : e.kind}`;
-  if (e.kind === "ai") el.innerHTML = markdown(e.text);
+  if (e.kind === "ai" && e.planning) { el.classList.add("planning"); el.textContent = "Preparing the plan…"; } // the answer in Plan mode is shown once, as the finished plan
+  else if (e.kind === "ai") el.innerHTML = markdown(e.text);
   else if (e.kind === "user") {
     el.innerHTML = highlightMentions(e.text);
     if (e.images?.length) { const row = Object.assign(document.createElement("div"), { className: "atts" }); for (const im of e.images) row.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name ?? "attachment", title: im.name ?? "" })); el.append(row); }
@@ -61,9 +66,10 @@ function paint(e) {
   if (old?.tagName === "DETAILS") el.open = old.open;
   old ? old.replaceWith(el) : log.append(el);
   nodes.set(e, el); log.scrollTop = log.scrollHeight;
+  if (e.kind === "plan") updateBuildBtn();
 }
 let saveTimer;
-const chatSnapshot = () => entries.filter((e) => e.kind !== "steps" || e.steps.length);
+const chatSnapshot = () => entries.filter((e) => e.kind !== "steps" || e.steps.length).map((e) => (e.full || e.planning ? { ...e, full: false, planning: false } : e)); // the large view of a plan and a hidden answer are not remembered
 const persist = () => {
   if (loading) return;
   const p = project, cid = chatId, snap = chatSnapshot(); // captured now: the user may switch project or conversation before the timer fires
@@ -82,6 +88,96 @@ function showDefaultModel(id) {
 }
 try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 let sentModel = "";
+// ---------- plan mode: the agent proposes a plan with a tree of components, the user edits it, then it is built
+const PLAN_KEY = "uu5studio.planMode";
+let planMode = false, planPending = false;
+try { planMode = localStorage.getItem(PLAN_KEY) === "1"; } catch { /* default: build */ }
+function setPlanMode(on) {
+  planMode = Boolean(on); try { localStorage.setItem(PLAN_KEY, planMode ? "1" : "0"); } catch { /* not remembered */ }
+  for (const b of document.querySelectorAll("#modemenu .mm-item")) { const on = (b.dataset.mode === "plan") === planMode; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
+  $("mode-label").textContent = planMode ? "Plan" : "Agent";
+  $("mode-ico").innerHTML = planMode ? '<path d="M9 4h6a2 2 0 0 1 2 2v14l-5-3-5 3V6a2 2 0 0 1 2-2z"/>' : '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>';
+  updateBuildBtn();
+  $("prompt").placeholder = planMode ? "Describe what to plan…" : "Describe the screen you want to design…";
+}
+/** The last plan that waits for approval. */
+const proposedPlan = () => [...entries].reverse().find((e) => e.kind === "plan" && e.state === "proposed");
+/** In Plan mode with a plan waiting and an empty message field, the send button builds that plan (the button of the plan card does the same); typing a message makes it "Plan" again. */
+function updateBuildBtn() {
+  const build = planMode && Boolean(proposedPlan()) && !$("prompt").value.trim();
+  const label = planMode ? (build ? "Build plan" : "Plan") : "Send";
+  $("send-lbl").textContent = label; $("send").setAttribute("aria-label", label);
+  $("send").dataset.build = build ? "1" : "";
+  $("send").title = build ? "Approve the plan above (with your edits and answers) and let the agent build it" : "";
+}
+/** The library components of a tree that the documentation of the plugin knows (the others are flagged in the plan). */
+async function refreshKnown(e) {
+  const names = []; const walk = (n) => { if (n.kind === "library") names.push(n.name); (n.children ?? []).forEach(walk); }; if (e.tree) walk(e.tree);
+  const r = names.length ? await window.studio.docsDescribe([...new Set(names)]).catch(() => null) : { names: [] };
+  const known = r?.names ?? [];
+  if (JSON.stringify(known) !== JSON.stringify(e.known ?? [])) { e.known = known; paint(e); persist(); }
+}
+/** The answer of a message sent in plan mode becomes a plan (when it holds a tree). */
+function convertPlan() {
+  let i = entries.length - 1; while (i >= 0 && entries[i].kind !== "ai") { if (entries[i].kind === "user") return; i--; }
+  const ai = entries[i]; if (!ai) return;
+  const { text, tree, questions } = extractPlan(ai.text);
+  if (!text.trim() && !tree && !questions.length) return;
+  const plan = { kind: "plan", text, tree, questions, answers: {}, mode: "diagram", original: { text, tree: tree ? JSON.parse(JSON.stringify(tree)) : null }, state: "proposed", editing: false, sel: [], known: [] };
+  nodes.get(ai)?.remove(); entries[i] = plan; paint(plan); persist(); refreshKnown(plan);
+}
+const planCtx = {
+  change: (e) => { paint(e); persist(); },
+  persist: () => persist(),
+  checkNames: (e) => refreshKnown(e),
+  chooseComponent: async () => (await libraryPicker.open())?.[0] ?? null,
+  revise: () => { setPlanMode(true); const t = $("prompt"); t.value = "Revise the plan: "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+  discard: (e) => { e.state = "discarded"; e.editing = false; paint(e); persist(); },
+  build: (e) => buildPlan(e),
+  answer: (e) => answerPlan(e),
+  showDetail: async (name, host) => {
+    const old = host.querySelector(":scope > .pn-detail"); if (old) return old.remove();
+    const d = await window.studio.docsDetail(name).catch(() => null); if (!d) return;
+    const box = Object.assign(document.createElement("div"), { className: "pn-detail" });
+    box.append(Object.assign(document.createElement("p"), { textContent: d.description || "No description." }));
+    const meta = Object.assign(document.createElement("p"), { className: "mute" }); meta.append(`${d.props.length} props`);
+    if (d.url) { const a = Object.assign(document.createElement("a"), { href: "#", textContent: " · Docs ↗", onclick: (ev) => { ev.preventDefault(); window.studio.docsOpen(d.url); } }); meta.append(a); }
+    box.append(meta); host.querySelector(":scope > .pn")?.after(box);
+  },
+};
+/** The answers to the questions go back to the agent, still in Plan mode: it returns an updated plan; the old one is marked as replaced. */
+async function answerPlan(e) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const message = ["My answers to your questions:", answersText(e.questions, e.answers),
+    ...(e.tree ? ["", "Update the plan with them. This is the current component tree, including my edits; keep them unless the answers change it:", "```uu5-tree", serializeTree(e.tree), "```"] : [])].join("\n");
+  e.state = "superseded"; e.editing = false; paint(e); persist();
+  push({ kind: "user", text: "Here are my answers, update the plan." });
+  setPlanMode(true);
+  if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
+  setBusy(true); sentModel = $("model").value; planPending = true;
+  window.studio.send(message, sentModel || undefined, { plan: true });
+}
+async function buildPlan(e) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const message = approvalMessage({ text: e.text, tree: e.tree, original: e.original, questions: e.questions, answers: e.answers });
+  e.state = "approved"; e.editing = false; paint(e); persist();
+  push({ kind: "user", text: message.startsWith("Plan approved: build") && !message.includes("Answers of the user") ? "Build the plan." : "Build the plan, as I edited it and answered." });
+  if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; } // the automated checks read the message instead of starting the agent
+  setBusy(true); sentModel = $("model").value;
+  window.studio.send(message, sentModel || undefined, { plan: false });
+}
+/** For the automated checks: an answer of the agent in plan mode, without the agent. */
+window.__plan = { dryRun: false, lastBuild: null, lastAnswer: null, answer(text) { setPlanMode(true); push({ kind: "user", text: "(plan)" }); push({ kind: "ai", text, done: true }); planPending = true; convertPlan(); } };
+{
+  const menu = $("modemenu"), btn = $("modebtn");
+  const setOpen = (on) => { menu.hidden = !on; btn.setAttribute("aria-expanded", String(on)); };
+  btn.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
+  for (const b of menu.querySelectorAll(".mm-item")) b.onclick = () => { setPlanMode(b.dataset.mode === "plan"); setOpen(false); $("prompt").focus(); };
+  addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) setOpen(false); });
+  menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); btn.focus(); } });
+}
+$("prompt").addEventListener("input", updateBuildBtn);
+setPlanMode(planMode);
 function learnDefaultModel(id) {
   if (sentModel !== "" || !id) return; // only when no explicit model was requested
   try { localStorage.setItem(DEFAULT_MODEL_KEY, id); } catch {}
@@ -112,7 +208,7 @@ function updateScreenCtx() {
 function setWork(label) { if (busy) $("work-label").textContent = label; }
 function tickWork() { const s = Math.round((Date.now() - workStart) / 1000); $("work-time").textContent = s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`; }
 function setBusy(b) {
-  const was = busy; busy = b; setup?.paintStrip();
+  const was = busy; busy = b; setup?.paintStrip(); updateBuildBtn();
   $("stop").hidden = !b; $("send").hidden = b; $("send").disabled = !ready || !project;
   $("working").hidden = !b; $("chatbusy").hidden = !b;
   clearInterval(workTimer);
@@ -124,6 +220,8 @@ function setBusy(b) {
   const empty = $("empty"); empty.classList.toggle("working", b);
   $("empty-text").textContent = b ? "Claude is preparing a screen…" : EMPTY_TEXT;
 }
+/** The answers of Plan mode that were hidden while they were written are shown as they are (when they did not become a plan). */
+function clearPlanning() { for (const e of entries) if (e.planning) { e.planning = false; paint(e); } }
 function finishSteps(status) { for (const e of entries) if (e.kind === "steps") { for (const s of e.steps) if (s.status === "run") s.status = status; paint(e); } }
 
 window.studio.onEvent((m) => {
@@ -136,7 +234,7 @@ window.studio.onEvent((m) => {
   } else if (m.type === "stream_event" && m.event?.delta?.type === "text_delta") {
     setWork("Writing the answer…");
     let e = last(); if (e?.kind !== "ai" || e.done) e = push({ kind: "ai", text: "" });
-    e.text += m.event.delta.text; paint(e);
+    e.text += m.event.delta.text; if (planPending) e.planning = true; paint(e);
   } else if (m.type === "assistant") {
     const e = last(); if (e?.kind === "ai") e.done = true;
     for (const b of m.message.content) if (b.type === "tool_use") {
@@ -151,12 +249,12 @@ window.studio.onEvent((m) => {
     }
     setWork("Thinking…");
   } else if (m.type === "result") {
-    finishSteps("ok"); setBusy(false); persist();
+    finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.is_error) convertPlan(); } persist();
     if (m.is_error) push({ kind: "err", text: `Error: ${m.result ?? m.subtype}` });
   } else if (m.type === "stopped") {
-    finishSteps("bad"); setBusy(false); push({ kind: "note", text: "Zastaveno" });
+    planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
-    finishSteps("bad"); setBusy(false); push({ kind: "err", text: m.message }); checkClaude(true);
+    planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }
 });
 
@@ -238,7 +336,7 @@ $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitA
 $("alldev").onchange = (e) => { if (e.target.value) canvas.setDeviceAll(e.target.value); e.target.value = ""; };
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "dialog", "sizebox", "tour", "libbox", "actbox", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
+const MODALS = ["confirm", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
@@ -270,7 +368,7 @@ function setInspect(v, { chat = false } = {}) {
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
 $("selinspect").onclick = () => $("inspect").click(); // the same switch, on the bar above the screen
-$("insp-close").onclick = () => setInspect(false);
+$("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
 const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml() });
 // the list of actions (actionList, itemList of ActionGroup, …) of the picked component, in a window
@@ -282,6 +380,14 @@ const propsPanel = createPropsPanel({
   api: { editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
 });
+let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
+const structureDialog = createStructureDialog({ api: {
+  structure: window.studio.jsxStructure,
+  show: (file, ordinal) => { structFrom = file; $("insp-back").hidden = false; if (!$("inspect").classList.contains("on")) $("inspect").click(); propsPanel.show({ file, chain: [ordinal] }); },
+  plan: (file) => { setPlanMode(true); const t = $("prompt"); t.value = `Change @${file.replace(/\.html$/, "")}: `; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+} });
+window.__structure = structureDialog;
+$("insp-back").onclick = () => { const f = structFrom; $("insp-back").hidden = true; structFrom = null; if (f) structureDialog.open(f); };
 window.__propsPanel = propsPanel; // the automated checks open the panel for a component through this
 /** The chat chip of a pick: names and the source of the component from the file (an item of a list falls back to the whole component). */
 async function chipFrom(p) {
@@ -312,6 +418,7 @@ function unmark(m) {
 }
 function resetMarked() { marked = []; activeMarked = null; renderMarked(); }
 async function showPick(p) {
+  structFrom = null; $("insp-back").hidden = true;
   if (chatPick) { // chat mode: resolve names and the source of the component, then add it to the message
     const c = await chipFrom(p);
     if (c.error) return toast(c.error, { err: true });
@@ -625,6 +732,7 @@ desc = createDescPanel({
 const openDesc = (focus) => project && desc.open({ focus });
 $("ds-main").onclick = () => openDesc(null);
 window.studio.onMemoryChanged((ev) => {
+  if (ev.kind === "global") return void rules.reloadGlobal();
   if (ev.project !== project) return;
   memory.changed(ev);
   if (ev.kind === "rules") rules.reload();
@@ -648,7 +756,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
-    ["Description…", () => openDesc(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Description…", () => openDesc(file)], ["Structure…", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
@@ -1014,6 +1122,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:reload": return withScreen((f) => canvas.reload(f));
       case "screen:note": return withScreen((f) => addNote(f));
       case "screen:desc": return withScreen((f) => openDesc(f));
+      case "screen:structure": return withScreen((f) => structureDialog.open(f));
       case "screen:rule": return withScreen((f) => openRules(f));
       case "screen:mention": return withScreen((f) => (marked.length ? useMarked() : insertMention(f.replace(/\.html$/, ""))));
       case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));
@@ -1114,6 +1223,7 @@ $("attachfile").onchange = (e) => { addImages(e.target.files); e.target.value = 
 $("form").onsubmit = async (e) => {
   e.preventDefault();
   if (busy || !ready) return;
+  if ($("send").dataset.build === "1") { const p = proposedPlan(); if (p) { setPlanMode(false); buildPlan(p); } return; }
   if (preparing) return toast("The images are still loading, one moment.");
   const imgs = pending.slice();
   let prompt = $("prompt").value.trim();
@@ -1143,7 +1253,8 @@ $("form").onsubmit = async (e) => {
     ctx && agentContext(ctx),
   ].filter(Boolean);
   sentModel = $("model").value;
-  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined);
+  planPending = planMode;
+  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan: planMode });
   clearChips(); if (chatPick) setInspect(false);
 };
 $("prompt").onkeydown = (e) => {

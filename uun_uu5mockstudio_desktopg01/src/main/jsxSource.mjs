@@ -629,3 +629,177 @@ export function setItemBranch(html, ordinal, prop, index, name, idx, value, coun
   assertValid(out);
   return out;
 }
+
+// ---------------------------------------------------------------- the structure (decomposition) of a screen
+const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod"]);
+const MAX_STRUCT_NODES = 400, MAX_STRUCT_DEPTH = 8;
+const clip = (s, n = 100) => { const t = String(s).replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+const both = (a, b) => (a ? `${a} && ${b}` : b);
+
+/** The render function of a component definition: the `render` method of createVisualComponent({…}), else the first function inside. */
+function renderFunctionOf(init) {
+  if (!init) return null;
+  if (FUNCTION_TYPES.has(init.type)) return init;
+  let render = null, first = null;
+  walk(init, (n) => {
+    if (!first && FUNCTION_TYPES.has(n.type)) first = n;
+    if (!render && (n.type === "ObjectMethod" || n.type === "ObjectProperty") && !n.computed && keyOf(n) === "render") render = n.type === "ObjectMethod" ? n : n.value;
+  });
+  return render && FUNCTION_TYPES.has(render.type) ? render : first;
+}
+
+/** The expressions a function returns (not those of the functions inside it), each with the condition of the `if` it stands in. */
+function returnsOf(fn) {
+  if (fn.type === "ArrowFunctionExpression" && fn.body.type !== "BlockStatement") return [{ expr: fn.body, cond: "" }];
+  const out = [];
+  const visit = (n, cond) => {
+    if (!n || typeof n.type !== "string") return;
+    if (n.type === "ReturnStatement") { if (n.argument) out.push({ expr: n.argument, cond }); return; }
+    if (FUNCTION_TYPES.has(n.type) && n !== fn) return;
+    if (n.type === "IfStatement") { visit(n.consequent, both(cond, `${n.__code}`)); if (n.alternate) visit(n.alternate, cond); return; }
+    for (const key of Object.keys(n)) {
+      if (key === "loc" || key === "extra" || key.endsWith("Comments")) continue;
+      const v = n[key];
+      if (Array.isArray(v)) v.forEach((c) => visit(c, cond)); else if (v && typeof v.type === "string") visit(v, cond);
+    }
+  };
+  visit(fn.body, "");
+  return out;
+}
+
+/**
+ * The structure of a screen in the notation of the decomposition of Unicorn: a tree of the components in the order of rendering.
+ * Components defined in the file are opened, `.map(…)` is an iteration (relation "1:N"), `cond && <X/>` and `cond ? <A/> : <B/>` give the
+ * condition of rendering (`render`), a non-literal `disabled={…}` the condition of disabling (`disabled`), plain HTML tags are skipped and
+ * their children lifted. Every node of a JSX element carries its `ordinal` (the one of `parseElements`), so the inspector can show it.
+ * -> a tree { name, kind, change?, note?, children? } or null when the file has no JSX.
+ */
+export function structureOf(html, name = "") {
+  const scripts = [];
+  let ordinal = 0, any = false;
+  for (const script of babelScripts(html)) {
+    let ast;
+    try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { continue; }
+    const imported = new Set(), found = [];
+    for (const s of ast.program.body) if (s.type === "ImportDeclaration" && UU5_SOURCE.test(s.source.value)) for (const sp of s.specifiers) imported.add(sp.local.name);
+    walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); });
+    found.sort((a, b) => a.start - b.start);
+    const ords = new Map(found.map((n) => [n.start, ordinal++]));
+    if (found.length) any = true;
+    scripts.push({ code: script.code, ast, imported, ords });
+  }
+  if (!any) return null;
+
+  const defs = new Map(); // name -> { fn, sc }
+  for (const sc of scripts) for (const st of sc.ast.program.body) {
+    const d = st.type === "ExportNamedDeclaration" || st.type === "ExportDefaultDeclaration" ? st.declaration : st;
+    if (d?.type === "FunctionDeclaration" && /^[A-Z]/.test(d.id?.name ?? "") && !defs.has(d.id.name)) defs.set(d.id.name, { fn: d, sc });
+    else if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && /^[A-Z]/.test(v.id.name) && v.init && !defs.has(v.id.name)) {
+      const fn = renderFunctionOf(v.init); if (fn) defs.set(v.id.name, { fn, sc });
+    }
+  }
+  // the if-conditions of returns are read from the source: annotate the tests with their text
+  for (const sc of scripts) walk(sc.ast.program, (n) => { if (n.type === "IfStatement") n.__code = clip(sc.code.slice(n.test.start, n.test.end)); });
+
+  let count = 0;
+  const stack = [];
+  const withCond = (nodes, key, cond) => { if (cond) for (const n of nodes) n[key] = both(cond, n[key] ?? "").replace(/ && $/, ""); return nodes; };
+  const text = (sc, n) => clip(sc.code.slice(n.start, n.end));
+
+  function expr(e, sc) {
+    if (!e || count > MAX_STRUCT_NODES) return [];
+    switch (e.type) {
+      case "JSXElement": return element(e, sc);
+      case "JSXFragment": return children(e.children, sc);
+      case "ParenthesizedExpression": return expr(e.expression, sc);
+      case "LogicalExpression": {
+        if (e.operator === "&&") return withCond(expr(e.right, sc), "render", text(sc, e.left));
+        return [...expr(e.left, sc), ...expr(e.right, sc)];
+      }
+      case "ConditionalExpression": {
+        const t = text(sc, e.test);
+        return [...withCond(expr(e.consequent, sc), "render", t), ...withCond(expr(e.alternate, sc), "render", `!(${t})`)];
+      }
+      case "CallExpression": {
+        const c = e.callee;
+        if (c.type === "MemberExpression" && !c.computed && (c.property.name === "map" || c.property.name === "flatMap") && FUNCTION_TYPES.has(e.arguments[0]?.type)) {
+          const nodes = fnResult(e.arguments[0], sc);
+          for (const n of nodes) { n.relation = "1:N"; n.data ??= `item of ${text(sc, c.object)}`; }
+          return nodes;
+        }
+        return [];
+      }
+      case "ArrowFunctionExpression": case "FunctionExpression": return fnResult(e, sc);
+      default: return [];
+    }
+  }
+  function fnResult(fn, sc) {
+    const rets = returnsOf(fn), nodes = [], earlier = [];
+    for (const { expr: ex, cond } of rets) {
+      // a return after `if (x) return …` is rendered when none of the conditions before it holds
+      nodes.push(...withCond(expr(ex, sc), "render", cond || earlier.map((c) => `!(${c})`).join(" && ")));
+      if (cond) earlier.push(cond);
+    }
+    return nodes;
+  }
+  function children(list, sc) {
+    const out = [];
+    for (const c of list ?? []) {
+      if (c.type === "JSXElement") out.push(...element(c, sc));
+      else if (c.type === "JSXFragment") out.push(...children(c.children, sc));
+      else if (c.type === "JSXExpressionContainer" && c.expression.type !== "JSXEmptyExpression") out.push(...expr(c.expression, sc));
+    }
+    return out;
+  }
+  function element(el, sc) {
+    const open = el.openingElement, name = jsxName(open.name);
+    const kids = [];
+    // props that hold components (header={<Text/>}, component={<X/>}) belong to the component too
+    let disabled = "";
+    for (const a of open.attributes) {
+      if (a.type !== "JSXAttribute" || a.value?.type !== "JSXExpressionContainer") continue;
+      const prop = jsxName(a.name), ex = a.value.expression;
+      if (prop === "disabled" && !literalOf(ex)) disabled = text(sc, ex);
+      else if (prop !== "disabled") { const sub = expr(ex, sc); if (sub.length && (ex.type === "JSXElement" || ex.type === "JSXFragment" || ex.type === "ArrowFunctionExpression" || ex.type === "LogicalExpression" || ex.type === "ConditionalExpression")) kids.push(...sub.map((n) => ({ ...n, note: n.note ?? `prop ${prop}` }))); }
+    }
+    kids.push(...children(el.children, sc));
+    const transparent = /^[a-z]/.test(name) || name === "Fragment" || name === "React.Fragment" || name === "";
+    if (transparent) return kids;
+    if (++count > MAX_STRUCT_NODES) return [];
+    const local = defs.get(name);
+    const node = { name, kind: sc.imported.has(name.split(".")[0]) ? "library" : "existing", ordinal: sc.ords.get(open.start) };
+    if (disabled) node.disabled = disabled;
+    if (local && !stack.includes(name) && stack.length < MAX_STRUCT_DEPTH && !kids.length) {
+      stack.push(name);
+      const inner = fnResult(local.fn, local.sc);
+      stack.pop();
+      node.note = "defined in this file";
+      if (inner.length) node.children = inner;
+    } else if (kids.length) node.children = kids;
+    return [node];
+  }
+
+  // the root: what the page renders (`….render(<App/>)`), else the last component of the file
+  let rootEl = null, rootSc = null;
+  for (const sc of scripts) if (!rootEl) walk(sc.ast.program, (n) => {
+    if (!rootEl && n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.property.name === "render" && (n.arguments[0]?.type === "JSXElement" || n.arguments[0]?.type === "JSXFragment")) { rootEl = n.arguments[0]; rootSc = sc; }
+  });
+  let kids;
+  if (rootEl) kids = expr(rootEl, rootSc);
+  else { const last = [...defs.values()].at(-1); kids = last ? fnResult(last.fn, last.sc) : []; }
+  const tree = { name: name ? `Screen: ${name}` : "Screen", kind: "screen" };
+  if (kids.length) tree.children = kids;
+  return tree;
+}
+
+/** The structure as text for the agent: one line per component, indented; ×N = once per item, [R: …] rendered when, [D: …] disabled when. */
+export function structureOutline(tree) {
+  const lines = [];
+  const walkTree = (n, depth) => {
+    const tags = [n.relation ? "×N" : "", n.render ? `[R: ${n.render}]` : "", n.disabled ? `[D: ${n.disabled}]` : "", n.label ? `// ${n.label}` : "", n.data ? `← ${n.data}` : "", n.note ? `(${n.note})` : ""].filter(Boolean);
+    lines.push(`${"  ".repeat(depth)}${n.name}${tags.length ? ` ${tags.join(" ")}` : ""}`);
+    for (const c of n.children ?? []) walkTree(c, depth + 1);
+  };
+  walkTree(tree, 0);
+  return lines.join("\n");
+}

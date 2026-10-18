@@ -55,9 +55,10 @@ const HOME_READ = [".claude", ".skilled-plus4u-mcp"].map((d) => path.join(os.hom
  * What the agent may touch: writes only inside the project folder; reads inside the project folder, the Claude plugin folders and
  * (when a repository is linked) the repository except secrets. Returns { behavior: "allow" } or { behavior: "deny", message }.
  */
-export function accessPolicy({ cwd, repoDir, tool, target }) {
+export function accessPolicy({ cwd, repoDir, tool, target, extraFiles = [] }) {
   if (!target) return { behavior: "allow" };
   const abs = path.resolve(cwd, target);
+  if (extraFiles.some((f) => path.resolve(f) === abs)) return { behavior: "allow" }; // single files outside the project that the agent may read and write (the rules of all projects)
   if (WRITE_TOOLS.has(tool)) return inside(abs, cwd) ? { behavior: "allow" } : { behavior: "deny", message: `Writing outside ${cwd} is not allowed${repoDir && inside(abs, repoDir) ? " (the linked repository is read-only)" : ""}.` };
   if (READ_TOOLS.has(tool)) {
     if ([cwd, ...HOME_READ].some((r) => inside(abs, r))) return { behavior: "allow" };

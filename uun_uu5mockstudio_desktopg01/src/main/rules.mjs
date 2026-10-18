@@ -31,18 +31,41 @@ export async function migrateDescriptions(projectDir) {
   return true;
 }
 
-/** `R-012` style id following the highest one in the text. */
-export function nextRuleId(text) {
-  const max = [...String(text).matchAll(/\bR-(\d{1,6})\b/g)].reduce((m, x) => Math.max(m, Number(x[1])), 0);
-  return `R-${String(max + 1).padStart(3, "0")}`;
+/** `R-012` style id following the highest one in the text (`G-nnn` for the rules of all projects). */
+export function nextRuleId(text, prefix = "R") {
+  const max = [...String(text).matchAll(new RegExp(`\\b${prefix}-(\\d{1,6})\\b`, "g"))].reduce((m, x) => Math.max(m, Number(x[1])), 0);
+  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
 }
 
 /** Adds `- R-nnn text` to the section of the screen (or General); the section is created when missing. Returns the new content and the id. */
 export async function appendRule(projectDir, text, screen) {
+  const before = (await readRules(projectDir)) || TEMPLATE, { out, id } = addRule(before, text, screen, "R");
+  await writeRules(projectDir, out);
+  return { id, content: out };
+}
+
+// ---------------------------------------------------------------- the rules of all projects: GLOBAL_RULES.md in the folder that holds the projects
+export const GLOBAL_FILE = "GLOBAL_RULES.md";
+export const GLOBAL_TEMPLATE = `# Rules for all projects
+
+Standing rules that apply to every project and every screen, for example how screens are composed of components. Maintained by Claude and by hand; every project reads this file.
+
+## General
+
+`;
+export const readGlobalRules = (root) => read(path.join(root, GLOBAL_FILE));
+export async function writeGlobalRules(root, text) { await fs.promises.writeFile(path.join(root, GLOBAL_FILE), text); }
+export async function appendGlobalRule(root, text) {
+  const before = (await readGlobalRules(root)) || GLOBAL_TEMPLATE, { out, id } = addRule(before, text, null, "G");
+  await writeGlobalRules(root, out);
+  return { id, content: out };
+}
+
+/** Adds `- <prefix>-nnn text` to the section of the screen (or General) of a rules text; the section is created when missing. */
+function addRule(before, text, screen, prefix) {
   const rule = String(text).replace(/\s+/g, " ").trim();
   if (!rule) throw new Error("The rule is empty.");
-  const before = (await readRules(projectDir)) || TEMPLATE;
-  const id = nextRuleId(before), heading = screen ? `## Screen: ${screen}` : "## General";
+  const id = nextRuleId(before, prefix), heading = screen ? `## Screen: ${screen}` : "## General";
   const lines = before.replace(/\s+$/, "").split("\n"), line = `- ${id}${screen ? ` (screen: ${screen})` : ""} ${rule}`;
   let at = lines.findIndex((l) => l.trim() === heading);
   if (at < 0) { lines.push("", heading, "", line); }
@@ -51,9 +74,7 @@ export async function appendRule(projectDir, text, screen) {
     while (end - 1 > at && lines[end - 1].trim() === "") end--;
     lines.splice(end, 0, ...(end === at + 1 ? ["", line] : [line])); // the first rule of a section is separated from its heading
   }
-  const out = lines.join("\n") + "\n";
-  await writeRules(projectDir, out);
-  return { id, content: out };
+  return { out: lines.join("\n") + "\n", id };
 }
 
 /** Which lines were added / removed between two versions of a file (order and duplicates counted, blank lines ignored). */

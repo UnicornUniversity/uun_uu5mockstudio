@@ -23,11 +23,11 @@ import { bundlePath, canSelfUpdate, downloadTo, digestHex, unpackAndCheck, start
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
-import { tagHtml, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
+import { tagHtml, structureOf, structureOutline, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
-import { RULES_FILE, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes } from "./rules.mjs";
+import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes } from "./rules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // App-wide settings (not tied to a project): last opened project, offline CDN mode, projects folder
@@ -145,6 +145,7 @@ app.whenReady().then(async () => {
     return inspectInfo(out, ordinals, sub);
   });
   // the items of a list prop (an action list): shown, added, removed, moved, duplicated
+  ipcMain.handle("jsx:structure", guard((_e, { file }) => structureOf(fs.readFileSync(screenPath(file), "utf8"), String(file).replace(/\.html$/, ""))));
   ipcMain.handle("jsx:list", guard((_e, { file, ordinals, prop }) => describeList(fs.readFileSync(screenPath(file), "utf8"), ordinals[0], String(prop))));
   ipcMain.handle("jsx:item", guard((_e, { file, ordinals, prop, op }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8"), o = ordinals[0];
@@ -168,6 +169,7 @@ app.whenReady().then(async () => {
   const browser = createStudioBrowser({
     baseUrl: `http://127.0.0.1:${port}`,
     onNavigated: (screen) => emit("preview:navigated", screen),
+    readStructure: (file) => { const f = path.basename(String(file)); const t = structureOf(fs.readFileSync(screenPath(f), "utf8"), f.replace(/\.html$/, "")); return t ? structureOutline(t) : null; },
   });
 
   // ----- per-project runtime: Claude session and file watcher follow the open project
@@ -188,7 +190,7 @@ app.whenReady().then(async () => {
     currentChatId = st.currentChatId;
     const svc = new ClaudeService({
       repoDir: await repoReadDir(st), repoLabel: st.repo?.view ? `snapshot of branch ${st.repo.view}` : "",
-      cwd: projectDir, urlBase: `http://127.0.0.1:${port}/${encodeURIComponent(name)}`, browserMcp: browser.server,
+      cwd: projectDir, urlBase: `http://127.0.0.1:${port}/${encodeURIComponent(name)}`, browserMcp: browser.server, globalRoot: root, docs,
       sessionId: chats.current(st).sessionId ?? undefined,
       onEvent: (m) => {
         if (name !== current) return; // late events of a project that is no longer open
@@ -300,7 +302,7 @@ app.whenReady().then(async () => {
     return chatView(st);
   }));
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
-  ipcMain.handle("chat:send", guard((_e, { prompt, model }) => { if (!claude) throw new Error("No project is open."); claude.runChat = currentChatId; return claude.send(prompt, model); }));
+  ipcMain.handle("chat:send", guard((_e, { prompt, model, plan }) => { if (!claude) throw new Error("No project is open."); claude.runChat = currentChatId; return claude.send(prompt, model, { plan: Boolean(plan) }); }));
   ipcMain.handle("chat:stop", () => claude?.stop());
   ipcMain.handle("claude:status", (_e, refresh) => getStatus({ refresh }));
   // ----- first run: Claude Code, sign-in, plugins (progress goes to the renderer as claude:progress)
@@ -482,6 +484,13 @@ app.whenReady().then(async () => {
     const st = await readState(dir()); if (!st.repo?.path) return [];
     return listRepoFiles(st.repo.path, String(query ?? ""), st.repo.view ? { ref: st.repo.view } : {});
   }));
+  // the rules of all projects: GLOBAL_RULES.md in the folder that holds the projects
+  ipcMain.handle("rules:getGlobal", guard(() => readGlobalRules(root)));
+  ipcMain.handle("rules:setGlobal", guard(async (_e, text) => { await writeGlobalRules(root, String(text)); return { ok: true }; }));
+  ipcMain.handle("rules:addGlobal", guard(async (_e, text) => appendGlobalRule(root, text)));
+  try { // the agent or the user changes the file: the dialog follows
+    let t; fs.watch(root, (_evt, file) => { if (file !== GLOBAL_FILE) return; clearTimeout(t); t = setTimeout(() => emit("memory:changed", { kind: "global" }), 250); });
+  } catch { /* the folder cannot be watched */ }
   ipcMain.handle("rules:get", guard(() => readRules(dir())));
   ipcMain.handle("rules:set", guard(async (_e, text) => { await writeRules(dir(), String(text)); lastRules = String(text); return { ok: true }; }));
   ipcMain.handle("rules:add", guard(async (_e, text, screen) => { const r = await appendRule(dir(), text, screen || null); lastRules = r.content; return r; }));

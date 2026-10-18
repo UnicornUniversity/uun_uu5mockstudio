@@ -15,7 +15,7 @@ const fileParam = z.string().optional().describe("Mockup .html file name. Defaul
  * In-process MCP server that lets the agent verify what the app preview really renders.
  * The canvas shows one <webview> per mockup file; the renderer registers each via `register(file, id)`.
  */
-export function createStudioBrowser({ baseUrl, onNavigated }) {
+export function createStudioBrowser({ baseUrl, onNavigated, readStructure }) {
   const views = new Map(); // file -> webContents id
   const logs = new Map(); // webContents id -> [{level,text}]
   let lastFile;
@@ -113,6 +113,11 @@ export function createStudioBrowser({ baseUrl, onNavigated }) {
         if (!r.ok) return text(`Nothing to click for ${label ? `text "${label}"` : `selector "${selector}"`}${r.count ? ` with index ${index} (${r.count} match${r.count > 1 ? "es" : ""})` : ""}. Clickable elements on the page:\n${r.items.join("\n")}`);
         await sleep(700); // the page reacts (a dialog opens, a tab switches)
         return text(`clicked: ${r.tag} "${r.label}"${r.count > 1 ? ` (match ${index + 1} of ${r.count})` : ""}${r.viaFallback ? " (through el.click())" : ""}\n\n${await snapshotText(wc, name)}`);
+      }),
+    tool("screen_structure", "The component structure (decomposition) of an existing screen, read from its file: the components in the order of rendering, indented by nesting; ×N = rendered once per item of a list, [R: cond] = rendered only when, [D: cond] = disabled when, ← = the data a component receives. Use it before planning a change of an existing screen and keep its component names in the plan.",
+      { file: z.string().describe("File name of the .html screen in the project folder") },
+      async ({ file }) => {
+        try { const out = readStructure?.(file); return text(out ?? "The screen has no JSX to read."); } catch (e) { return text(`Cannot read the structure: ${e.message}`); }
       }),
     tool("browser_screenshot", "Screenshot (PNG) of a mockup as shown in the app, at the frame's current device size. Use for the final visual check.",
       { file: fileParam },
