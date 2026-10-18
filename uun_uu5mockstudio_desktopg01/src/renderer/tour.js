@@ -18,7 +18,7 @@ const CARDS = [
   },
   {
     title: "The chat knows your context",
-    text: "Paste or drop a screenshot or a sketch into the request. Type @ to mention another screen or a file of the linked repository. The target button picks a component for the message.",
+    text: "Paste or drop a screenshot or a sketch into the request. Type @ to mention another screen, a file of the linked repository or a component of the uu5 libraries (the cube button browses them). The target button picks a component on a screen.",
     art: S(`${frame(60, 14, 320, 162)}
       <rect x="76" y="30" width="180" height="26" rx="13" class="t-fill"/>${line(92, 40, 120, "t-line s")}
       <rect x="170" y="66" width="194" height="26" rx="13" class="t-accent"/>${line(186, 76, 140, "t-line w")}
@@ -28,7 +28,7 @@ const CARDS = [
   },
   {
     title: "A canvas for all screens",
-    text: "Zoom and pan, choose a device size, arrange the screens with one click, or open one fullscreen. Pin sticky notes to a screen: they stay with it, right on the canvas.",
+    text: "Zoom and pan (⌥ + two-finger scroll moves the canvas while you work inside a screen), choose a device size, arrange the screens with one click, or open one fullscreen. Pin sticky notes to a screen: they stay with it, right on the canvas.",
     art: S(`${frame(14, 30, 120, 130)}${line(26, 46, 60)}${line(26, 62, 90, "t-line s")}${line(26, 78, 80, "t-line s")}
       ${frame(150, 30, 150, 130, "t-card t-sel")}${line(162, 46, 70)}<rect x="162" y="62" width="126" height="40" rx="5" class="t-fill"/>${line(162, 114, 100, "t-line s")}
       ${frame(316, 30, 110, 130)}${line(328, 46, 50)}${line(328, 62, 80, "t-line s")}

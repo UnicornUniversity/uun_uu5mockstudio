@@ -259,3 +259,175 @@ test("setItemBranch edits a conditional property of a list item", () => {
   const out = setItemBranch(COND, 2, "itemList", 0, "icon", 1, { type: "string", value: "uugds-c" });
   assert.match(out, /icon: open \? "uugds-a" : "uugds-c"/);
 });
+
+import { describeElement as describeEl, setProp as setP } from "../src/main/jsxSource.mjs";
+
+const VAR_PAGE = `<script type="text/babel">
+import { createComponent, useLsi } from "uu5g05";
+import Uu5Elements from "uu5g05-elements";
+const TITLE = "Fixed title";
+const T = { head: { text: "Plain object" } };
+const Page = createComponent({
+  render() {
+    const ph = useLsi({
+      cs: { progressTitle: "Průběh práce", other: "x" },
+      en: { progressTitle: "Thesis progress", other: "y" },
+    });
+    return (
+      <div>
+        <Uu5Elements.Block header={ph.progressTitle} />
+        <Uu5Elements.Block header={TITLE} />
+        <Uu5Elements.Block header={T.head.text} />
+        <Uu5Elements.Block header={unknown.value} />
+      </div>
+    );
+  },
+});
+</script>`;
+const attrOf = (html, ordinal, name) => describeEl(html, ordinal).attrs.find((a) => a.name === name);
+const blocks = (html) => { const out = []; for (let i = 0; describeEl(html, i); i++) if (describeEl(html, i).name === "Uu5Elements.Block") out.push(i); return out; };
+
+test("a prop that refers to a variable knows where the literal behind it is written", () => {
+  const [lsi, constant, obj, unknown] = blocks(VAR_PAGE);
+  const a = attrOf(VAR_PAGE, lsi, "header").valueRef;
+  assert.equal(a.path, "ph.progressTitle"); assert.equal(a.via, "useLsi");
+  assert.deepEqual(a.targets.map((t) => [t.lang, t.value]), [["cs", "Průběh práce"], ["en", "Thesis progress"]]);
+  assert.deepEqual(attrOf(VAR_PAGE, constant, "header").valueRef.targets.map((t) => t.value), ["Fixed title"]);
+  assert.deepEqual(attrOf(VAR_PAGE, obj, "header").valueRef.targets.map((t) => t.value), ["Plain object"]);
+  assert.equal(attrOf(VAR_PAGE, unknown, "header").valueRef, undefined);
+});
+
+test("editing such a prop changes the variable, in the language that is shown", () => {
+  const [lsi, constant, obj] = blocks(VAR_PAGE);
+  const cs = setP(VAR_PAGE, lsi, "header", { type: "valueRef", value: { to: "Nový průběh", from: "Průběh práce" } });
+  assert.match(cs, /progressTitle: "Nový průběh"/); assert.match(cs, /progressTitle: "Thesis progress"/); assert.match(cs, /header=\{ph\.progressTitle\}/, "the prop still refers to the variable");
+  assert.match(setP(VAR_PAGE, lsi, "header", { type: "valueRef", value: { to: "New", from: "Thesis progress" } }), /progressTitle: "Průběh práce"[\s\S]*progressTitle: "New"/);
+  assert.throws(() => setP(VAR_PAGE, lsi, "header", { type: "valueRef", value: { to: "x", from: "something else" } }), /written in 2 places/);
+  assert.match(setP(VAR_PAGE, constant, "header", { type: "valueRef", value: { to: "Other", from: "Fixed title" } }), /const TITLE = "Other";/);
+  assert.match(setP(VAR_PAGE, obj, "header", { type: "valueRef", value: { to: "Changed", from: "Plain object" } }), /head: \{ text: "Changed" \}/);
+  assert.throws(() => setP(VAR_PAGE, blocks(VAR_PAGE)[3], "header", { type: "valueRef", value: { to: "x", from: "y" } }), /does not take its value from a literal/);
+});
+
+import { describeList, addItem, removeItem, moveItem, duplicateItem } from "../src/main/jsxSource.mjs";
+
+const wrap = (list) => `<script type="text/babel">
+import Uu5Elements from "uu5g05-elements";
+function Page() {
+  return (
+    <Uu5Elements.Block
+      header="H"
+      actionList={${list}}
+    />
+  );
+}
+</script>`;
+const MULTI = wrap(`[
+        { icon: "uugds-plus", children: "Add", onClick: () => add() },
+        // a comment between items
+        { icon: "uugds-delete", children: "Delete", collapsed: true },
+        { children: "Third" },
+      ]`);
+const INLINE = wrap(`[{ children: "A" }, { children: "B" }]`);
+const block = (html) => { for (let i = 0; describeEl(html, i); i++) if (describeEl(html, i).name === "Uu5Elements.Block") return i; };
+const texts = (html) => describeList(html, block(html), "actionList").items.map((i) => i.attrs.find((a) => a.name === "children")?.value ?? i.text);
+
+test("describeList shows the items with their properties; a list built in code is refused", () => {
+  const l = describeList(MULTI, block(MULTI), "actionList");
+  assert.equal(l.items.length, 3);
+  assert.deepEqual(l.items[1].attrs.map((a) => a.name), ["icon", "children", "collapsed"]);
+  assert.equal(l.items[0].attrs.find((a) => a.name === "onClick").type, "code");
+  assert.throws(() => describeList(wrap("cond ? [] : [{ children: 'x' }]"), block(wrap("cond ? [] : [{ children: 'x' }]")), "actionList"), /built dynamically/);
+});
+
+test("removeItem keeps commas, comments and layout", () => {
+  const o = block(MULTI), out = removeItem(MULTI, o, "actionList", 1);
+  assert.deepEqual(texts(out), ["Add", "Third"]); assert.match(out, /a comment between items/); assert.doesNotMatch(out, /uugds-delete/);
+  assert.deepEqual(texts(removeItem(MULTI, o, "actionList", 2)), ["Add", "Delete"]);
+  assert.match(removeItem(MULTI, o, "actionList", 2), /collapsed: true \},\n\s*\]/, "the trailing comma of the list stays");
+  assert.deepEqual(texts(removeItem(INLINE, block(INLINE), "actionList", 1)), ["A"]);
+  assert.match(removeItem(INLINE, block(INLINE), "actionList", 1), /actionList=\{\[\{ children: "A" \}\]\}/);
+  const one = removeItem(wrap(`[{ children: "A" }]`), block(wrap("[]")), "actionList", 0);
+  assert.match(one, /actionList=\{\[\]\}/);
+});
+
+test("addItem and duplicateItem insert in the style of the list", () => {
+  const o = block(MULTI);
+  const added = addItem(MULTI, o, "actionList", [{ name: "icon", type: "string", value: "uugds-plus" }, { name: "children", type: "string", value: "New" }]);
+  assert.deepEqual(texts(added), ["Add", "Delete", "Third", "New"]);
+  assert.match(added, /\{ children: "Third" \},\n\s{8}\{ icon: "uugds-plus", children: "New" \},\n\s{6}\]/);
+  assert.deepEqual(texts(addItem(MULTI, o, "actionList", [{ name: "children", type: "string", value: "First" }], 0)), ["First", "Add", "Delete", "Third"]);
+  assert.deepEqual(texts(addItem(INLINE, block(INLINE), "actionList", [{ name: "children", type: "string", value: "C" }])), ["A", "B", "C"]);
+  assert.match(addItem(INLINE, block(INLINE), "actionList", [{ name: "children", type: "string", value: "C" }]), /\{ children: "B" \}, \{ children: "C" \}\]/);
+  const empty = addItem(wrap("[]"), block(wrap("[]")), "actionList", [{ name: "children", type: "string", value: "Only" }]);
+  assert.deepEqual(texts(empty), ["Only"]);
+  const dup = duplicateItem(MULTI, o, "actionList", 0);
+  assert.deepEqual(texts(dup), ["Add", "Add", "Delete", "Third"]); assert.equal((dup.match(/onClick: \(\) => add\(\)/g) ?? []).length, 2);
+});
+
+test("moveItem reorders the items and leaves everything between them", () => {
+  const o = block(MULTI);
+  assert.deepEqual(texts(moveItem(MULTI, o, "actionList", 0, 2)), ["Delete", "Third", "Add"]);
+  assert.deepEqual(texts(moveItem(MULTI, o, "actionList", 2, 0)), ["Third", "Add", "Delete"]);
+  assert.match(moveItem(MULTI, o, "actionList", 0, 1), /a comment between items/);
+  assert.equal(moveItem(MULTI, o, "actionList", 1, 1), MULTI);
+  assert.throws(() => moveItem(MULTI, o, "actionList", 0, 5), /cannot be moved/);
+});
+
+import { setText } from "../src/main/jsxSource.mjs";
+
+const TXT_PAGE = `<script type="text/babel">
+import { createComponent, useLsi } from "uu5g05";
+import Uu5Elements from "uu5g05-elements";
+const L = (cs, en) => ({ cs, en });
+const t = (cs, en) => <T lsi={L(cs, en)} />;
+const TITLE = { cs: "Název", en: "Title" };
+const LABELS = { save: L("Uložit", "Save") };
+function Page() {
+  return (
+    <div>
+      <Uu5Elements.Block header={TITLE} />
+      <Uu5Elements.Block header={LABELS.save} />
+      <Uu5Elements.Block header={t("Historie", "History")} />
+      <Uu5Elements.Block header={<T lsi={{ cs: "Ahoj", en: "Hi" }} />} />
+      <Uu5Elements.Block header={dynamic} />
+      <Uu5Elements.Block actionList={[{ children: t("Ano", "Yes"), tooltip: TITLE }, { children: "Plain" }]} />
+    </div>
+  );
+}
+</script>`;
+const blks = (html) => { const o = []; for (let i = 0; describeEl(html, i); i++) if (describeEl(html, i).name === "Uu5Elements.Block") o.push(i); return o; };
+const langs = (r) => r && Object.fromEntries(r.langs.map((l) => [l.lang, l.value]));
+
+test("a prop or an item property that is an LSI or points to one shows the text of every language", () => {
+  const [a, b, c, d, dyn, lst] = blks(TXT_PAGE), res = (o, n) => attrOf(TXT_PAGE, o, n).resolved;
+  assert.deepEqual(langs(res(a, "header")), { cs: "Název", en: "Title" }); assert.equal(res(a, "header").via, "TITLE"); assert.equal(res(a, "header").kind, "lsi");
+  assert.deepEqual(langs(res(b, "header")), { cs: "Uložit", en: "Save" }); assert.equal(res(b, "header").via, "LABELS.save");
+  assert.deepEqual(langs(res(c, "header")), { cs: "Historie", en: "History" }); assert.equal(res(c, "header").via, "t(…)");
+  assert.deepEqual(langs(res(d, "header")), { cs: "Ahoj", en: "Hi" });
+  assert.equal(res(dyn, "header"), undefined, "a computed value stays code");
+  const items = describeList(TXT_PAGE, lst, "actionList").items;
+  assert.deepEqual(langs(items[0].attrs.find((x) => x.name === "children").resolved), { cs: "Ano", en: "Yes" });
+  assert.deepEqual(langs(items[0].attrs.find((x) => x.name === "tooltip").resolved), { cs: "Název", en: "Title" });
+  assert.equal(items[1].attrs.find((x) => x.name === "children").resolved, undefined, "a plain string is a plain string");
+});
+
+test("setText changes one language where it is written", () => {
+  const [a, b, c, d, , lst] = blks(TXT_PAGE);
+  assert.match(setText(TXT_PAGE, a, { attr: "header" }, 1, "Heading"), /const TITLE = \{ cs: "Název", en: "Heading" \}/);
+  assert.match(setText(TXT_PAGE, b, { attr: "header" }, 0, "Ulož"), /LABELS = \{ save: L\("Ulož", "Save"\) \}/);
+  assert.match(setText(TXT_PAGE, c, { attr: "header" }, 1, "Past"), /header=\{t\("Historie", "Past"\)\}/);
+  assert.match(setText(TXT_PAGE, d, { attr: "header" }, 0, "Čau"), /cs: "Čau", en: "Hi"/);
+  assert.match(setText(TXT_PAGE, lst, { item: { prop: "actionList", index: 0 }, name: "children" }, 0, "Určitě"), /children: t\("Určitě", "Yes"\)/);
+  assert.throws(() => setText(TXT_PAGE, blks(TXT_PAGE)[4], { attr: "header" }, 0, "x"), /not written out as a literal/);
+});
+
+import { replaceItem } from "../src/main/jsxSource.mjs";
+
+test("replaceItem swaps the whole item for code, and refuses invalid code", () => {
+  const o = block(MULTI);
+  const out = replaceItem(MULTI, o, "actionList", 2, `{ component: <Badge colorScheme="final">{t("Hotovo", "Done")}</Badge> }`);
+  assert.match(out, /\{ component: <Badge colorScheme="final">/); assert.deepEqual(texts(out).slice(0, 2), ["Add", "Delete"]); assert.match(out, /a comment between items/);
+  assert.throws(() => replaceItem(MULTI, o, "actionList", 0, "{ children: "), /Invalid code/);
+  assert.throws(() => replaceItem(MULTI, o, "actionList", 0, "  "), /is empty/);
+  assert.throws(() => replaceItem(MULTI, o, "actionList", 9, "{}"), /no longer exists/);
+});

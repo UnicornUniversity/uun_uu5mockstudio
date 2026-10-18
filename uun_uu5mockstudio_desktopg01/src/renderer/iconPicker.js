@@ -136,7 +136,7 @@ export function createIconPicker({ getCatalog, getBml }) {
   }
 
   function done(value) { box.hidden = true; const r = resolve; resolve = null; r?.(value); }
-  $("ib-cancel").onclick = () => done(null);
+  $("ib-x").onclick = () => done(null);
   $("ib-search").oninput = render; $("ib-cat").onchange = render; $("ib-dep").onchange = render;
   $("ib-lib").onchange = () => setLib($("ib-lib").value);
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); done(null); } });

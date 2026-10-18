@@ -197,6 +197,11 @@ function describeForAgent(p) {
 /** What the agent is told: the selected component(s) at React level, with the exact source from the file. Takes one pick or a list. */
 export function agentContext(picks) {
   const list = Array.isArray(picks) ? picks : [picks];
+  // the picks are linked in the text of the request as [#1 …], [#2 …] where the user refers to them
+  if (list.every((p) => p.ref != null)) {
+    return `Context: the user marked ${list.length === 1 ? "a component" : `${list.length} components`} in the request. In the text they are written as markers [#n …] at the place they refer to ("change this one [#1 …] and that one [#2 …]"):\n` +
+      list.map((p) => `#${p.ref}) ${describeForAgent(p)}`).join("\n") + `\n${LEVEL}`;
+  }
   if (list.length === 1) return `Context: the user selected ${list[0].sub ? "one item of a list prop: " : ""}${describeForAgent(list[0])} ${LEVEL}`;
   return `Context: the user selected ${list.length} components for this request; the request may concern any or all of them:\n` +
     list.map((p, i) => `${i + 1}) ${describeForAgent(p)}`).join("\n") + `\n${LEVEL}`;

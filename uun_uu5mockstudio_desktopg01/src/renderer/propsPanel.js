@@ -1,10 +1,15 @@
 import { iconGlyph, isBmlCode } from "./iconPicker.js";
+import { listKind } from "./actionGrammar.js";
+import { iconField, ICON_PICK_SVG as ICON_SHAPES } from "./iconField.js";
+import { textField } from "./textField.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null)); return n; };
 const SKIP_ADD = new Set(["children", "elementRef", "elementAttrs", "uu5Tag"]);
 const CODE_TYPE = /func|object|array|node|element|ref|\[\]|shape/i;
 // props whose values come from uuGds palettes, even when the component has no reference page
 const WELL_KNOWN = { colorScheme: { type: "colorScheme" }, borderRadius: { type: "borderRadius" } };
+// list props whose items come from a fixed set even when the component has no reference page (Uu5.Utils.NestingLevel.valueList, plus the modal level of ContentContainer)
+const WELL_KNOWN_LISTS = { nestingLevelList: ["uve", "route", "areaCollection", "area", "boxCollection", "box", "spotCollection", "spot", "inline", "modal"] };
 // A prop that holds an icon: documented as one, or named like one (icon, typeIcon, rightIcon, iconRight, stateIcon ...). Names that only
 // mention an icon (iconSize, iconColorScheme, hideIcon ...) and props documented as another type are not icons.
 export function isIconProp(name, prop) {
@@ -14,11 +19,16 @@ export function isIconProp(name, prop) {
 }
 /** stateIcon holds a uuBml state (`uubml-state-s02-active`), which has its own palette instead of the uuGDS icon catalog. */
 export const isStateIconProp = (name) => /stateicon/i.test(name);
-const ICON_SHAPES = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>`; // "choose from a catalog of shapes" (the old square glyph looked like a Stop button)
+const ICON_LIST = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>`;
 const short = (name) => String(name ?? "").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "");
 
 /** Which editor a prop gets, from its documentation (type / allowed values) and from how it is written in the file. */
-export function kindOf(prop, attr, palettes = {}) {
+export function kindOf(prop, attr, palettes = {}, name = "") {
+  // a list of plain strings (["area", "box"]) whose allowed items are known: a multi choice
+  const listOptions = prop?.listEnum ?? WELL_KNOWN_LISTS[name];
+  if (attr?.type === "code" && attr.json && listOptions) {
+    try { const v = JSON.parse(attr.json); if (Array.isArray(v) && v.every((x) => typeof x === "string")) return { kind: "multi", options: listOptions, value: v }; } catch { /* not plain data */ }
+  }
   if (attr?.type === "code") return { kind: "code" };
   const type = prop?.type ?? "";
   if (type === "colorScheme" && palettes.colorScheme) return { kind: "select", options: palettes.colorScheme };
@@ -125,9 +135,55 @@ export function createPropsPanel({ api, onUse }) {
     return el("div", { className: "pcode" }, input, edit);
   }
 
+  /** A list of plain strings with known allowed items: a button that shows what is chosen and opens a list of check boxes; the choice is written when the list closes. */
+  function multiControl(name, options, chosen) {
+    const all = [...options, ...chosen.filter((v) => !options.includes(v))]; // a value that is in the file but not in the documentation stays visible
+    const btn = el("button", { type: "button", className: "pmulti", title: `${name}: ${chosen.join(", ") || "nothing chosen"}` });
+    btn.append(...(chosen.length ? chosen.map((v) => el("span", { className: "pm-chip", textContent: v })) : [el("span", { className: "mute", textContent: "none" })]), el("span", { className: "pm-caret", textContent: "▾" }));
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pop = el("div", { className: "pm-pop", role: "listbox" }), boxes = new Map();
+      for (const v of all) { const cb = el("input", { type: "checkbox", checked: chosen.includes(v) }); boxes.set(v, cb); pop.append(el("label", {}, cb, el("span", { textContent: v }))); }
+      const r = btn.getBoundingClientRect();
+      Object.assign(pop.style, { left: Math.max(8, Math.min(r.left, innerWidth - 230)) + "px", top: Math.min(r.bottom + 4, innerHeight - 40 - all.length * 28) + "px" });
+      document.body.append(pop);
+      const close = () => {
+        pop.remove(); removeEventListener("mousedown", away, true); removeEventListener("keydown", key, true);
+        const next = all.filter((v) => boxes.get(v).checked);
+        if (next.join("\n") !== chosen.join("\n")) setProp(name, { type: "code", value: toLiteral(next) });
+      };
+      const away = (ev) => { if (!pop.contains(ev.target)) close(); };
+      const key = (ev) => { if (ev.key === "Escape" || ev.key === "Enter") { ev.stopPropagation(); ev.preventDefault(); close(); } };
+      addEventListener("mousedown", away, true); addEventListener("keydown", key, true);
+      boxes.values().next().value?.focus();
+    };
+    return btn;
+  }
+
+  /**
+   * A text that is a literal somewhere in the file (a string, an LSI, a constant, `t("Ano", "Yes")`, `ph.title` of useLsi): the text itself,
+   * with a switch of the languages for an LSI; editing changes it where it is written (the prop keeps referring to it).
+   */
+  function textControl(name, attr, runtime) {
+    const scope = sub() ? { item: { prop: sub().prop, index: sub().index }, name } : { attr: name };
+    const field = textField({
+      resolved: attr.resolved, runtime, onLang: render,
+      onText: async (lang, value) => {
+        $("insp-err").textContent = "";
+        const r = await api.setText(pick.file, ordinals, scope, lang, value);
+        if (r?.error) { $("insp-err").textContent = r.error; return render(); }
+        await load();
+      },
+    });
+    const edit = el("button", { type: "button", className: "pedit", title: `Edit the expression of ${name} in a window (to point the prop somewhere else)`, textContent: "{…}", onclick: () => openJson(name, attr) });
+    return el("div", { className: "pcode plinked" }, field, edit);
+  }
+
   function control(name, attr) {
-    const prop = docProp(name) ?? WELL_KNOWN[name] ?? null, { kind, options } = kindOf(prop, attr, palettes());
+    const prop = docProp(name) ?? WELL_KNOWN[name] ?? null, { kind, options, value: multiValue } = kindOf(prop, attr, palettes(), name);
     const runtime = runtimeOf(name);
+    if (kind === "multi") return multiControl(name, options, multiValue);
+    if (attr?.resolved && attr.type === "code") return textControl(name, attr, runtime);
     if (attr?.type === "code") {
       const base = kindOf(prop, { ...attr, type: "string" }, palettes());
       if (base.kind === "select" || base.kind === "bool") return computedControl(name, attr, base, runtime);
@@ -158,18 +214,24 @@ export function createPropsPanel({ api, onUse }) {
     }
     input.onkeydown = (e) => { if (e.key === "Enter" && input.tagName === "INPUT" && input.type !== "checkbox") input.blur(); };
     if (kind === "text" && isIconProp(name, prop) && api.pickIcon) {
-      // icon props: choose from the uuGDS catalog
-      const state = isStateIconProp(name);
-      const pickBtn = el("button", { type: "button", className: "pedit pico", title: state ? "Choose a state (uuBml)" : "Choose an icon (uuGDS or uuBml)", innerHTML: ICON_SHAPES, onclick: async () => {
-        const v = await api.pickIcon({ current: attr?.type === "string" ? attr.value : null, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: state ? "state" : "icon" });
-        if (v) setProp(name, { type: "string", value: v });
-      } });
-      const cur = attr?.type === "string" && attr.value ? attr.value : null;
-      return el("div", { className: "pcode" }, cur && (pick.assets?.gdsBase || isBmlCode(cur)) ? iconGlyph(cur) : null, input, pickBtn);
+      // icon props: choose from the catalog (the same control as in the dialog of the actions)
+      const state = isStateIconProp(name), cur = attr?.type === "string" && attr.value ? attr.value : null;
+      return iconField({
+        value: cur, glyphs: Boolean(pick.assets?.gdsBase), title: state ? "Choose a state (uuBml)" : "Choose an icon (uuGDS or uuBml)",
+        onText: (v) => (v ? setProp(name, { type: "string", value: v }) : removeProp(name)),
+        onPick: () => api.pickIcon({ current: cur, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: state ? "state" : "icon" }),
+      }).row;
     }
     if (kind !== "code") return input;
     // objects, arrays, functions: a button opens the full value in a window
     const edit = el("button", { type: "button", className: "pedit" + (attr?.ref ? " ref" : ""), title: attr?.ref ? `Edit the constant ${attr.ref.name} in a window` : `Edit ${name} in a window`, textContent: "{…}", onclick: () => openJson(name, attr) });
+    // a list of actions written out in the file: not its code, but a button that opens the whole list in a window (the code stays behind {…})
+    if (attr?.listed && api.editList && listKind(name, info.element.name)) {
+      const n = attr.count ?? 0;
+      const open = el("button", { type: "button", className: "plist", title: "Edit the list of actions in a window", onclick: () => api.editList({ file: pick.file, ordinals, prop: name, componentName: info.element.name, palettes: palettes(), assets: pick.assets }) },
+        el("span", { className: "pl-ico", innerHTML: ICON_LIST }), el("span", { textContent: `${n} action${n === 1 ? "" : "s"}` }));
+      return el("div", { className: "pcode" }, open, edit);
+    }
     return el("div", { className: "pcode" }, input, edit);
   }
 

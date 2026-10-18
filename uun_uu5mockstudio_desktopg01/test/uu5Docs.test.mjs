@@ -74,3 +74,59 @@ test("enumOf understands bullet lists, 'one of' phrases and skips values that de
   assert.equal(enumOf("string", "Value of `type` is dependent on `segment`. Values `hero`, `lead` are available for segment `default`. Values `major`, `common` are available for segment `title`."), null);
   assert.equal(enumOf("string", "Only one of `icon`, `iconText` or `imageSrc` can be set."), null);
 });
+
+import { describeComponents } from "../src/main/uu5Docs.mjs";
+
+async function fakeWiki() {
+  const root = await mkdtemp(path.join(os.tmpdir(), "wiki-"));
+  const lib = async (dir, entries) => {
+    await mkdir(path.join(root, dir), { recursive: true });
+    const idx = {};
+    for (const [name, md] of Object.entries(entries)) { const f = `${name.split(".").pop().toLowerCase()}.md`; idx[name] = f; await writeFile(path.join(root, dir, f), md); }
+    await writeFile(path.join(root, dir, "_index.json"), JSON.stringify(idx));
+  };
+  await lib("uu5-elements", { "Uu5Elements.Button": MD, "Uu5Elements.ButtonGroup": "# Uu5Elements.ButtonGroup\n\nGroup of buttons.\n", "Uu5Elements.Block": "# Uu5Elements.Block\n\nBlock with a header.\n" });
+  await lib("uu5-forms", { "Uu5Forms.SubmitButton": "# Uu5Forms.SubmitButton\n\nButton that submits the form.\n", "Uu5Forms.Text": "# Uu5Forms.Text\n\nText input with a button.\n" });
+  return root;
+}
+
+test("list, libraries and search over the wiki", async () => {
+  const d = createDocs(await fakeWiki());
+  assert.deepEqual(d.libraries(), [{ library: "uu5-elements", count: 3 }, { library: "uu5-forms", count: 2 }]);
+  assert.equal(d.list().length, 5);
+  assert.equal(d.list().find((c) => c.name === "Uu5Elements.Block").description, "Block with a header.");
+  // a prefix of the name first, then a part of it, then the description
+  assert.deepEqual(d.search("button").map((c) => c.name), ["Uu5Elements.Button", "Uu5Elements.ButtonGroup", "Uu5Forms.SubmitButton", "Uu5Forms.Text"]);
+  assert.deepEqual(d.search("Uu5Elements.But").map((c) => c.name), ["Uu5Elements.Button", "Uu5Elements.ButtonGroup"]);
+  assert.deepEqual(d.search("button", { library: "uu5-forms" }).map((c) => c.name), ["Uu5Forms.SubmitButton", "Uu5Forms.Text"]);
+  assert.deepEqual(d.search("", { limit: 2 }).map((c) => c.name), ["Uu5Elements.Block", "Uu5Elements.Button"]);
+  assert.deepEqual(d.search("zzz"), []);
+  assert.equal(createDocs(null).available(), false);
+  assert.deepEqual(createDocs(null).search("button"), []);
+});
+
+test("describeComponents tells the agent the props and the file to read, and skips unknown names", async () => {
+  const d = createDocs(await fakeWiki());
+  const t = describeComponents(d, ["Uu5Elements.Button", "Nope.X", "Uu5Elements.Button"]);
+  assert.match(t, /^Referenced library components/);
+  assert.equal((t.match(/Uu5Elements\.Button –/g) ?? []).length, 1, "a name once");
+  assert.match(t, /- significance: common \| highlighted \| distinct = common/);
+  assert.match(t, /label \(required\)/);
+  assert.match(t, /Reference file .*button\.md/);
+  assert.match(t, /Docs: https:\/\/example\.com\/doc/);
+  assert.doesNotMatch(t, /Nope/);
+  assert.equal(describeComponents(d, ["Nope.X"]), "");
+  assert.match(describeComponents(d, ["Uu5Elements.Button"], { maxProps: 2 }), /… 5 more props/);
+});
+
+import { listEnumOf } from "../src/main/uu5Docs.mjs";
+
+test("listEnumOf: items of a list prop named in its description", () => {
+  assert.deepEqual(listEnumOf("array", 'Supported nesting levels: `"area"`, `"box"`, `"inline"`, `"spot"`, `"modal"`. Declares which display modes.'), ["area", "box", "inline", "spot", "modal"]);
+  assert.deepEqual(listEnumOf("string[]", "Possible values: - `uve` - `route` - `area`"), ["uve", "route", "area"]);
+  assert.equal(listEnumOf("array", "A list of things."), null);
+  assert.equal(listEnumOf("array", 'Only `"one"` is meant.'), null, "a single value is no choice");
+  assert.equal(listEnumOf("string", 'Values `"a"`, `"b"`'), null, "not a list type");
+  const doc = parseDoc("# X\n\nd\n\n| Name | Type | Required | Default | Description |\n| --- | --- | --- | --- | --- |\n| `levelList` | `array` | no |  | Levels: `\"area\"`, `\"box\"`. |\n");
+  assert.deepEqual(doc.props[0].listEnum, ["area", "box"]);
+});

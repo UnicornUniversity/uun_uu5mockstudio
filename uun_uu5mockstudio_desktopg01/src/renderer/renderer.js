@@ -8,6 +8,8 @@ import { createDescPanel } from "./descPanel.js";
 import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
+import { createLibraryPicker } from "./libraryPicker.js";
+import { createActionListEditor } from "./actionListEditor.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
 
@@ -236,7 +238,7 @@ $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitA
 $("alldev").onchange = (e) => { if (e.target.value) canvas.setDeviceAll(e.target.value); e.target.value = ""; };
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "dialog", "sizebox", "tour", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
+const MODALS = ["confirm", "dialog", "sizebox", "tour", "libbox", "actbox", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
@@ -262,17 +264,25 @@ let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick
 function setInspect(v, { chat = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v);
-  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
+  $("inspect").classList.toggle("on", v && !chatPick); $("selinspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
+$("selinspect").onclick = () => $("inspect").click(); // the same switch, on the bar above the screen
+$("insp-close").onclick = () => setInspect(false);
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
 const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml() });
+// the list of actions (actionList, itemList of ActionGroup, …) of the picked component, in a window
+const actionListEditor = createActionListEditor({ api: {
+  list: window.studio.jsxList, item: window.studio.jsxItem, setText: window.studio.jsxSetText, set: window.studio.jsxSet, remove: window.studio.jsxRemove,
+  buttonDoc: () => window.studio.docsDetail("Uu5Elements.Button"), pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b),
+} });
 const propsPanel = createPropsPanel({
-  api: { pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
+  api: { editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
 });
+window.__propsPanel = propsPanel; // the automated checks open the panel for a component through this
 /** The chat chip of a pick: names and the source of the component from the file (an item of a list falls back to the whole component). */
 async function chipFrom(p) {
   let r = await window.studio.jsxInspect(p.file, p.chain, p.sub), sub = p.sub;
@@ -307,8 +317,8 @@ async function showPick(p) {
     if (c.error) return toast(c.error, { err: true });
     const k = chipKey(c.chip);
     // like in the inspector: a plain click picks just this component, Shift / Cmd / Ctrl + click adds one or (when it was picked before) takes it off again
-    if (p.additive && p.selected === false) { chips = chips.filter((x) => chipKey(x) !== k); pickedKeys.delete(k); return renderChips(); }
-    if (!p.additive) { chips = chips.filter((x) => !pickedKeys.has(chipKey(x))); pickedKeys.clear(); }
+    if (p.additive && p.selected === false) { chips.filter((x) => chipKey(x) === k).forEach(removeRef); chips = chips.filter((x) => chipKey(x) !== k); pickedKeys.delete(k); return renderChips(); }
+    if (!p.additive) { chips.filter((x) => pickedKeys.has(chipKey(x))).forEach(removeRef); chips = chips.filter((x) => !pickedKeys.has(chipKey(x))); pickedKeys.clear(); }
     if (addChip(c.chip, { quiet: true })) pickedKeys.add(k); else renderChips();
     return;
   }
@@ -335,8 +345,8 @@ const chipKey = (p) => `${p.file}#${(p.chain ?? []).map((c) => (typeof c === "nu
 function renderChips() {
   const box = $("chips"); box.hidden = !chips.length; box.replaceChildren();
   chips.forEach((c, i) => {
-    const t = Object.assign(document.createElement("span"), { textContent: "📍 " + describePick(c), title: describePick(c) });
-    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove", textContent: "✕", onclick: () => { chips.splice(i, 1); renderChips(); } });
+    const t = Object.assign(document.createElement("span"), { textContent: `📍 #${c.ref} ${describePick(c)}`, title: describePick(c) });
+    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: () => { removeRef(c); chips.splice(i, 1); renderChips(); } });
     const chip = Object.assign(document.createElement("div"), { className: "chip" });
     chip.append(t, x); box.append(chip);
   });
@@ -344,9 +354,23 @@ function renderChips() {
 function addChip(p, { quiet = false } = {}) {
   if (chips.some((c) => chipKey(c) === chipKey(p))) { if (!quiet) toast("That component is already in the message."); return false; }
   if (chips.length >= MAX_CHIPS) { if (!quiet) toast(`At most ${MAX_CHIPS} components per message.`); return false; }
-  chips.push(p); renderChips(); return true;
+  p.ref = ++chipSeq; chips.push(p); insertRef(p); renderChips(); return true;
 }
-function clearChips() { chips = []; pickedKeys.clear(); renderChips(); }
+function clearChips() { chips = []; chipSeq = 0; pickedKeys.clear(); renderChips(); }
+
+// A component picked for the message is linked in the text where the cursor is, as `[#1 Box “Přehled…”]`, so that the text can say
+// "change this one [#1 …] and in that one [#2 …] too"; the chips above the field list them, the agent is told what #1, #2 are.
+let chipSeq = 0;
+const refLabel = (p) => {
+  const name = p.sub ? `item ${p.sub.index + 1} of ${p.sub.prop}` : String(p.element?.name || p.chain?.[0]?.name || "component").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "");
+  const what = p.text ? ` “${p.text.length > 26 ? `${p.text.slice(0, 25)}…` : p.text}”` : "";
+  return `${name}${what}`.replace(/\]/g, ")");
+};
+function insertRef(p) {
+  const t = $("prompt"), pre = t.value.slice(0, t.selectionStart), sep = pre && !/\s$/.test(pre) ? " " : "";
+  t.setRangeText(`${sep}[#${p.ref} ${refLabel(p)}] `, t.selectionStart, t.selectionEnd, "end");
+}
+function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new RegExp(`\\s?\\[#${p.ref} [^\\]]*\\]`), ""); }
 
 // ---------- project menu: export + offline CDN cache ----------
 let toastTimer;
@@ -453,11 +477,18 @@ function mentionedRepoFiles(text) {
   for (const m of text.matchAll(/(^|\s)@repo\/([^\s@]+)/g)) { const p = trimPunct(m[2]); if (p && !out.includes(p)) out.push(p); }
   return out;
 }
+/** Library components mentioned as @Uu5Elements.Button (in order, unique); the main process keeps only those that the plugin documentation knows. */
+function mentionedComponents(text) {
+  const out = [];
+  for (const m of text.matchAll(/(^|\s)@([A-Z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)/g)) if (!out.includes(m[2])) out.push(m[2]);
+  return out;
+}
 function highlightMentions(text) {
   const known = new Set(screenNames());
-  return esc(text).replace(/(^|\s)@([^\s@]+)/g, (all, pre, name) => {
+  return esc(text).replace(/\[#(\d+) ([^\]]*)\]/g, (all, n, label) => `<span class="mention comp" title="A component marked in the message">#${n} ${label}</span>`).replace(/(^|\s)@([^\s@]+)/g, (all, pre, name) => {
     if (name.startsWith("repo/")) { const base = trimPunct(name); return `${pre}<span class="mention repo" title="File of the linked repository">@${esc(base)}</span>${esc(name.slice(base.length))}`; }
     const base = trimPunct(name);
+    if (!known.has(base) && /^[A-Z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/.test(base)) return `${pre}<span class="mention lib" title="Component of a library (documentation of the uu5-development plugin)">@${esc(base)}</span>${esc(name.slice(base.length))}`;
     return known.has(base) ? `${pre}<a class="mention" data-screen="${esc(base)}.html">@${esc(base)}</a>${esc(name.slice(base.length))}` : all;
   });
 }
@@ -477,13 +508,22 @@ async function updateMentions() {
     if (ctx.query.startsWith("repo") || q.length >= 2) files = ((await window.studio.repoFiles(q)) ?? []).slice(0, 8).map((p) => `repo/${p}`);
     if (seq !== mentionSeq) return; // a newer keystroke is already being answered
   }
-  const items = [...names, ...files];
+  // components of the libraries (Uu5Elements, Uu5Forms, Plus4U5Elements, …) from the documentation of the uu5-development plugin
+  let libs = [];
+  if (ctx && ctx.query.length >= 2 && !ctx.query.startsWith("repo")) {
+    const found = await window.studio.docsSearch(ctx.query).catch(() => null);
+    if (seq !== mentionSeq) return;
+    libs = (found?.results ?? []).slice(0, 6);
+  }
+  const items = [...names, ...files, ...libs.map((c) => c.name)], libOf = new Map(libs.map((c) => [c.name, c.library]));
   if (!items.length) { box.hidden = true; return; }
   mentionIdx = Math.min(mentionIdx, items.length - 1);
-  box.replaceChildren(...items.map((n, i) => Object.assign(document.createElement("button"), {
-    type: "button", textContent: "@" + n, className: i === mentionIdx ? "on" : "",
-    onmousedown: (e) => { e.preventDefault(); insertMention(n); },
-  })));
+  box.replaceChildren(...items.map((n, i) => {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: "@" + n, className: i === mentionIdx ? "on" : "", onmousedown: (e) => { e.preventDefault(); insertMention(n); } });
+    b.dataset.name = n;
+    if (libOf.has(n)) b.append(Object.assign(document.createElement("small"), { textContent: libOf.get(n) }));
+    return b;
+  }));
   box.hidden = false;
 }
 function insertMention(name) {
@@ -492,6 +532,12 @@ function insertMention(name) {
   else { const sep = t.value && !/\s$/.test(t.value.slice(0, t.selectionStart)) ? " " : ""; t.setRangeText(sep + "@" + name + " ", t.selectionStart, t.selectionEnd, "end"); }
   $("mentions").hidden = true; mentionIdx = 0; t.focus();
 }
+const libraryPicker = createLibraryPicker({ api: window.studio });
+$("libbtn").onclick = async () => {
+  const names = await libraryPicker.open();
+  if (!names?.length) return $("prompt").focus();
+  for (const n of names) insertMention(n); // each one lands as @Name at the cursor
+};
 $("prompt").addEventListener("input", () => { mentionIdx = 0; updateMentions(); });
 $("prompt").addEventListener("click", updateMentions);
 $("prompt").addEventListener("blur", () => setTimeout(() => ($("mentions").hidden = true), 120));
@@ -510,7 +556,14 @@ function showRepo(r) {
   $("rs-main").title = `${r.error ? `Linked git repository is not available: ${r.error}` : "Linked git repository (Claude reads it, never writes)"}\n${r.path}${r.branch ? `\nChecked out: ${r.branch}` : ""}\nClick to open the folder`;
 }
 $("rs-main").onclick = async () => { const r = repo && (await window.studio.repoOpen()); if (r?.error) toast(r.error, { err: true }); }; // opens the repository folder itself in the file manager
-$("rs-unlink").onclick = async () => { await window.studio.repoUnlink(); showRepo(null); toast("Repository unlinked."); };
+/** Unlinking asks first: the link is project memory that Claude uses for every request. */
+async function unlinkRepoFlow() {
+  if (!repo) return;
+  const ok = await askConfirm({ title: `Unlink the repository “${repo.name}”?`, detail: "Claude will no longer read it as context for this project. The repository and its files are not changed, and you can link it again at any time.", ok: "Unlink" });
+  if (!ok) return;
+  await window.studio.repoUnlink(); showRepo(null); toast("Repository unlinked.");
+}
+$("rs-unlink").onclick = unlinkRepoFlow;
 $("rs-branch").onclick = async (e) => {
   e.stopPropagation();
   const m = $("branchmenu"); if (!m.hidden) { m.hidden = true; return; }
@@ -615,7 +668,34 @@ function updateSelbar() {
   $("selbar").hidden = !f; $("selmenu").hidden = true;
   $("selname").textContent = f ? f.replace(".html", "") : ""; updateNoteButton();
   for (const b of $("selbar").querySelectorAll("button.on")) b.classList.remove("on");
+  $("selinspect").classList.toggle("on", inspector.on && !chatPick); // the inspector switch on the bar follows the state
   drags.clear(); for (const c of $("selbar").querySelectorAll(".dchip")) delete c.dataset.state; // a different screen: prepare again
+}
+// ----- the bar above the selected screen can be moved: by its grip or its name, the place is remembered, a double click puts it back
+const SELBAR_KEY = "uu5studio.selbarPos";
+let selbarPos = { x: 0, y: 0 };
+try { const s = JSON.parse(localStorage.getItem(SELBAR_KEY)); if (Number.isFinite(s?.x) && Number.isFinite(s?.y)) selbarPos = { x: s.x, y: s.y }; } catch { /* nothing remembered */ }
+const placeSelbar = (p) => { selbarPos = p; $("selbar").style.setProperty("--sb-x", `${p.x}px`); $("selbar").style.setProperty("--sb-y", `${p.y}px`); };
+const saveSelbar = () => { try { localStorage.setItem(SELBAR_KEY, JSON.stringify(selbarPos)); } catch { /* not remembered */ } };
+placeSelbar(selbarPos);
+for (const id of ["selmove", "selname"]) {
+  const h = $(id);
+  h.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const bar = $("selbar"), cr = $("canvas").getBoundingClientRect(), br = bar.getBoundingClientRect(), start = { x: e.clientX, y: e.clientY, ...selbarPos };
+    const nat = { top: br.top - selbarPos.y, mid: br.left + br.width / 2 - selbarPos.x }; // where the bar is when it has not been moved
+    // a transparent layer over everything receives the movement, so that the screen (a webview) under the pointer cannot take it
+    const cover = Object.assign(document.createElement("div"), { className: "sb-cover" });
+    document.body.append(cover); cover.setPointerCapture?.(e.pointerId); bar.classList.add("moving");
+    const move = (ev) => placeSelbar({
+      x: Math.round(Math.max(cr.left + 40 - nat.mid, Math.min(cr.right - 40 - nat.mid, start.x + ev.clientX - e.clientX))), // at least a part of the bar stays in the canvas
+      y: Math.round(Math.max(cr.top - nat.top, Math.min(cr.bottom - 40 - nat.top, start.y + ev.clientY - e.clientY))),
+    });
+    const up = () => { cover.remove(); bar.classList.remove("moving"); saveSelbar(); };
+    cover.addEventListener("pointermove", move); cover.addEventListener("pointerup", up); cover.addEventListener("pointercancel", up);
+  });
+  h.addEventListener("dblclick", () => { placeSelbar({ x: 0, y: 0 }); saveSelbar(); });
 }
 async function screenAction(act, file) {
   if (act === "copy-html") report(await window.studio.exportHtml(file), (r) => `Saved: ${r.path.split("/").pop()}`);
@@ -737,10 +817,10 @@ function openAbout() {
   $("ab-tech").replaceChildren(...aboutRows().flatMap(([k, t]) => [Object.assign(document.createElement("dt"), { textContent: k }), Object.assign(document.createElement("dd"), { textContent: t })]));
   $("ab-authors").textContent = "Marek Beránek, Unicorn University";
   $("ab-license").textContent = LICENSE_TEXT;
-  $("about").hidden = false; $("ab-close").focus();
+  $("about").hidden = false; $("ab-copy").focus();
 }
 const closeAbout = () => { $("about").hidden = true; };
-$("ab-close").onclick = closeAbout;
+$("ab-x").onclick = closeAbout;
 $("about").addEventListener("mousedown", (e) => { if (e.target === $("about")) closeAbout(); });
 $("about").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closeAbout(); } });
 $("ab-copy").onclick = async () => {
@@ -896,7 +976,7 @@ $("projmenu").onclick = async (e) => {
   else if (act === "desc-open") openDesc(null);
   else if (act === "rules-open") openRules();
   else if (act === "repo-link") await linkRepoFlow();
-  else if (act === "repo-unlink") { await window.studio.repoUnlink(); showRepo(null); toast("Repository unlinked."); }
+  else if (act === "repo-unlink") await unlinkRepoFlow();
   else if (act === "projects-open" || act === "projects-change") { const r = await window.studio.projectsFolder(act.slice(9)); if (r?.error) toast(r.error, { err: true }); }
 };
 addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projmenu").hidden = true; });
@@ -1047,14 +1127,16 @@ $("form").onsubmit = async (e) => {
     paths = r;
   }
   const ctx = chips.length ? chips.slice() : null;
-  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name }) => ({ thumb, name })) } : {}) });
+  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name }) => ({ thumb, name })) } : {}) });
   $("prompt").value = ""; pending = []; renderAttachments(); setBusy(true);
-  const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt);
+  const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
+  const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
   const noteBlock = await memory.notesFor([...refs.map((n) => `${n}.html`), ...(fsFile ? [fsFile] : []), ...(ctx ?? []).map((c) => c.file)]);
   if (fsFile) setWorkFile(fsFile); // the target is known up front when a screen is open in fullscreen
   const extra = [
     refs.length && `Referenced screens (files in the project's working folder): ${refs.map((n) => n + ".html").join(", ")}. Read their current content first, change only what the user asks for and leave the rest unchanged.`,
     repoRefs.length && repo && `Referenced files of the linked git repository (read-only, ${repo.readDir ?? repo.path}): ${repoRefs.map((p) => `${repo.readDir ?? repo.path}/${p}`).join(", ")}. Read them first and stay consistent with their names, props and structure.`,
+    libBlock,
     noteBlock,
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,
@@ -1069,7 +1151,7 @@ $("prompt").onkeydown = (e) => {
   if (!box.hidden) {
     const n = box.children.length;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); mentionIdx = (mentionIdx + (e.key === "ArrowDown" ? 1 : n - 1)) % n; updateMentions(); return; }
-    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(box.children[mentionIdx].textContent.slice(1)); return; }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(box.children[mentionIdx].dataset.name); return; }
     if (e.key === "Escape") { e.preventDefault(); box.hidden = true; return; }
   }
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("form").requestSubmit(); }

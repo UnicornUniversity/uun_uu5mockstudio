@@ -1,4 +1,4 @@
-import { ICON_TRASH, ICON_CODE, ICON_VIEW } from "./icons.js";
+import { ICON_TRASH, ICON_CODE, ICON_VIEW, ICON_CLOSE } from "./icons.js";
 import { markdown, esc } from "./markdown.js";
 import { parseRules, editItem, deleteItem, countRules } from "./rulesDoc.js";
 
@@ -16,13 +16,13 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   box.id = "rules"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-labelledby="ru-title">
     <div class="ru-head"><h2 id="ru-title">Business rules</h2>
-      <button class="rc-toggle icon" type="button"></button></div>
+      <button class="rc-toggle icon" type="button"></button><button class="rc-x dlg-x icon" type="button" title="Close (Esc)" aria-label="Close"></button></div>
     <p class="mute">Kept in <code>BUSINESS_RULES.md</code> in the project folder. Claude records rules that come up in your requests; later tasks that build the target components read this file.</p>
     <div class="rc-view"></div>
     <textarea class="rc-code" spellcheck="false" aria-label="BUSINESS_RULES.md"></textarea>
     <div class="rc-add"><input class="rc-new" autocomplete="off" spellcheck="false" placeholder="Add a rule and press Enter…"><select class="rc-screen" aria-label="Section"></select><button class="rc-addbtn" type="button">Add</button></div>
     <p class="rc-err err"></p>
-    <div class="row"><span class="rc-meta mute grow"></span><button class="rc-close" type="button">Close</button><button class="rc-save" type="button">Save</button></div></div>`;
+    <div class="row"><span class="rc-meta mute grow"></span><button class="rc-save" type="button">Save</button></div></div>`;
   document.body.append(box);
   const q = (s) => box.querySelector(s);
   const view = q(".rc-view"), code = q(".rc-code"), err = q(".rc-err"), meta = q(".rc-meta"), saveBtn = q(".rc-save"), addIn = q(".rc-new"), screenSel = q(".rc-screen");
@@ -123,7 +123,7 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     (mode === "code" ? code : addIn).focus();
   }
   async function close() { if (dirty && !(await saveCode())) return; box.hidden = true; }
-  q(".rc-close").onclick = close;
+  q(".rc-x").innerHTML = ICON_CLOSE; q(".rc-x").onclick = close;
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });
   box.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.stopPropagation(); close(); }

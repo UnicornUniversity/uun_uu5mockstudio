@@ -296,7 +296,7 @@ const steps = [
     await caption(T.cap.desc);
     await click("#ds-main"); await sleep(600);                        // the cursor is already in the project field
     await typeText(T.projDesc, 24); await sleep(900);
-    await click("#descdlg .dd-close"); await sleep(1400);             // leaving the field saves it
+    await click("#descdlg .dlg-x"); await sleep(1400);             // leaving the field saves it
   }],
   ["git", async () => {
     await caption(T.cap.git);
@@ -378,7 +378,7 @@ const steps = [
     await click("#rules .rc-text"); await key("End", "End", 35); await typeText(T.ruleEdit, 30); await key("Enter", "Enter", 13); await sleep(1200);
     await click("#rules .rc-toggle"); await sleep(2400);                                         // code view: the Markdown file
     await click("#rules .rc-toggle"); await sleep(1200);
-    await click("#rules .rc-close"); await sleep(700);
+    await click("#rules .rc-x"); await sleep(700);
     await caption("", 200);
   }],
   ["screen description and rule", async () => {
@@ -386,7 +386,7 @@ const steps = [
     if (!(await exists(".frame.sel"))) await guestClick(`return document.querySelector("body")`, 0, { pause: 600 });
     await click("#morebtn"); await click("#ctxmenu button", { text: "Description" }); await sleep(600);
     await typeText(T.screenDesc, 24); await sleep(800);
-    await click("#descdlg .dd-close"); await sleep(900);
+    await click("#descdlg .dlg-x"); await sleep(900);
     await click("#fit"); await sleep(900);                                                       // the description now sits below the screen: keep it clear of the caption
     const cv = (await centre("#canvas")) ?? { x: 900, y: 500 }; await wheelAt(cv.x, cv.y, 230, 0); await sleep(1800);
     await caption("", 200);

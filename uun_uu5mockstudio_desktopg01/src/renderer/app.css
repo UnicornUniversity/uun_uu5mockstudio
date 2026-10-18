@@ -77,7 +77,7 @@ main{overflow:hidden}
 .fbody webview{position:absolute;inset:0;width:100%;height:100%;display:flex}
 .shield{position:absolute;inset:0;cursor:pointer}
 #inspector{width:290px;border-left:1px solid var(--line);background:var(--panel);padding:14px;overflow:auto}
-#inspector h3{margin:0 0 8px;font-size:13px}
+#inspector h3{margin:0;font-size:13px}.insp-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}#insp-close{padding:3px 5px;border-color:transparent;background:none;color:var(--mute);line-height:0}#insp-close:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}#insp-close .ico{width:15px;height:15px}
 #inspector dl{margin:0;display:grid;grid-template-columns:78px 1fr;gap:6px 8px;font-size:12px}
 #inspector dt{color:var(--mute)}#inspector dd{margin:0;word-break:break-word}
 #inspector dd code{font:11px ui-monospace,Menlo,monospace;color:var(--mute)}
@@ -165,13 +165,14 @@ main{overflow:hidden}
 #branchmenu button{text-align:left;border:0;background:none;padding:6px 10px;border-radius:6px;display:flex;justify-content:space-between;gap:10px;font:12px ui-monospace,Menlo,monospace}
 #branchmenu button:hover{background:var(--bg)}#branchmenu button.cur{color:var(--acc);font-weight:600}#branchmenu small{color:var(--mute);font:11px system-ui;white-space:nowrap}
 #branchmenu hr{border:0;border-top:1px solid var(--line);margin:5px 0;width:100%}#branchmenu .mute{padding:6px 10px;font-size:11px}
-.mention.repo{color:var(--acc);font-family:ui-monospace,Menlo,monospace;font-size:.92em}
+.mention.repo,.mention.lib,.mention.comp{color:var(--acc);font-family:ui-monospace,Menlo,monospace;font-size:.92em}
+#mentions small{margin-left:8px;color:var(--mute);font-size:11px}
 #chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:flex;align-items:center;gap:6px;max-width:100%;background:var(--bg);border:1px solid var(--acc);border-radius:8px;padding:3px 6px 3px 8px;font-size:12px}
 .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip button{border:0;background:none;padding:0 3px;color:var(--mute)}.chip button:hover{color:#ff7b7b}
 #pickhint{font-size:12px;color:var(--acc);padding:0 2px 4px}
 #pickcomp{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;flex:none}
-.inputbox #pickcomp{position:absolute;right:42px;bottom:8px;border-color:transparent;background:none;color:var(--mute)}.inputbox #pickcomp:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #pickcomp.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.inputbox #pickcomp{position:absolute;right:76px;bottom:8px;border-color:transparent;background:none;color:var(--mute)}.inputbox #pickcomp:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #pickcomp.on{background:var(--acc);border-color:var(--acc);color:#fff}
 #canvas.dragging webview{pointer-events:none}
 
 .ctl{position:relative}
@@ -197,7 +198,7 @@ body:not([data-platform="darwin"]) #projmenu{left:14px}
 #dialog h2{margin:0;font-size:15px}#dialog input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 #dialog #dlg-err{margin:0;color:#ff7b7b;min-height:1em}
 #dialog #dlg-ok{background:var(--acc);border-color:var(--acc);color:#fff}
-#selbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 24px);z-index:12;display:flex;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 6px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#selbar{position:absolute;top:12px;left:50%;transform:translate(calc(-50% + var(--sb-x,0px)),var(--sb-y,0px));width:max-content;max-width:calc(100% - 24px);z-index:12;display:flex;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 6px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #seldrag{display:inline-flex;align-items:center;gap:2px;padding:0 4px;border-left:1px solid var(--line);margin-left:2px}#seldrag .grip{color:var(--mute);padding:0 4px;font-size:13px}
 #seldrag .dchip{padding:3px 9px;border:1px solid transparent;border-radius:6px;font-size:12px;cursor:pointer;user-select:none;color:var(--mute)}#seldrag .dchip:hover{color:var(--fg);background:var(--bg)}
 #seldrag .dchip.on{background:var(--acc);border-color:var(--acc);color:#fff;cursor:grab}#seldrag .dchip.on[data-state="preparing"]{opacity:.6;cursor:progress}
@@ -266,10 +267,11 @@ body[data-chat="float"] .crs{display:block}
 .crs-se{bottom:0;right:0;width:18px;height:18px;cursor:nwse-resize}
 .crs-sw{bottom:0;left:0;width:18px;height:18px;cursor:nesw-resize}
 .crs-n:hover,.crs-s:hover,.crs-e:hover,.crs-w:hover{background:color-mix(in srgb,var(--acc) 45%,transparent)}
-/* visible grips in the bottom corners */
-.crs-se::after,.crs-sw::after{content:"";position:absolute;bottom:5px;width:8px;height:8px;border-bottom:2px solid var(--mute);opacity:.75}
-.crs-se::after{right:5px;border-right:2px solid var(--mute);border-bottom-right-radius:3px}
-.crs-sw::after{left:5px;border-left:2px solid var(--mute);border-bottom-left-radius:3px}
+/* grips in the bottom corners: a small arc that follows the rounded corner of the panel (concentric with it), shown only when the pointer is in the corner, so nothing sits permanently next to the controls */
+body[data-chat="float"]{--chat-r:14px}body[data-glass][data-chat="float"]{--chat-r:24px}
+.crs-se::after,.crs-sw::after{content:"";position:absolute;bottom:7px;width:calc(var(--chat-r) - 7px);height:calc(var(--chat-r) - 7px);border-bottom:2px solid var(--mute);opacity:0;transition:opacity .15s,border-color .15s}
+.crs-se::after{right:7px;border-right:2px solid var(--mute);border-bottom-right-radius:calc(var(--chat-r) - 7px)}
+.crs-sw::after{left:7px;border-left:2px solid var(--mute);border-bottom-left-radius:calc(var(--chat-r) - 7px)}
 .crs-se:hover::after,.crs-sw:hover::after{border-color:var(--acc);opacity:1}
 body[data-chat="float"] #chat{position:fixed;z-index:30;border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden}
 body[data-chat="float"] #chat header{cursor:grab;padding-left:14px;user-select:none}
@@ -346,8 +348,8 @@ body:not([data-chat="float"]) #chat header .tools #chatmin{display:none}
 #form .row #send,#form .row #stop{flex:none}
 #drophint{position:absolute;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--acc) 18%,var(--panel));border:2px dashed var(--acc);border-radius:inherit;color:var(--acc);font-weight:600;pointer-events:none}
 .inputbox{position:relative;display:flex}
-.inputbox textarea{padding-right:84px}
-.inputbox #attach{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-color:transparent;background:none;color:var(--mute)}
+.inputbox textarea{padding-right:118px}
+.inputbox #attach{position:absolute;right:42px;bottom:8px;width:32px;height:32px;border-color:transparent;background:none;color:var(--mute)}
 .inputbox #attach:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}
 
 /* the busy dots in the header are only for the minimized bar; an open chat shows progress in its status row */
@@ -445,3 +447,87 @@ body[data-chat="float"] #chat header .tools #chatmode .when-float{display:inline
 #tour .t-arrow{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 #tour .tr-dots{display:flex;gap:7px;justify-content:center;margin:4px 0 2px}#tour .tr-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}#tour .tr-dots i.on{background:var(--acc);width:20px;border-radius:4px}
 #tour .row{display:flex;gap:8px;align-items:center}#tour .grow{flex:1}#tour .tr-next{background:var(--acc);border-color:var(--acc);color:#fff;min-width:96px}
+
+/* ---- library components dialog */
+.inputbox #libbtn{position:absolute;right:8px;bottom:8px;width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-color:transparent;background:none;color:var(--mute)}.inputbox #libbtn:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}
+#libbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:43}#libbox[hidden]{display:none}
+#libbox .card{width:min(860px,94vw);height:min(620px,86vh);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+#libbox h2{margin:0;font-size:15px}.lb-tools{display:flex;gap:8px}.lb-tools input[type=search]{flex:1;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.lb-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px}
+#lb-list{overflow:auto;display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--bg)}
+.lb-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:0;background:none;padding:6px 10px;border-radius:7px;width:100%}.lb-item b{font:600 12.5px ui-monospace,Menlo,monospace}.lb-item span{font-size:11.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.lb-item:hover{background:var(--panel)}.lb-item.on{background:var(--acc);color:#fff}.lb-item.on span{color:#e6edff}
+#libbox .row{display:flex;gap:8px;align-items:center}#libbox .grow{flex:1}#lb-note{margin:0;min-height:1.2em}#lb-add{background:var(--acc);border-color:var(--acc);color:#fff}#lb-add:disabled{opacity:.5}
+
+/* library dialog: structured description */
+#lb-detail{margin:0;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg);color:var(--fg);font:13px/1.5 system-ui}
+#lb-detail .ld-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#lb-detail h3{margin:0;font:600 15px ui-monospace,Menlo,monospace;word-break:break-all}
+#lb-detail .ld-lib{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--mute)}
+#lb-detail .ld-desc{margin:8px 0}#lb-detail .ld-use{font-size:12px;color:var(--mute)}#lb-detail .ld-use code{color:var(--acc);font-weight:600}
+#lb-detail h4{margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
+#lb-detail .ld-props{width:100%;border-collapse:collapse;font-size:12px}#lb-detail .ld-props th{position:sticky;top:-12px;background:var(--bg);text-align:left;font-weight:600;color:var(--mute);padding:4px 6px;border-bottom:1px solid var(--line)}
+#lb-detail .ld-props td{padding:5px 6px;vertical-align:top}#lb-detail .ld-props tr:not(.ld-desc-row) td{border-top:1px solid var(--line)}
+#lb-detail .pn code{font:600 12px ui-monospace,Menlo,monospace}#lb-detail .req{margin-left:6px;font-size:10px;color:#e8590c}
+#lb-detail .ptype{font:12px ui-monospace,Menlo,monospace;color:var(--mute)}#lb-detail .pv{display:inline-block;margin:1px 4px 1px 0;padding:0 6px;border-radius:6px;background:var(--panel);border:1px solid var(--line);font:11px ui-monospace,Menlo,monospace}
+#lb-detail .pd{font:12px ui-monospace,Menlo,monospace;color:var(--mute);white-space:nowrap}#lb-detail .ld-desc-row td{padding:0 6px 6px;color:var(--mute);font-size:12px;line-height:1.45}
+#lb-detail .ld-docs{margin:14px 0 0;font-size:12px}#lb-detail .ld-docs .ld-link{margin-left:0}
+#lb-detail code.ic{font:11.5px ui-monospace,Menlo,monospace;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+#lb-detail .ld-link{margin-left:auto;font-size:12px;color:var(--acc);text-decoration:none;white-space:nowrap}#lb-detail .ld-link:hover{text-decoration:underline}
+
+/* mentions of repository files and library components inside the blue bubble of the user: light text on a lighter pill (the accent color would vanish on the blue) */
+.user .mention.repo,.user .mention.lib{color:#fff;background:rgba(255,255,255,.2);border-radius:5px;padding:0 4px}
+
+/* list prop with known items: chosen values and a check list */
+.pmulti{display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;min-height:30px;padding:3px 8px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg)}
+.pmulti .pm-chip{padding:0 7px;border-radius:6px;background:var(--panel);border:1px solid var(--line);font:11.5px ui-monospace,Menlo,monospace}.pmulti .pm-caret{margin-left:auto;color:var(--mute)}
+.pm-pop{position:fixed;z-index:60;min-width:200px;max-height:60vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.35);display:flex;flex-direction:column}
+.pm-pop label{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font:12.5px ui-monospace,Menlo,monospace;cursor:pointer}.pm-pop label:hover{background:var(--bg)}
+body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
+
+/* a prop that takes its value from a variable: the value, and under it the variable it comes from */
+.plinked{align-items:flex-start}.plinked-in{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}.plinked-in input.linked{width:100%}
+.pvar{font:10.5px ui-monospace,Menlo,monospace;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- the list of actions */
+#actbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:44}#actbox[hidden]{display:none}
+#actbox .card{width:min(900px,95vw);height:min(640px,88vh);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+#actbox h2{margin:0;font-size:15px}.ae-tools{display:flex;gap:6px;align-items:center}.ae-tools button:disabled{opacity:.45}.ae-tools .mute{margin-left:auto;font-size:12px}
+.ae-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.25fr);gap:10px}
+#ae-list{overflow:auto;display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--bg)}
+.ae-item{display:flex;align-items:center;gap:10px;text-align:left;border:0;background:none;padding:7px 10px;border-radius:8px;width:100%}.ae-item:hover{background:var(--panel)}.ae-item.on{background:var(--acc);color:#fff}
+.ae-ico{width:22px;height:22px;display:grid;place-items:center;flex:none;font-size:18px}.ae-txt{display:flex;flex-direction:column;min-width:0}.ae-txt b{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ae-txt small{font-size:11px;opacity:.75;min-height:1em}
+.ae-item.on small{opacity:.9}.ae-empty{padding:10px}
+#ae-form{overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+#ae-form h5{margin:10px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
+.ae-field{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12.5px}.ae-field>span{color:var(--mute)}
+.ae-field input[type=text],.ae-field input[type=number],.ae-field select{width:100%;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)}
+.ae-field input.code{font:12px ui-monospace,Menlo,monospace}.ae-field .prm{border:0;background:none;color:var(--mute);padding:0 4px}
+.ae-iconrow{display:flex;gap:6px;align-items:center;min-width:0}.ae-iconrow input{flex:1}
+#ae-err{margin:0;min-height:1.2em}#actbox .row{display:flex;gap:8px;align-items:center}#actbox .grow{flex:1}
+.user .mention.comp{color:#fff;background:rgba(255,255,255,.2);border-radius:5px;padding:0 4px}
+
+/* a text / LSI: the switch of the languages above the input of the chosen one */
+.tf{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}.tf input{width:100%}
+.tf-langs{display:flex;gap:2px}.tf-langs button{padding:0 8px;font:11px ui-monospace,Menlo,monospace;border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:6px;min-height:20px}
+.tf-langs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.tf-via{font:10.5px ui-monospace,Menlo,monospace;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* a list of actions in the inspector: a button with the number of actions instead of the code */
+.plist{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:5px 10px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg)}.plist:hover{border-color:var(--acc)}
+.plist .pl-ico{display:inline-flex;color:var(--mute)}.plist .pl-ico .ico{width:16px;height:16px}
+
+/* the bar above a selected screen can be moved (by its grip or its name) */
+#selbar #selmove,#selbar #selname{cursor:grab;user-select:none;touch-action:none}#selbar.moving #selmove,#selbar.moving #selname{cursor:grabbing}
+#selbar #selmove{display:inline-flex;align-items:center;color:var(--mute);padding:0 0 0 2px}#selbar #selmove .ico{width:16px;height:16px;fill:currentColor;stroke:none}
+#selbar #selinspect{padding:4px 8px;line-height:0}#selbar #selinspect .ico{width:17px;height:17px}#selbar #selinspect.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.sb-cover{position:fixed;inset:0;z-index:200;cursor:grabbing}
+
+/* an action that is a component, or any item as code */
+.ae-src{width:100%;box-sizing:border-box;font:12px/1.5 ui-monospace,Menlo,monospace;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);white-space:pre;overflow:auto;resize:vertical}
+.ae-srcbox h5{margin:0 0 6px}.ae-srcbox p{margin:0 0 8px}.ae-srcrow{display:flex;justify-content:flex-end;margin-top:8px}.ae-more{margin-top:6px}.ae-more summary{cursor:pointer;color:var(--mute);font-size:12px;padding:4px 0}
+
+/* the business rules dialog closes with a cross in its header, next to the code / rendered switch */
+/* the cross that closes a dialog: the same in every dialog that only shows or edits something (not in those that ask for a decision) */
+.dlg-head{display:flex;align-items:center;gap:10px}.dlg-head h2{flex:1}
+.dlg-x{padding:5px 7px;line-height:0;border-color:transparent;background:none;color:var(--mute);flex:none;margin-left:auto}.dlg-x:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.dlg-x .ico{width:16px;height:16px}
+#rules .row:has(.rc-save[hidden]) .rc-meta:empty{display:none}

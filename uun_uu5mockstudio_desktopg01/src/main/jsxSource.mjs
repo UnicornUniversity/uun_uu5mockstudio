@@ -101,22 +101,147 @@ function branchesOf(expr, code, abs) {
 }
 
 /** The properties of an object literal, with source ranges (offsets are made absolute by `abs`). */
-function objectProps(obj, code, abs) {
+function objectProps(obj, code, abs, cx) {
   return obj.properties.map((p) => {
     if (p.type !== "ObjectProperty" || p.computed) return { spread: true, start: abs(p.start), end: abs(p.end), text: code.slice(p.start, p.end) };
     const name = p.key.type === "Identifier" ? p.key.name : p.key.type === "StringLiteral" ? p.key.value : String(p.key.value ?? "");
     const base = { name, start: abs(p.start), end: abs(p.end), shorthand: Boolean(p.shorthand) };
     const v = p.value, lit = literalOf(v), c = code.slice(v.start, v.end);
-    return lit ? { ...base, ...lit, code: c } : { ...base, type: "code", value: c, code: c, json: jsonOf(v), branches: branchesOf(v, code, abs) };
+    if (lit) return { ...base, ...lit, code: c };
+    const resolved = cx && textOf(v, cx);
+    return { ...base, type: "code", value: c, code: c, json: jsonOf(v), branches: branchesOf(v, code, abs), ...(resolved ? { resolved } : {}) };
   });
 }
 /** Array literal -> items; an item that is an object literal gets its properties, anything else is opaque. */
-function arrayItems(arr, code, abs) {
+function arrayItems(arr, code, abs, cx) {
   return arr.elements.map((e, index) => {
-    if (e && e.type === "ObjectExpression") return { index, kind: "object", start: abs(e.start), end: abs(e.end), openEnd: abs(e.start + 1), closeStart: abs(e.end - 1), props: objectProps(e, code, abs), text: code.slice(e.start, e.end) };
+    if (e && e.type === "ObjectExpression") return { index, kind: "object", start: abs(e.start), end: abs(e.end), openEnd: abs(e.start + 1), closeStart: abs(e.end - 1), props: objectProps(e, code, abs, cx), text: code.slice(e.start, e.end) };
     return { index, kind: "other", start: e ? abs(e.start) : null, end: e ? abs(e.end) : null, props: [], text: e ? code.slice(e.start, e.end) : "" };
   });
 }
+
+
+// ---------------------------------------------------------------- values that come from a variable
+const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod"]);
+/** Every `const name = init` of the program with the function (or the program) it lives in: [{ name, init, start, scope: { start, end } }]. */
+function collectDecls(ast) {
+  const out = [];
+  const visit = (node, scope) => {
+    if (!node || typeof node.type !== "string") return;
+    const here = FUNCTIONS.has(node.type) ? { start: node.start, end: node.end } : scope;
+    if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init) out.push({ name: node.id.name, init: node.init, start: node.start, scope });
+    if (node.type === "FunctionDeclaration" && node.id) out.push({ name: node.id.name, init: node, start: node.start, scope });
+    for (const key of Object.keys(node)) {
+      if (key === "loc" || key === "extra" || key.endsWith("Comments")) continue;
+      const v = node[key];
+      if (Array.isArray(v)) for (const c of v) visit(c, here); else if (v && typeof v.type === "string") visit(v, here);
+    }
+  };
+  visit(ast.program, { start: 0, end: Infinity });
+  return out;
+}
+/** The declaration `name` refers to at `pos`: from the innermost scope that contains `pos`, the last one before it. */
+function lookupDecl(decls, name, pos) {
+  const c = decls.filter((d) => d.name === name && d.scope.start <= pos && pos <= d.scope.end && d.start < pos);
+  if (!c.length) return null;
+  const inner = Math.max(...c.map((d) => d.scope.start));
+  return c.filter((d) => d.scope.start === inner).at(-1);
+}
+const keyOf = (p) => (p.key.type === "Identifier" ? p.key.name : p.key.type === "StringLiteral" ? p.key.value : null);
+const propOf = (obj, key) => obj?.type === "ObjectExpression" ? obj.properties.find((p) => p.type === "ObjectProperty" && !p.computed && keyOf(p) === key)?.value : undefined;
+/** `a.b.c` -> ["a", "b", "c"], or null when the expression is anything else. */
+function memberPath(ex) {
+  const keys = [];
+  let n = ex;
+  while (n.type === "MemberExpression" || n.type === "OptionalMemberExpression") {
+    if (n.computed) { if (n.property.type !== "StringLiteral") return null; keys.unshift(n.property.value); } else if (n.property.type === "Identifier") keys.unshift(n.property.name); else return null;
+    n = n.object;
+  }
+  return n.type === "Identifier" ? [n.name, ...keys] : null;
+}
+/**
+ * A prop written as `title={ph.progressTitle}` or `label={TITLE}`: where the literal behind it is written. `ph` can be an object
+ * literal, a constant, or `useLsi({ cs: {...}, en: {...} })` (then there is one target per language). Resolves to
+ * { path, via, targets: [{ lang, type, value, start, end }] } or null when the value is not a literal somewhere in the file.
+ */
+function resolveValueRef(ex, decls, pos, abs) {
+  const path = memberPath(ex); if (!path) return null;
+  let d = lookupDecl(decls, path[0], pos), init = d?.init, via = null, hops = 0;
+  while (init?.type === "Identifier" && hops++ < 3) init = lookupDecl(decls, init.name, d.start)?.init ?? null;
+  if (!init) return null;
+  let roots; // [{ lang, node }]
+  const callee = init.type === "CallExpression" ? (init.callee.type === "Identifier" ? init.callee.name : init.callee.property?.name) ?? "" : "";
+  if (/Lsi$/.test(callee)) { // useLsi({ cs: {...}, en: {...} }): the text of the current language
+    let arg = init.arguments[0], h = 0;
+    while (arg?.type === "Identifier" && h++ < 3) arg = lookupDecl(decls, arg.name, d.start)?.init;
+    if (arg?.type !== "ObjectExpression") return null;
+    via = "useLsi";
+    roots = arg.properties.filter((p) => p.type === "ObjectProperty" && !p.computed && propOf(arg, keyOf(p))?.type === "ObjectExpression").map((p) => ({ lang: keyOf(p), node: p.value }));
+  } else roots = [{ lang: null, node: init }];
+  const targets = [];
+  for (const { lang, node } of roots) {
+    let cur = node;
+    for (const k of path.slice(1)) cur = propOf(cur, k);
+    const lit = cur && literalOf(cur);
+    if (lit && lit.type !== "null") targets.push({ lang, ...lit, start: abs(cur.start), end: abs(cur.end) });
+  }
+  if (!targets.length && path.length === 1) { const lit = literalOf(init); if (lit && lit.type !== "null") targets.push({ lang: null, ...lit, start: abs(init.start), end: abs(init.end) }); }
+  return targets.length ? { path: path.join("."), via, targets } : null;
+}
+
+// ---------------------------------------------------------------- texts: a string, an LSI (one text per language) and where each is written
+const LANGS = new Set(["cs", "en", "sk", "de", "pl", "fr", "es", "it", "ru", "uk", "nl", "pt", "hu", "ro", "sl", "hr", "da", "sv", "fi", "no", "ja", "zh", "ko"]);
+const strLit = (n) => (n?.type === "StringLiteral" ? n.value : n?.type === "TemplateLiteral" && !n.expressions.length ? n.quasis[0].value.cooked : undefined);
+/** Functions whose first parameters are language codes – `const t = (cs, en) => …`, `L(cs, en)`: name -> ["cs", "en"]. A call with literal texts is an LSI. */
+function langFunctions(decls) {
+  const out = new Map();
+  for (const d of decls) {
+    const f = d.init;
+    if (!f || !["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"].includes(f.type)) continue;
+    const langs = []; for (const p of f.params) { if (p.type === "Identifier" && LANGS.has(p.name)) langs.push(p.name); else break; }
+    if (langs.length >= 2) out.set(d.name, langs);
+  }
+  return out;
+}
+/**
+ * What an expression says as a text: { kind: "string" | "lsi", via, langs: [{ lang, value, start, end }] } or null. A string literal; an LSI object
+ * `{ cs: "…", en: "…" }`; a call of a function that takes language codes (`t("Ano", "Yes")`); an element with an `lsi` prop (`<T lsi={…} />`);
+ * and a variable, constant or member of an object that holds one of these (`TITLE`, `LABEL.save`, `ph.title` of `useLsi({ cs: {…}, en: {…} })`).
+ */
+function textOf(ex, cx, depth = 0) {
+  if (!ex || depth > 5) return null;
+  const range = (n) => ({ start: cx.abs(n.start), end: cx.abs(n.end) });
+  const s = strLit(ex);
+  if (s !== undefined) return { kind: "string", via: null, langs: [{ lang: null, value: s, ...range(ex) }] };
+  if (ex.type === "ObjectExpression") {
+    const ps = ex.properties;
+    if (ps.length && ps.every((p) => p.type === "ObjectProperty" && !p.computed && LANGS.has(keyOf(p)) && strLit(p.value) !== undefined)) return { kind: "lsi", via: null, langs: ps.map((p) => ({ lang: keyOf(p), value: strLit(p.value), ...range(p.value) })) };
+    return null;
+  }
+  if (ex.type === "CallExpression" && ex.callee.type === "Identifier") {
+    const langs = cx.langFns.get(ex.callee.name); if (!langs) return null;
+    const got = langs.map((lang, i) => ({ lang, a: ex.arguments[i] })).filter((x) => strLit(x.a) !== undefined).map((x) => ({ lang: x.lang, value: strLit(x.a), ...range(x.a) }));
+    return got.length >= 2 ? { kind: "lsi", via: `${ex.callee.name}(…)`, langs: got } : null;
+  }
+  if (ex.type === "JSXElement") {
+    const at = ex.openingElement.attributes.find((a) => a.type === "JSXAttribute" && a.name?.name === "lsi" && a.value?.type === "JSXExpressionContainer");
+    const r = at && textOf(at.value.expression, cx, depth + 1);
+    return r ? { ...r, via: r.via ?? `<${jsxName(ex.openingElement.name)} lsi>` } : null;
+  }
+  if (ex.type === "ConditionalExpression" || ex.type === "LogicalExpression") return null;
+  const path = memberPath(ex);
+  if (path) {
+    const vr = resolveValueRef(ex, cx.decls, ex.start, cx.abs); // `ph.title` of useLsi({ cs: {…}, en: {…} }), `LABEL.save`, `TITLE`
+    if (vr) return { kind: vr.targets.some((t) => t.lang) ? "lsi" : "string", via: vr.path, langs: vr.targets.map(({ lang, value, start, end }) => ({ lang, value, start, end })) };
+    let d = lookupDecl(cx.decls, path[0], ex.start), init = d?.init, hops = 0;
+    while (init?.type === "Identifier" && hops++ < 3) init = lookupDecl(cx.decls, init.name, d.start)?.init;
+    for (const k of path.slice(1)) init = propOf(init, k);
+    const r = init && init !== ex ? textOf(init, cx, depth + 1) : null;
+    return r ? { ...r, via: path.join(".") } : null; // the variable the prop points to, not what is inside it
+  }
+  return null;
+}
+const publicText = (t) => (t ? { kind: t.kind, via: t.via, langs: t.langs.map(({ lang, value }) => ({ lang, value })) } : undefined);
 
 /** All JSX elements of the file in document order, with their attributes and source ranges (offsets into `html`). */
 export function parseElements(html) {
@@ -134,6 +259,7 @@ export function parseElements(html) {
       const d = st.type === "ExportNamedDeclaration" ? st.declaration : st;
       if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && v.init && !decls.has(v.id.name)) decls.set(v.id.name, v.init);
     }
+    const declList = collectDecls(ast), cx = { decls: declList, abs: (o) => script.start + o, langFns: langFunctions(declList) };
     const found = [];
     walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); });
     found.sort((a, b) => a.start - b.start);
@@ -153,7 +279,8 @@ export function parseElements(html) {
           const init = ex.type === "Identifier" ? decls.get(ex.name) : null;
           const ref = init ? { name: ex.name, start: abs(init.start), end: abs(init.end), code: script.code.slice(init.start, init.end), json: jsonOf(init) } : null;
           const arr = ex.type === "ArrayExpression" ? ex : init?.type === "ArrayExpression" ? init : null;
-          return { ...attr, type: "code", value: code, code, json: jsonOf(ex), branches: branchesOf(ex, script.code, abs), ...(ref ? { ref } : {}), ...(arr ? { items: arrayItems(arr, script.code, abs) } : {}) };
+          const valueRef = resolveValueRef(ex, declList, ex.start, abs), resolvedText = textOf(ex, cx);
+          return { ...attr, type: "code", value: code, code, json: jsonOf(ex), branches: branchesOf(ex, script.code, abs), ...(ref ? { ref } : {}), ...(valueRef ? { valueRef } : {}), ...(resolvedText ? { resolved: resolvedText } : {}), ...(arr ? { items: arrayItems(arr, script.code, abs, cx), itemsRange: { start: abs(arr.start), end: abs(arr.end) } } : {}) };
         }
         return { ...attr, type: "code", value: script.code.slice(a.value.start, a.value.end) };
       });
@@ -177,7 +304,7 @@ export function tagHtml(html) {
   } catch { return html; }
 }
 
-const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATTR).map(({ name, type, value, code, bare, json, ref, branches }) => ({ name, type, value, code, bare, json, ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}), ...(ref ? { ref: { name: ref.name, code: ref.code, json: ref.json } } : {}) }));
+const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATTR).map(({ name, type, value, code, bare, json, ref, branches, valueRef, items, resolved }) => ({ name, type, value, code, bare, json, ...(items ? { listed: true, count: items.length } : {}), ...(resolved ? { resolved: publicText(resolved) } : {}), ...(valueRef ? { valueRef: { path: valueRef.path, via: valueRef.via, targets: valueRef.targets.map(({ lang, type: t, value: v }) => ({ lang, type: t, value: v })) } } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}), ...(ref ? { ref: { name: ref.name, code: ref.code, json: ref.json } } : {}) }));
 
 export function describeElement(html, ordinal) {
   const e = parseElements(html)[ordinal];
@@ -231,6 +358,17 @@ function element(html, ordinal) {
 export function setProp(html, ordinal, name, value) {
   if (!/^[A-Za-z_][\w.:-]*$/.test(name)) throw new Error(`Invalid prop name: ${name}`);
   const e = element(html, ordinal), cur = e.attrs.find((a) => a.name === name);
+  if (value.type === "valueRef") { // the literal behind `title={ph.progressTitle}`, edited where it is written
+    if (!cur?.valueRef) throw new Error(`“${name}” does not take its value from a literal in the file.`);
+    const { to, from } = value.value, targets = cur.valueRef.targets;
+    const same = targets.filter((t) => String(t.value) === String(from));
+    const t = same.length === 1 ? same[0] : targets.length === 1 ? targets[0] : null;
+    if (!t) throw new Error(`The value of ${cur.valueRef.path} is written in ${targets.length} places (${targets.map((x) => x.lang ?? "?").join(", ")}) and none of them is clearly the one shown. Edit it in the file or ask in the chat.`);
+    const conv = t.type === "number" ? Number(to) : t.type === "boolean" ? to === true || to === "true" : String(to);
+    const out = html.slice(0, t.start) + literalSource({ type: t.type, value: conv }, html.slice(t.start, t.end)) + html.slice(t.end);
+    assertValid(out);
+    return out;
+  }
   if (value.type === "ref") { // edit the constant the prop refers to (`itemList={ROUTE_ACTION}`), not the attribute
     if (!cur?.ref) throw new Error(`“${name}” does not refer to a constant defined in the file.`);
     const code = String(value.value).trim();
@@ -276,7 +414,7 @@ function itemOf(html, ordinal, prop, index, count) {
 
 export function describeItem(html, ordinal, prop, index, count) {
   const { e, item } = itemOf(html, ordinal, prop, index, count);
-  const attrs = item.props.filter((p) => !p.spread).map(({ name, type, value, code, json, branches }) => ({ name, type, value, code, json, ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}) }));
+  const attrs = item.props.filter((p) => !p.spread).map(({ name, type, value, code, json, branches, resolved }) => ({ name, type, value, code, json, ...(resolved ? { resolved: publicText(resolved) } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}) }));
   return { ordinal: e.ordinal, name: null, uu5: true, selfClosing: true, attrs, spread: item.props.some((p) => p.spread), snippet: item.text, item: { prop, index } };
 }
 
@@ -325,6 +463,131 @@ export function removeItemProp(html, ordinal, prop, index, name, count) {
   if (/^[ \t]*$/.test(html.slice(lineStart, start))) { start = lineStart; while (end < html.length && /[ \t]/.test(html[end])) end++; if (html[end] === "\n") end++; }
   else while (end < html.length && html[end] === " ") end++;
   const out = html.slice(0, start) + html.slice(end);
+  assertValid(out);
+  return out;
+}
+
+// ---------------------------------------------------------------- the items of a list prop (add, remove, move, duplicate)
+
+function listOf(html, ordinal, prop) {
+  const e = element(html, ordinal), attr = e.attrs.find((a) => a.name === prop);
+  if (!attr?.items || !attr.itemsRange) throw new Error(`“${prop}” is built dynamically in the file (not a list written out in the JSX), so its items cannot be edited here. Ask in the chat instead.`);
+  return { e, attr, items: attr.items, range: attr.itemsRange };
+}
+
+/** The items of a list prop as the editor shows them: for each the properties written in it (objects) or its text (anything else). */
+export function describeList(html, ordinal, prop) {
+  const { items } = listOf(html, ordinal, prop);
+  return {
+    prop,
+    items: items.map((it) => ({
+      index: it.index, kind: it.kind, text: it.text,
+      attrs: it.props.filter((p) => !p.spread).map(({ name, type, value, code, json, branches, resolved }) => ({ name, type, value, code, json, ...(resolved ? { resolved: publicText(resolved) } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}) })),
+      spread: it.props.some((p) => p.spread),
+    })),
+  };
+}
+
+/** How the items of the list are laid out: on lines of their own (with the indentation) or on one line. */
+function layoutOf(html, items) {
+  const first = items[0];
+  if (!first) return { multi: false, indent: "" };
+  const lineStart = html.lastIndexOf("\n", first.start - 1) + 1, before = html.slice(lineStart, first.start);
+  return /^[ \t]*$/.test(before) ? { multi: true, indent: before } : { multi: false, indent: "" };
+}
+
+/** `{ name: value, … }` for a new item; `props` = [{ name, type, value }]. */
+function itemSource(props) {
+  return props.length ? `{ ${props.map((p) => propSource(p.name, p)).join(", ")} }` : "{}";
+}
+
+/** Inserts `text` as the item number `at` (at the end when `at` is not before an item); the commas and the layout of the list are kept. */
+function insertItem(html, { items, range }, text, at) {
+  const lay = layoutOf(html, items), sep = lay.multi ? `\n${lay.indent}` : " ";
+  if (!items.length) return html.slice(0, range.start + 1) + text + html.slice(range.end - 1);
+  if (at != null && at < items.length) return html.slice(0, items[at].start) + text + "," + sep + html.slice(items[at].start);
+  const last = items.at(-1);
+  let p = last.end; while (p < html.length && /[ \t]/.test(html[p])) p++;
+  if (html[p] === ",") return html.slice(0, p + 1) + sep + text + "," + html.slice(p + 1); // the list ends with a comma: so does the new item
+  return html.slice(0, last.end) + "," + sep + text + html.slice(last.end);
+}
+
+/** Adds an object item (`props` = [{ name, type, value }]) at position `at` (default: the end). */
+export function addItem(html, ordinal, prop, props, at) {
+  const out = insertItem(html, listOf(html, ordinal, prop), itemSource(props ?? []), at);
+  assertValid(out);
+  return out;
+}
+
+/** Inserts a copy of the item right after it. */
+export function duplicateItem(html, ordinal, prop, index) {
+  const l = listOf(html, ordinal, prop), it = l.items[index];
+  if (!it) throw new Error("That item no longer exists in the file.");
+  const out = insertItem(html, l, html.slice(it.start, it.end), index + 1);
+  assertValid(out);
+  return out;
+}
+
+/** Removes the item with its comma (and its line). */
+export function removeItem(html, ordinal, prop, index) {
+  const { items, range } = listOf(html, ordinal, prop), it = items[index];
+  if (!it) throw new Error("That item no longer exists in the file.");
+  let out;
+  if (items.length === 1) out = html.slice(0, range.start + 1) + html.slice(range.end - 1);
+  else {
+    let end = it.end; while (end < html.length && /[ \t]/.test(html[end])) end++;
+    if (html[end] === ",") {
+      end++;
+      let start = it.start;
+      const lineStart = html.lastIndexOf("\n", start - 1) + 1;
+      if (/^[ \t]*$/.test(html.slice(lineStart, start))) { start = lineStart; while (end < html.length && /[ \t]/.test(html[end])) end++; if (html[end] === "\n") end++; }
+      else while (end < html.length && html[end] === " ") end++;
+      out = html.slice(0, start) + html.slice(end);
+    } else { // the last item without a comma behind it: the comma in front of it goes
+      const prev = items[index - 1];
+      let c = prev.end; while (c < html.length && html[c] !== ",") c++;
+      out = html.slice(0, c) + html.slice(it.end);
+    }
+  }
+  assertValid(out);
+  return out;
+}
+
+/** Replaces the whole item with `text` (any expression: an object, or something else); the text must be valid code. */
+export function replaceItem(html, ordinal, prop, index, text) {
+  const { items } = listOf(html, ordinal, prop), it = items[index];
+  if (!it) throw new Error("That item no longer exists in the file.");
+  const code = String(text).trim();
+  if (!code) throw new Error("The item is empty (use Delete to remove it).");
+  try { parseExpression(code, { plugins: ["jsx"] }); } catch (err) { throw new Error(`Invalid code: ${String(err.message).replace(/ \(\d+:\d+\)$/, "")}`); }
+  const out = html.slice(0, it.start) + reindent(code, html, it.start) + html.slice(it.end);
+  assertValid(out);
+  return out;
+}
+
+/** Moves the item `from` to the place `to` (the other items shift); everything between the items (commas, comments, line breaks) stays where it is. */
+export function moveItem(html, ordinal, prop, from, to) {
+  const { items } = listOf(html, ordinal, prop);
+  if (!items[from] || to < 0 || to >= items.length) throw new Error("That item cannot be moved there.");
+  if (from === to) return html;
+  const texts = items.map((it) => html.slice(it.start, it.end)), order = items.map((_, i) => i);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  let out = html;
+  for (let i = items.length - 1; i >= 0; i--) out = out.slice(0, items[i].start) + texts[order[i]] + out.slice(items[i].end);
+  assertValid(out);
+  return out;
+}
+
+/**
+ * Replaces the text of one language where it is written (a literal in an LSI object, an argument of `t("Ano", "Yes")`, a constant, …).
+ * `scope` = { attr } for a prop of the element, or { item: { prop, index }, name } for a property of an item of a list prop.
+ */
+export function setText(html, ordinal, scope, langIdx, value) {
+  const e = element(html, ordinal);
+  const target = scope.item ? itemOf(html, ordinal, scope.item.prop, scope.item.index, null).item.props.find((p) => p.name === scope.name)?.resolved : e.attrs.find((a) => a.name === scope.attr)?.resolved;
+  const t = target?.langs?.[langIdx];
+  if (!t) throw new Error("That text is not written out as a literal in the file, so it cannot be edited here.");
+  const out = html.slice(0, t.start) + literalSource({ type: "string", value: String(value) }, html.slice(t.start, t.end)) + html.slice(t.end);
   assertValid(out);
   return out;
 }

@@ -23,8 +23,8 @@ import { bundlePath, canSelfUpdate, downloadTo, digestHex, unpackAndCheck, start
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
-import { tagHtml, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch } from "./jsxSource.mjs";
-import { createDocs } from "./uu5Docs.mjs";
+import { tagHtml, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
+import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
 import { RULES_FILE, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes } from "./rules.mjs";
@@ -117,6 +117,13 @@ app.whenReady().then(async () => {
     if (sub) element.name = sub.name || "item";
     return { element, chain: elementNames(html, ordinals), doc: docs.get(element.name), docsAvailable: docs.available() };
   };
+  // library components of the plugin documentation (Uu5Elements, Uu5Forms, Plus4U5Elements, …): found and picked in the chat
+  ipcMain.handle("docs:search", (_e, query, library) => ({ available: docs.available(), results: docs.search(query, { library: String(library ?? ""), limit: 60 }) }));
+  ipcMain.handle("docs:libraries", () => ({ available: docs.available(), libraries: docs.libraries() }));
+  ipcMain.handle("docs:detail", (_e, name) => { const doc = typeof name === "string" ? docs.get(name) : null; return doc ? { name, library: docs.list().find((c) => c.name === name)?.library ?? "", file: docs.file(name), ...doc } : null; });
+  // the documentation page of a component opens in the browser; only pages of the uuApp portal (where the wiki links lead) are ever opened
+  ipcMain.handle("docs:open", (_e, url) => (typeof url === "string" && /^https:\/\/uuapp\.plus4u\.net\//.test(url) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only documentation pages on uuapp.plus4u.net can be opened." }));
+  ipcMain.handle("docs:describe", (_e, names) => ({ names: (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && docs.has(n)), text: describeComponents(docs, (Array.isArray(names) ? names : []).filter((n) => typeof n === "string")) }));
   ipcMain.handle("jsx:setBranch", guard((_e, { file, ordinals, name, idx, type, value, sub }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8");
     const out = sub ? setItemBranch(html, ordinals[0], sub.prop, sub.index, name, idx, { type, value }, sub.count) : setBranch(html, ordinals[0], name, idx, { type, value });
@@ -137,6 +144,22 @@ app.whenReady().then(async () => {
     if (out !== html) fs.writeFileSync(p, out);
     return inspectInfo(out, ordinals, sub);
   });
+  // the items of a list prop (an action list): shown, added, removed, moved, duplicated
+  ipcMain.handle("jsx:list", guard((_e, { file, ordinals, prop }) => describeList(fs.readFileSync(screenPath(file), "utf8"), ordinals[0], String(prop))));
+  ipcMain.handle("jsx:item", guard((_e, { file, ordinals, prop, op }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8"), o = ordinals[0];
+    const out = op.type === "add" ? addItem(html, o, prop, op.props, op.at) : op.type === "remove" ? removeItem(html, o, prop, op.index)
+      : op.type === "move" ? moveItem(html, o, prop, op.from, op.to) : op.type === "duplicate" ? duplicateItem(html, o, prop, op.index) : op.type === "replace" ? replaceItem(html, o, prop, op.index, op.text) : null;
+    if (out == null) throw new Error("Unknown operation.");
+    if (out !== html) fs.writeFileSync(p, out);
+    return describeList(out, o, prop);
+  }));
+  // the text of one language of a text / LSI, edited where it is written
+  ipcMain.handle("jsx:setText", guard((_e, { file, ordinals, scope, lang, value }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8"), out = setText(html, ordinals[0], scope, lang, value);
+    if (out !== html) fs.writeFileSync(p, out);
+    return { ok: true };
+  }));
   ipcMain.handle("jsx:set", editJsx((html, o, name, v, sub) => (sub ? setItemProp(html, o, sub.prop, sub.index, name, v, sub.count) : setProp(html, o, name, v))));
   ipcMain.handle("jsx:remove", editJsx((html, o, name, _v, sub) => (sub ? removeItemProp(html, o, sub.prop, sub.index, name, sub.count) : removeProp(html, o, name))));
   ipcMain.handle("projects:folder", guard((_e, op) => projectsFolder(String(op))));

@@ -70,3 +70,12 @@ test("updateSelection: a plain click marks one, Shift/Cmd/Ctrl-click adds and re
   assert.equal(r.selection.length, 8); assert.equal(r.refused.key, "x|");
   assert.equal(updateSelection(full, pick("3|", { additive: true })).selection.length, 8, "an already marked one is not added twice");
 });
+
+test("picks that are linked in the text are numbered by their markers", () => {
+  const mk = (ref, name) => ({ ref, file: "a.html", text: name, chain: [{ name: `Uu5Elements.${name}` }], element: { name: `Uu5Elements.${name}`, snippet: `<${name} />` } });
+  const one = agentContext([mk(1, "Box")]);
+  assert.match(one, /marked a component .*\[#n …\]/); assert.match(one, /#1\) the uu5 component Uu5Elements.Box/);
+  const two = agentContext([mk(1, "Box"), mk(3, "Button")]);
+  assert.match(two, /marked 2 components/); assert.match(two, /#1\) .*Uu5Elements.Box[\s\S]*#3\) .*Uu5Elements.Button/);
+  assert.match(agentContext([{ ...mk(0, "Box"), ref: undefined }]), /^Context: the user selected the uu5 component/, "without markers the old wording stays");
+});

@@ -1,4 +1,5 @@
 import { esc } from "./markdown.js";
+import { ICON_CLOSE } from "./icons.js";
 import { getProjectText, setProjectText, getScreenText, setScreenText } from "./projectDoc.js";
 
 /**
@@ -11,11 +12,11 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
   const box = document.createElement("div");
   box.id = "descdlg"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-labelledby="dd-title">
-    <h2 id="dd-title">Description</h2>
+    <div class="dlg-head"><h2 id="dd-title">Description</h2><button class="dlg-x icon dd-close" type="button" title="Close (Esc)" aria-label="Close"></button></div>
     <p class="mute">Kept in <code>PROJECT.md</code> in the project folder, apart from the business rules. Claude reads it as context for every task.</p>
     <div class="dd-fields"></div>
     <p class="dd-err err"></p>
-    <div class="row"><span class="dd-meta mute grow"></span><button class="dd-close" type="button">Close</button></div></div>`;
+    <div class="row"><span class="dd-meta mute grow"></span></div></div>`;
   document.body.append(box);
   const q = (s) => box.querySelector(s), fields = q(".dd-fields"), err = q(".dd-err"), meta = q(".dd-meta");
 
@@ -58,7 +59,7 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
     target.scrollIntoView({ block: "center" }); target.focus();
   }
   const close = () => { box.hidden = true; };
-  q(".dd-close").onclick = close;
+  q(".dd-close").innerHTML = ICON_CLOSE; q(".dd-close").onclick = close;
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
 
