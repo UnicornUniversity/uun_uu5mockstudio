@@ -517,13 +517,15 @@ app.whenReady().then(async () => {
       return { error: e?.message ?? "The update failed." };
     } finally { fs.rmSync(work, { recursive: true, force: true }); }
   });
+  // the welcome tour is shown on the first run only (STUDIO_NO_TOUR: tests and the demo recorder start from a fresh profile)
+  ipcMain.handle("tour:done", () => void saveApp({ tourSeen: true }));
   ipcMain.handle("update:later", (_e, version) => void saveApp({ updateLater: String(version) }));
   ipcMain.handle("update:open", (_e, url) => (isRepoUrl(url, UPDATE_REPO) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only pages of the project repository on GitHub can be opened." }));
   // versions of what the app is built from (for the About dialog)
   const depVersion = (name) => { try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "node_modules", name, "package.json"), "utf8")).version; } catch { return null; } };
   nativeTheme.on("updated", () => emit("glass:set", glassOn())); // Reduce transparency was switched in System Settings
   ipcMain.handle("app:meta", async () => ({
-    version: app.getVersion(), platform: process.platform, glass: glassOn(), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
+    version: app.getVersion(), platform: process.platform, glass: glassOn(), tourSeen: Boolean(loadApp().tourSeen) || Boolean(process.env.STUDIO_NO_TOUR), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
     runtime: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     deps: Object.fromEntries(["@anthropic-ai/claude-agent-sdk", "@babel/parser", "fflate", "electron-updater"].map((n) => [n, depVersion(n)])),
   }));

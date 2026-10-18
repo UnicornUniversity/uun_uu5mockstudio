@@ -430,3 +430,18 @@ body[data-noproject] #descstrip{display:none}
 body[data-chat="float"] #chat header .tools #chatmode .when-dock{display:none}
 body[data-chat="float"] #chat header .tools #chatmode .when-float{display:inline-flex}
 #chat header .tools .ico{width:18px;height:18px}
+
+/* ---- welcome tour */
+#tour{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:47}
+#tour[hidden]{display:none}
+#tour .card{width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px 18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+#tour h2{margin:6px 0 0;font-size:21px}#tour .tr-text{margin:0;line-height:1.55;color:var(--mute);min-height:7.4em}
+#tour .tr-art{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px}
+#tour .tr-svg{display:block;width:100%;height:auto}
+#tour .t-card{fill:var(--panel);stroke:var(--line);stroke-width:1.5}#tour .t-sel{stroke:var(--acc);stroke-width:2.5}#tour .t-focus{stroke:var(--acc);stroke-width:2}
+#tour .t-line{fill:var(--fg);opacity:.75}#tour .t-line.s{opacity:.28}#tour .t-line.w{fill:#fff;opacity:.9}#tour .t-line.n{fill:#7a5b00;opacity:.55}
+#tour .t-fill{fill:var(--line);opacity:.9}#tour .t-accent{fill:var(--acc)}#tour .t-orange{fill:none;stroke:#e8590c;stroke-width:2.5}
+#tour .t-note{fill:#ffe98a;stroke:#d9bd4a;stroke-width:1.2}#tour .t-btn{fill:#fff;font:600 13px system-ui}#tour .t-text{fill:var(--fg);font:13px system-ui}
+#tour .t-arrow{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+#tour .tr-dots{display:flex;gap:7px;justify-content:center;margin:4px 0 2px}#tour .tr-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}#tour .tr-dots i.on{background:var(--acc);width:20px;border-radius:4px}
+#tour .row{display:flex;gap:8px;align-items:center}#tour .grow{flex:1}#tour .tr-next{background:var(--acc);border-color:var(--acc);color:#fff;min-width:96px}

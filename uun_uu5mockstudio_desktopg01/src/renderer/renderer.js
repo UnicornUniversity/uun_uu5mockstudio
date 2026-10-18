@@ -7,6 +7,7 @@ import { createRulesPanel } from "./rulesPanel.js";
 import { createDescPanel } from "./descPanel.js";
 import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
+import { createTour } from "./tour.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
 
@@ -233,6 +234,16 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
 $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.zoomBy(0.8);
 $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
 $("alldev").onchange = (e) => { if (e.target.value) canvas.setDeviceAll(e.target.value); e.target.value = ""; };
+// Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
+// has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
+const MODALS = ["confirm", "dialog", "sizebox", "tour", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
+addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented) return;
+  const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
+  if (!open.length || open.some((m) => m.contains(e.target))) return;
+  e.preventDefault(); e.stopPropagation();
+  open[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+}, true);
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); toggleFullscreen(canvas.selected()); return; }
   if (fsFile || confirmOpen) return;
@@ -927,6 +938,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "view:inspector": return needProject(() => $("inspect").click());
       case "view:chatmode": return $("chatmode").click();
       case "app:about": return openAbout();
+      case "app:tour": return tour.open();
       case "claude:setup": return setup.open();
       case "plugins:check": return setup.checkUpdates(true);
       case "update:check": return checkAppUpdates();
@@ -940,10 +952,17 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
 }
 
 // ---------- Claude Code setup wizard (Claude Code, sign-in, plugins; plugin updates) ----------
+// ---------- welcome tour: on the first run, once the setup wizard (if it was needed) is out of the way ----------
+const tour = createTour({ onClose: () => { meta.tourSeen = true; window.studio.tourDone(); } });
+function maybeTour() {
+  if (meta.tourSeen || tour.isOpen()) return;
+  setTimeout(() => { if (!meta.tourSeen && !tour.isOpen() && $("setup").hidden) tour.open(); }, 700);
+}
 setup = createSetup({
   api: window.studio, toast, isBusy: () => busy,
   onStatus: (st) => {
     ready = st.state === "ready";
+    maybeTour();
     $("send").disabled = busy || !ready || !project;
     if (ready) $("model").title = `Claude Code ${st.version} · ${st.email ?? ""}`;
   },

@@ -114,7 +114,7 @@ function startFakeReleases() {
 }
 
 async function launch() {
-  const env = { ...process.env, STUDIO_PROJECTS_DIR: projectsDir, STUDIO_PICK_REPO: makeDemoRepo(), STUDIO_UPDATE_API: startFakeReleases() };
+  const env = { ...process.env, STUDIO_PROJECTS_DIR: projectsDir, STUDIO_PICK_REPO: makeDemoRepo(), STUDIO_UPDATE_API: startFakeReleases(), STUDIO_NO_TOUR: "1" };
   const args = [`--user-data-dir=${profile}`, `--remote-debugging-port=${opts.port}`];
   app = opts.packaged
     ? spawn(path.join(opts.packaged, "Contents", "MacOS", "uu5Mock Studio"), args, { env, stdio: "ignore" })
@@ -388,7 +388,7 @@ const steps = [
     await typeText(T.screenDesc, 24); await sleep(800);
     await click("#descdlg .dd-close"); await sleep(900);
     await click("#fit"); await sleep(900);                                                       // the description now sits below the screen: keep it clear of the caption
-    const cv = (await centre("#canvas")) ?? { x: 900, y: 500 }; await wheelAt(cv.x, cv.y, 70, 0); await sleep(1800);
+    const cv = (await centre("#canvas")) ?? { x: 900, y: 500 }; await wheelAt(cv.x, cv.y, 230, 0); await sleep(1800);
     await caption("", 200);
   }],
   ["second screen", async () => {

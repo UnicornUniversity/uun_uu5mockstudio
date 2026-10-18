@@ -23,8 +23,8 @@ body[data-glass] #chat #prompt{background:var(--g-fill-strong)!important;border:
 body[data-glass] #chat .ai{background:var(--g-fill-strong);border-color:var(--g-edge)}
 
 /* dialogs: the scrim blurs what is behind, the card is glass */
-body[data-glass] :is(#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome){background:var(--g-scrim)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-body[data-glass] :is(#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome) .card{
+body[data-glass] :is(#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome){background:var(--g-scrim)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+body[data-glass] :is(#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome) .card{
   background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important;border-radius:24px!important;
   box-shadow:0 30px 80px var(--g-shadow),inset 0 1px 0 var(--g-hi)!important}
 
