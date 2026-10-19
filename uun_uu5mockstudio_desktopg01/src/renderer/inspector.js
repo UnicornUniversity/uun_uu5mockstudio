@@ -68,7 +68,7 @@ export const INJECT = `(async () => {
   const typeProps = (f, key) => { const T = f.type || {}; return T[key] || (T.type && T.type[key]) || (T.render && T.render[key]) || null; };
 
   const box = document.createElement("div");
-  box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #4f8cff;background:rgba(79,140,255,.14);border-radius:3px;display:none";
+  box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #4f8cff;background:transparent;box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 0 1px rgba(255,255,255,.35);border-radius:3px;display:none";
   document.documentElement.appendChild(box);
   // the marked components (Shift / Cmd / Ctrl + click adds or removes one) keep an orange frame; a plain click marks just that one
   const sel = new Map(), marks = [];
@@ -77,7 +77,7 @@ export const INJECT = `(async () => {
     while (marks.length > sel.size) marks.pop().remove();
     while (marks.length < sel.size) {
       const m = document.createElement("div");
-      m.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #e8590c;background:rgba(232,89,12,.12);border-radius:3px;display:none";
+      m.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #e8590c;background:transparent;box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 0 1px rgba(255,255,255,.35);border-radius:3px;display:none";
       document.documentElement.appendChild(m); marks.push(m);
     }
     let i = 0;

@@ -644,3 +644,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 #insp-struct{margin-top:8px;width:100%}
 #previewbar{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:46;display:flex;align-items:center;gap:10px;max-width:min(760px,92vw);padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px}#previewbar[hidden]{display:none}
 #previewbar #pv-text{flex:1;min-width:0}#previewbar .primary{background:var(--acc);border-color:var(--acc);color:#fff}
+/* a click or a drag on the canvas must not select the screens: a selected <webview> is painted with a blue wash over the whole screen */
+#canvas,#canvas .frame,#canvas .fbody,#canvas .shield,#canvas webview{-webkit-user-select:none;user-select:none}
+#canvas :is(input,textarea,select,[contenteditable]){-webkit-user-select:text;user-select:text}
+#canvas webview::selection,#canvas .fbody::selection{background:transparent}
