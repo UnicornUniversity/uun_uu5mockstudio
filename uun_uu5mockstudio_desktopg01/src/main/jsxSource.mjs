@@ -113,8 +113,20 @@ function objectProps(obj, code, abs, cx) {
   });
 }
 /** Array literal -> items; an item that is an object literal gets its properties, anything else is opaque. */
+/** The array literal a spread puts into the list: `...[{…}]`, `...(cond ? [] : [{…}])`, `...(cond && [{…}])`; the branch that holds items (null when it is unclear). */
+function spreadArrayOf(e) {
+  const a = e.argument;
+  const arrays = (n) => !n ? [] : n.type === "ArrayExpression" ? [n] : n.type === "ConditionalExpression" ? [...arrays(n.consequent), ...arrays(n.alternate)]
+    : n.type === "LogicalExpression" ? [...arrays(n.right)] : n.type === "ParenthesizedExpression" ? arrays(n.expression) : [];
+  const full = arrays(a).filter((x) => x.elements.length);
+  return full.length === 1 ? full[0] : null;
+}
 function arrayItems(arr, code, abs, cx) {
   return arr.elements.map((e, index) => {
+    if (e && e.type === "SpreadElement") {
+      const inner = spreadArrayOf(e);
+      return { index, kind: "other", start: abs(e.start), end: abs(e.end), props: [], text: code.slice(e.start, e.end), ...(inner ? { spreadItems: arrayItems(inner, code, abs, cx) } : {}) };
+    }
     if (e && e.type === "ObjectExpression") return { index, kind: "object", start: abs(e.start), end: abs(e.end), openEnd: abs(e.start + 1), closeStart: abs(e.end - 1), props: objectProps(e, code, abs, cx), text: code.slice(e.start, e.end) };
     return { index, kind: "other", start: e ? abs(e.start) : null, end: e ? abs(e.end) : null, props: [], text: e ? code.slice(e.start, e.end) : "" };
   });
@@ -406,8 +418,11 @@ export function removeProp(html, ordinal, name) {
 function itemOf(html, ordinal, prop, index, count) {
   const e = element(html, ordinal), attr = e.attrs.find((a) => a.name === prop);
   if (!attr?.items) throw new Error(`“${prop}” is built dynamically in the file (not a list written out in the JSX), so its items cannot be edited here. Ask in the chat instead.`);
-  if (count != null && attr.items.length !== count) throw new Error(`“${prop}” in the file has ${attr.items.length} items but ${count} are rendered (some are added or filtered in code). Ask in the chat instead.`);
-  const item = attr.items[index];
+  // the items the file lists, with the items of a conditional spread (`...(readOnly ? [] : [{…}])`) put in place of the spread
+  const flat = attr.items.flatMap((it) => it.spreadItems ?? [it]);
+  const items = attr.items.some((it) => it.spreadItems) && (count == null || flat.length === count) ? flat : attr.items;
+  if (count != null && items.length !== count) throw new Error(`“${prop}” in the file has ${items.length} items but ${count} are rendered (some are added or filtered in code). Ask in the chat instead.`);
+  const item = items[index];
   if (!item || item.kind !== "object") throw new Error(`Item ${index + 1} of “${prop}” is not an object written out in the JSX, so it cannot be edited here.`);
   return { e, attr, item };
 }

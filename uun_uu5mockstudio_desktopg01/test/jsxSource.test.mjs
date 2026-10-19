@@ -462,3 +462,21 @@ Utils.Dom.render(<App />, document.getElementById('root'));
   assert.match(structureOutline(t), /Tile ×N[\s\S]*Button \[D: !item\.canEdit\]/);
   assert.equal(structureOf("<p>no script</p>"), null);
 });
+
+test("an item that comes from a conditional spread of the list can be edited", () => {
+  const html = `<script type="text/babel">
+import { ActionGroup } from "uu5g05-elements";
+const readOnly = false;
+const X = () => <ActionGroup itemList={[
+  { icon: "uugds-check", children: "Konzultace" },
+  ...(readOnly ? [] : [{ icon: "uugds-plus-circle", children: "Přidat úkol", primary: true }]),
+]} />;
+</script>`;
+  const ord = parseElements(html).find((e) => e.name === "ActionGroup").ordinal;
+  const first = describeItem(html, ord, "itemList", 0, 2), second = describeItem(html, ord, "itemList", 1, 2);
+  assert.equal(first.attrs.find((a) => a.name === "icon").value, "uugds-check");
+  assert.equal(second.attrs.find((a) => a.name === "children").value, "Přidat úkol");
+  const out = setItemProp(html, ord, "itemList", 1, "children", { type: "string", value: "Nový úkol" }, 2);
+  assert.match(out, /children: "Nový úkol"/); assert.match(out, /children: "Konzultace"/);
+  assert.throws(() => describeItem(html, ord, "itemList", 0, 1), /has 2 items but 1 are rendered/, "when the spread is empty the file cannot tell which item is which");
+});

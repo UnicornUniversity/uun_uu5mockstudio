@@ -336,7 +336,7 @@ $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitA
 $("alldev").onchange = (e) => { if (e.target.value) canvas.setDeviceAll(e.target.value); e.target.value = ""; };
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "iconbox", "jsonbox", "setup", "about", "descdlg", "rules"]; // topmost first
+const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
