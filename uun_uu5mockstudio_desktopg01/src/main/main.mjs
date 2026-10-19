@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { startMockServer } from "./mockServer.mjs";
 import { ClaudeService } from "./claudeService.mjs";
 import { createStudioBrowser } from "./studioBrowserMcp.mjs";
+import { createScreenHistory } from "./screenHistory.mjs";
 import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude } from "./claudeEnv.mjs";
 import { shouldCheck } from "./pluginUpdates.mjs";
 import { createCdnCache } from "./cdnCache.mjs";
@@ -23,7 +24,7 @@ import { bundlePath, canSelfUpdate, downloadTo, digestHex, unpackAndCheck, start
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
-import { tagHtml, structureOf, structureOutline, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
+import { tagHtml, structureOf, structureOutline, moveElements, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
@@ -124,10 +125,25 @@ app.whenReady().then(async () => {
   // the documentation page of a component opens in the browser; only pages of the uuApp portal (where the wiki links lead) are ever opened
   ipcMain.handle("docs:open", (_e, url) => (typeof url === "string" && /^https:\/\/uuapp\.plus4u\.net\//.test(url) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only documentation pages on uuapp.plus4u.net can be opened." }));
   ipcMain.handle("docs:describe", (_e, names) => ({ names: (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && docs.has(n)), text: describeComponents(docs, (Array.isArray(names) ? names : []).filter((n) => typeof n === "string")) }));
+  // every change the app makes to a screen file is a step that can be undone and redone (not the changes of the agent)
+  const history = createScreenHistory();
+  const save = (p, before, after, label) => { fs.writeFileSync(p, after); history.record(p, before, after, label); };
+  ipcMain.handle("screen:undo", guard((_e, file) => stepHistory(file, "undo")));
+  ipcMain.handle("screen:redo", guard((_e, file) => stepHistory(file, "redo")));
+  ipcMain.handle("screen:history", guard((_e, file) => history.state(screenPath(file))));
+  // `file` = the screen the user works with; when it has no step the last step in the project is taken (undo works without the inspector)
+  const stepHistory = (file, way) => {
+    const key = way === "undo" ? "undo" : "redo", mine = file ? screenPath(file) : null;
+    const p = mine && history.state(mine)[key] ? mine : history.latest(key, (k) => path.dirname(k) === dir()) ?? mine;
+    if (!p) return { error: `Nothing to ${way}.` };
+    const r = history[way](p, fs.readFileSync(p, "utf8"));
+    if (r.error) return { error: r.error };
+    fs.writeFileSync(p, r.html); return { ok: true, label: r.label, file: path.basename(p), ...history.state(p) };
+  };
   ipcMain.handle("jsx:setBranch", guard((_e, { file, ordinals, name, idx, type, value, sub }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8");
     const out = sub ? setItemBranch(html, ordinals[0], sub.prop, sub.index, name, idx, { type, value }, sub.count) : setBranch(html, ordinals[0], name, idx, { type, value });
-    if (out !== html) fs.writeFileSync(p, out);
+    if (out !== html) save(p, html, out, "Change of a value");
     return inspectInfo(out, ordinals, sub);
   }));
   let iconCatalog;
@@ -141,24 +157,31 @@ app.whenReady().then(async () => {
   const editJsx = (change) => guard((_e, { file, ordinals, name, type, value, sub }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8");
     const out = change(html, ordinals[0], name, { type, value }, sub);
-    if (out !== html) fs.writeFileSync(p, out);
+    if (out !== html) save(p, html, out, `Change of ${name}`);
     return inspectInfo(out, ordinals, sub);
   });
   // the items of a list prop (an action list): shown, added, removed, moved, duplicated
-  ipcMain.handle("jsx:structure", guard((_e, { file }) => structureOf(fs.readFileSync(screenPath(file), "utf8"), String(file).replace(/\.html$/, ""))));
+  ipcMain.handle("jsx:structure", guard((_e, { file, ordinal }) => structureOf(fs.readFileSync(screenPath(file), "utf8"), String(file).replace(/\.html$/, ""), { ordinal: Number.isInteger(ordinal) ? ordinal : null })));
+  // the rearranged structure of a screen: the moves that can safely be done in the file are done, the others are reported
+  ipcMain.handle("jsx:moves", guard((_e, { file, ops }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8");
+    const r = moveElements(html, Array.isArray(ops) ? ops : []);
+    if (r.applied.length && r.html !== html) save(p, html, r.html, "Rearranged components");
+    return { applied: r.applied, failed: r.failed, structure: structureOf(r.html, String(file).replace(/\.html$/, "")) };
+  }));
   ipcMain.handle("jsx:list", guard((_e, { file, ordinals, prop }) => describeList(fs.readFileSync(screenPath(file), "utf8"), ordinals[0], String(prop))));
   ipcMain.handle("jsx:item", guard((_e, { file, ordinals, prop, op }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8"), o = ordinals[0];
     const out = op.type === "add" ? addItem(html, o, prop, op.props, op.at) : op.type === "remove" ? removeItem(html, o, prop, op.index)
       : op.type === "move" ? moveItem(html, o, prop, op.from, op.to) : op.type === "duplicate" ? duplicateItem(html, o, prop, op.index) : op.type === "replace" ? replaceItem(html, o, prop, op.index, op.text) : null;
     if (out == null) throw new Error("Unknown operation.");
-    if (out !== html) fs.writeFileSync(p, out);
+    if (out !== html) save(p, html, out, "Change of a list");
     return describeList(out, o, prop);
   }));
   // the text of one language of a text / LSI, edited where it is written
   ipcMain.handle("jsx:setText", guard((_e, { file, ordinals, scope, lang, value }) => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8"), out = setText(html, ordinals[0], scope, lang, value);
-    if (out !== html) fs.writeFileSync(p, out);
+    if (out !== html) save(p, html, out, "Change of a text");
     return { ok: true };
   }));
   ipcMain.handle("jsx:set", editJsx((html, o, name, v, sub) => (sub ? setItemProp(html, o, sub.prop, sub.index, name, v, sub.count) : setProp(html, o, name, v))));

@@ -12,7 +12,7 @@ import { createLibraryPicker } from "./libraryPicker.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
-import { extractPlan, approvalMessage, answersText, serializeTree } from "./planTree.js";
+import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
 
@@ -125,6 +125,41 @@ function convertPlan() {
   if (!text.trim() && !tree && !questions.length) return;
   const plan = { kind: "plan", text, tree, questions, answers: {}, mode: "diagram", original: { text, tree: tree ? JSON.parse(JSON.stringify(tree)) : null }, state: "proposed", editing: false, sel: [], known: [] };
   nodes.get(ai)?.remove(); entries[i] = plan; paint(plan); persist(); refreshKnown(plan);
+}
+/** The bar over the canvas after a rearrangement of components: the screen shows the result; keep it or undo it. */
+let previewPending = null;
+function showPreviewBar(p) {
+  previewPending = p;
+  const bar = $("previewbar"), many = (n) => (n === 1 ? "1 move" : `${n} moves`);
+  $("pv-text").textContent = `${p.name}: ${p.done ? `${many(p.done)} done in the file, the screen shows the result.` : "nothing could be moved in the file directly."}${p.failed.length ? ` ${many(p.failed.length)} need${p.failed.length === 1 ? "s" : ""} the agent.` : ""}`;
+  $("pv-keep").textContent = p.message ? (p.done ? "Keep and let the agent do the rest" : "Let the agent do it") : "Keep";
+  $("pv-undo").textContent = p.done ? "Undo" : "Cancel";
+  bar.hidden = false;
+}
+function closePreviewBar() { $("previewbar").hidden = true; previewPending = null; }
+$("pv-undo").onclick = async () => {
+  const p = previewPending; closePreviewBar(); if (!p || !p.done) return;
+  const r = await window.studio.screenUndo(p.file).catch((e) => ({ error: String(e?.message ?? e) }));
+  toast(r.error ?? `Undone: ${r.label}.`, { err: Boolean(r.error) });
+};
+$("pv-keep").onclick = () => {
+  const p = previewPending; closePreviewBar(); if (!p?.message) return;
+  setPlanMode(false);
+  push({ kind: "user", text: `Rebuild ${p.name} with the rearranged structure${p.done ? " (the rest of the moves is done)" : ""}.` });
+  if (window.__plan?.dryRun) { window.__plan.lastBuild = p.message; return; }
+  setBusy(true); sentModel = $("model").value; planPending = false;
+  window.studio.send(p.message, sentModel || undefined, { plan: false });
+};
+/** Undo / redo of the last change the app made to the screen. */
+async function stepScreen(file, way) {
+  const r = await (way === "undo" ? window.studio.screenUndo(file ?? null) : window.studio.screenRedo(file ?? null)).catch((e) => ({ error: String(e?.message ?? e) }));
+  toast(r.error ?? `${way === "undo" ? "Undone" : "Redone"}: ${r.label}${r.file ? ` (${r.file.replace(/\.html$/, "")})` : ""}.`, { err: Boolean(r.error) });
+}
+/** Edit > Undo / Redo (⌘Z): the typing in a text field, otherwise the last change of the screen. */
+function editStep(way) {
+  const a = document.activeElement;
+  if (a && ((a.isContentEditable) || ((a.tagName === "INPUT" || a.tagName === "TEXTAREA") && !a.readOnly && !a.disabled))) return void document.execCommand(way);
+  stepScreen(inspectedFile(), way);
 }
 const planCtx = {
   change: (e) => { paint(e); persist(); },
@@ -368,6 +403,7 @@ function setInspect(v, { chat = false } = {}) {
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
 $("selinspect").onclick = () => $("inspect").click(); // the same switch, on the bar above the screen
+const inspectedFile = () => propsPanel.file ?? activeMarked?.file ?? canvas.selected() ?? null; // the screen the user works with (undo falls back to the last change in the project)
 $("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
 const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml() });
@@ -377,17 +413,37 @@ const actionListEditor = createActionListEditor({ api: {
   buttonDoc: () => window.studio.docsDetail("Uu5Elements.Button"), pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b),
 } });
 const propsPanel = createPropsPanel({
-  api: { editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
+  api: { markLevel: (file, i, item) => { const v = viewOfFile(file); if (v) inspector.markLevel(v, i, item); }, editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
+  onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
 });
 let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
 const structureDialog = createStructureDialog({ api: {
   structure: window.studio.jsxStructure,
-  show: (file, ordinal) => { structFrom = file; $("insp-back").hidden = false; if (!$("inspect").classList.contains("on")) $("inspect").click(); propsPanel.show({ file, chain: [ordinal] }); },
+  show: (file, ordinal, part) => { structFrom = { file, part: part ?? null }; $("insp-back").hidden = false; if (!$("inspect").classList.contains("on")) $("inspect").click(); propsPanel.show({ file, chain: [ordinal] }); },
+  /**
+   * The moves the file can take safely are done in the file at once, so the screen on the canvas is the preview; the bar asks to keep or to undo them.
+   * What cannot be moved there goes to the agent only after "Keep".
+   */
+  regenerate: async (file, original, tree, ops, part) => {
+    if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+    const name = file.replace(/\.html$/, "");
+    const r = await window.studio.jsxMoves(file, ops ?? []).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) return toast(r.error, { err: true });
+    const failed = r.failed ?? [], done = r.applied.length;
+    if (!done && !failed.length) return;
+    let message = null;
+    if (failed.length) {
+      const current = done ? normalizeTree(r.structure) ?? original : original;
+      const notes = failed.map((f) => `${f.reason} (move ${f.index + 1}: ${ops[f.index]?.name ?? "?"} ${ops[f.index]?.position ?? ""} ${ops[f.index]?.targetName ?? ""})`.replace(/\s+\)/, ")"));
+      message = regenerateMessage({ file, original: current, tree, notes, part: part?.name ?? null });
+    }
+    showPreviewBar({ file, name, done, failed, message });
+  },
   plan: (file) => { setPlanMode(true); const t = $("prompt"); t.value = `Change @${file.replace(/\.html$/, "")}: `; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
 } });
 window.__structure = structureDialog;
-$("insp-back").onclick = () => { const f = structFrom; $("insp-back").hidden = true; structFrom = null; if (f) structureDialog.open(f); };
+$("insp-back").onclick = () => { const f = structFrom; $("insp-back").hidden = true; structFrom = null; if (f) structureDialog.open(f.file, f.part); };
 window.__propsPanel = propsPanel; // the automated checks open the panel for a component through this
 /** The chat chip of a pick: names and the source of the component from the file (an item of a list falls back to the whole component). */
 async function chipFrom(p) {
@@ -756,7 +812,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
-    ["Description…", () => openDesc(file)], ["Structure…", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
@@ -1123,6 +1179,9 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:note": return withScreen((f) => addNote(f));
       case "screen:desc": return withScreen((f) => openDesc(f));
       case "screen:structure": return withScreen((f) => structureDialog.open(f));
+      case "edit:undo": case "edit:redo": return editStep(action === "edit:undo" ? "undo" : "redo");
+      case "screen:undo": return stepScreen(inspectedFile(), "undo");
+      case "screen:redo": return stepScreen(inspectedFile(), "redo");
       case "screen:rule": return withScreen((f) => openRules(f));
       case "screen:mention": return withScreen((f) => (marked.length ? useMarked() : insertMention(f.replace(/\.html$/, ""))));
       case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));

@@ -640,3 +640,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .inputbox #pickcomp,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
 .inputbox #pickcomp{grid-column:1;margin-left:8px}.inputbox #attach{grid-column:2}.inputbox #libbtn{grid-column:3}
 .inputbox #send,.inputbox #stop{position:static;grid-column:5;grid-row:2;margin-right:8px}
+#structbox .row{align-items:center;gap:8px}#structbox #st-regen{background:var(--acc);border-color:var(--acc);color:#fff}#structbox #st-regen:disabled,#structbox #st-reset:disabled{opacity:.45}#st-hint{font-size:12px}
+#insp-struct{margin-top:8px;width:100%}
+#previewbar{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:46;display:flex;align-items:center;gap:10px;max-width:min(760px,92vw);padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px}#previewbar[hidden]{display:none}
+#previewbar #pv-text{flex:1;min-width:0}#previewbar .primary{background:var(--acc);border-color:var(--acc);color:#fff}

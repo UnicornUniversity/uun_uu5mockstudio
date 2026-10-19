@@ -480,3 +480,69 @@ const X = () => <ActionGroup itemList={[
   assert.match(out, /children: "Nový úkol"/); assert.match(out, /children: "Konzultace"/);
   assert.throws(() => describeItem(html, ord, "itemList", 0, 1), /has 2 items but 1 are rendered/, "when the spread is empty the file cannot tell which item is which");
 });
+
+import { moveElements } from "../src/main/jsxSource.mjs";
+test("moving JSX elements in the file: before, after, inside, and what is refused", () => {
+  const page = (body) => `<script type="text/babel">
+import { Block, Text, Button, Box } from "uu5g05-elements";
+const Other = () => <Text>other</Text>;
+function Page({ list, ok }) {
+  return (
+    <Box>
+${body}
+    </Box>
+  );
+}
+</script>`;
+  const html = page(`      <Text>A</Text>
+      <Text>B</Text>
+      <Block header="H">
+        <Button>X</Button>
+      </Block>
+      <Text>C</Text>`);
+  const els = parseElements(html);
+  const texts = els.filter((e) => e.name === "Text" && e.start > html.indexOf("function Page"));
+  const [tA, tB, tC] = texts.map((e) => e.ordinal), block = els.find((e) => e.name === "Block").ordinal, button = els.find((e) => e.name === "Button").ordinal;
+
+  // before / after among siblings
+  let r = moveElements(html, [{ ordinal: tC, target: tA, position: "before" }]);
+  assert.equal(r.failed.length, 0); assert.match(r.html, /<Box>\n      <Text>C<\/Text>\n      <Text>A<\/Text>/);
+  assert.ok(!r.html.includes("data-mv"), "the temporary attributes are gone");
+  r = moveElements(html, [{ ordinal: tA, target: tB, position: "after" }]);
+  assert.match(r.html, /<Text>B<\/Text>\n      <Text>A<\/Text>\n      <Block/);
+  // inside a block (a multi-line one), and into a component that is in the same function
+  r = moveElements(html, [{ ordinal: tC, target: block, position: "inside" }]);
+  assert.match(r.html, /<Button>X<\/Button>\n        <Text>C<\/Text>\n      <\/Block>/); assert.equal(r.failed.length, 0);
+  // a move into the block, then out of it again: the ordinals still find the elements
+  r = moveElements(html, [{ ordinal: tC, target: block, position: "inside" }, { ordinal: tC, target: tA, position: "before" }]);
+  assert.equal(r.failed.length, 0); assert.match(r.html, /<Box>\n      <Text>C<\/Text>\n      <Text>A<\/Text>/);
+  // refused: into itself, a component of the file, another function
+  r = moveElements(html, [{ ordinal: block, target: button, position: "before" }]);
+  assert.equal(r.applied.length, 0); assert.match(r.failed[0].reason, /into itself/);
+  assert.equal(r.html, html, "nothing changed when nothing was done");
+  const other = els.find((e) => e.name === "Text" && e.start < html.indexOf("function Page")).ordinal;
+  r = moveElements(html, [{ ordinal: tA, target: other, position: "before" }]);
+  assert.match(r.failed[0].reason, /another function/);
+  // refused: an element in a condition
+  const cond = page(`      <Text>A</Text>\n      {ok && <Text>B</Text>}\n      <Text>C</Text>`), ce = parseElements(cond).filter((e) => e.name === "Text" && e.start > cond.indexOf("function Page"));
+  r = moveElements(cond, [{ ordinal: ce[1].ordinal, target: ce[0].ordinal, position: "before" }]);
+  assert.match(r.failed[0].reason, /plain child/);
+  // the rest of the moves is done although one failed
+  r = moveElements(cond, [{ ordinal: ce[1].ordinal, target: ce[0].ordinal, position: "before" }, { ordinal: ce[2].ordinal, target: ce[0].ordinal, position: "before" }]);
+  assert.deepEqual([r.applied, r.failed.map((f) => f.index)], [[1], [0]]);
+  // a self-closing target gets the element inside
+  const sc = page(`      <Block />\n      <Text>A</Text>`), se = parseElements(sc);
+  r = moveElements(sc, [{ ordinal: se.find((e) => e.name === "Text" && e.start > sc.indexOf("function Page")).ordinal, target: se.find((e) => e.name === "Block").ordinal, position: "inside" }]);
+  assert.match(r.html, /<Block>\n        <Text>A<\/Text>\n      <\/Block>/);
+});
+
+test("structure of one component: the part of the tree under an element", () => {
+  const html = `<script type="text/babel">
+import { Box, Block, Text, Button } from "uu5g05-elements";
+const X = () => <Box><Block><Text>a</Text><Button /></Block><Text>b</Text></Box>;
+</script>`;
+  const els = parseElements(html), block = els.find((e) => e.name === "Block").ordinal;
+  const part = structureOf(html, "x", { ordinal: block });
+  assert.equal(part.name, "Block"); assert.deepEqual(part.children.map((c) => c.name), ["Text", "Button"]);
+  assert.equal(structureOf(html, "x", { ordinal: 999 }), null);
+});

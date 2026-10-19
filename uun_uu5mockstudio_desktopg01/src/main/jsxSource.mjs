@@ -689,7 +689,7 @@ function returnsOf(fn) {
  * their children lifted. Every node of a JSX element carries its `ordinal` (the one of `parseElements`), so the inspector can show it.
  * -> a tree { name, kind, change?, note?, children? } or null when the file has no JSX.
  */
-export function structureOf(html, name = "") {
+export function structureOf(html, name = "", { ordinal: only = null } = {}) {
   const scripts = [];
   let ordinal = 0, any = false;
   for (const script of babelScripts(html)) {
@@ -804,6 +804,11 @@ export function structureOf(html, name = "") {
   else { const last = [...defs.values()].at(-1); kids = last ? fnResult(last.fn, last.sc) : []; }
   const tree = { name: name ? `Screen: ${name}` : "Screen", kind: "screen" };
   if (kids.length) tree.children = kids;
+  if (only != null) { // only the part inside one component: the component is the root
+    const find = (n) => { if (n.ordinal === only) return n; for (const c of n.children ?? []) { const f = find(c); if (f) return f; } return null; };
+    const part = find(tree);
+    return part ? { ...part, kind: part.kind === "screen" ? "screen" : part.kind } : null;
+  }
   return tree;
 }
 
@@ -817,4 +822,111 @@ export function structureOutline(tree) {
   };
   walkTree(tree, 0);
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------- moving JSX elements (the rearranged structure of a screen, done in the file)
+const MV = "data-mv";
+/** Every JSX element gets a temporary attribute with its ordinal, so that it can be found again after another one was moved. */
+function tagMv(html) {
+  const els = parseElements(html);
+  let out = html;
+  for (let i = els.length - 1; i >= 0; i--) out = out.slice(0, els[i].nameEnd) + ` ${MV}="${els[i].ordinal}"` + out.slice(els[i].nameEnd);
+  return out;
+}
+const stripMv = (html) => html.replace(new RegExp(` ${MV}="\\d+"`, "g"), "");
+
+/** The JSX elements of the file with what is needed to move them: the whole range, the parent, the function they are in. */
+function jsxLayout(html) {
+  const out = [];
+  babelScripts(html).forEach((script, si) => {
+    let ast;
+    try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { return; }
+    const local = new Set();
+    for (const st of ast.program.body) {
+      const d = st.type === "ExportNamedDeclaration" || st.type === "ExportDefaultDeclaration" ? st.declaration : st;
+      if (d?.type === "FunctionDeclaration" && d.id) local.add(d.id.name);
+      else if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && v.init) local.add(v.id.name);
+    }
+    const visit = (n, parent, fn) => {
+      if (!n || typeof n.type !== "string") return;
+      const f = FUNCTION_TYPES.has(n.type) ? n : fn;
+      if (n.type === "JSXElement") {
+        const attr = n.openingElement.attributes.find((a) => a.type === "JSXAttribute" && jsxName(a.name) === MV);
+        out.push({
+          id: attr ? Number(attr.value.value) : null, name: jsxName(n.openingElement.name), script: si, fn: f,
+          start: script.start + n.start, end: script.start + n.end,
+          closeStart: n.closingElement ? script.start + n.closingElement.start : null, selfClosing: !n.closingElement,
+          viaChild: Boolean(parent && (parent.type === "JSXElement" || parent.type === "JSXFragment") && parent.children.includes(n)),
+          isLocal: local.has(jsxName(n.openingElement.name)),
+        });
+      }
+      for (const key of Object.keys(n)) {
+        if (key === "loc" || key === "extra" || key.endsWith("Comments")) continue;
+        const v = n[key];
+        if (Array.isArray(v)) v.forEach((c) => visit(c, n, f)); else if (v && typeof v.type === "string") visit(v, n, f);
+      }
+    };
+    visit(ast.program, null, null);
+  });
+  return out;
+}
+
+const lineOf = (html, start, end) => {
+  const ls = html.lastIndexOf("\n", start - 1) + 1, nl = html.indexOf("\n", end), le = nl < 0 ? html.length : nl;
+  return { ls, le, nl, own: /^[ \t]*$/.test(html.slice(ls, start)) && /^[ \t]*$/.test(html.slice(end, le)), indent: /^[ \t]*/.exec(html.slice(ls, start))[0] };
+};
+/** The lines of a piece of code with their indentation changed from `from` to `to`. */
+const shift = (text, from, to) => text.split("\n").map((l, i) => (i === 0 ? l : to + (l.startsWith(from) ? l.slice(from.length) : l.replace(/^[ \t]+/, "")))).join("\n");
+
+/**
+ * Moves the JSX element `op.id` (its ordinal in the file as it was) before / after / inside the element `op.target`.
+ * Only the safe case is done: both are plain JSX children in the same function (a condition, a list, a prop, the root of a component
+ * and a move into another component are not). -> { html } or { error: why }.
+ */
+function moveElement(html, op) {
+  const L = jsxLayout(html), E = L.find((x) => x.id === op.id), T = L.find((x) => x.id === op.target);
+  const nm = `${op.name ?? "the component"}`;
+  if (!E || !T) return { error: `${nm} is not a JSX element written in the file` };
+  if (E === T) return { error: "a component cannot be moved onto itself" };
+  if (E.script !== T.script) return { error: `${nm} and its new place are in different scripts` };
+  if (!E.viaChild) return { error: `${nm} is not a plain child in the JSX (it is in a condition, a list, a prop, or it is the root of a component)` };
+  if (T.start >= E.start && T.end <= E.end) return { error: `${nm} cannot be moved into itself` };
+  if (E.fn !== T.fn) return { error: `${nm} would move into another function or component` };
+  if (op.position === "inside") { if (T.isLocal) return { error: `${T.name} is a component of this file: what is put inside it is shown only when it renders its children` }; }
+  else if (!T.viaChild) return { error: `the new place next to ${T.name} is not a plain child in the JSX` };
+
+  const e = lineOf(html, E.start, E.end), t = lineOf(html, T.start, T.end);
+  const code = shift(html.slice(E.start, E.end), e.indent, "");
+  const edits = [{ start: e.own ? e.ls : E.start, end: e.own ? (e.nl < 0 ? e.le : e.nl + 1) : E.end, text: "" }];
+  const own = (at, indent) => ({ start: at, end: at, text: `${indent}${shift(code, "", indent)}\n` });
+  if (op.position === "before") edits.push(t.own ? own(t.ls, t.indent) : { start: T.start, end: T.start, text: code });
+  else if (op.position === "after") edits.push(t.own ? (t.nl < 0 ? { start: t.le, end: t.le, text: `\n${t.indent}${shift(code, "", t.indent)}` } : own(t.nl + 1, t.indent)) : { start: T.end, end: T.end, text: code });
+  else if (T.selfClosing) {
+    const open = html.slice(T.start, T.end - 2).replace(/\s+$/, ""), indent = t.indent;
+    edits.push({ start: T.start, end: T.end, text: `${open}>\n${indent}  ${shift(code, "", `${indent}  `)}\n${indent}</${T.name}>` });
+  } else {
+    const c = lineOf(html, T.closeStart, T.closeStart + `</${T.name}>`.length);
+    edits.push(c.own ? own(c.ls, `${c.indent}  `) : { start: T.closeStart, end: T.closeStart, text: code });
+  }
+  const sorted = edits.sort((a, b) => b.start - a.start);
+  for (let i = 1; i < sorted.length; i++) if (sorted[i].end > sorted[i - 1].start) return { error: `${nm} cannot be moved there (the places overlap)` };
+  let out = html;
+  for (const ed of sorted) out = out.slice(0, ed.start) + ed.text + out.slice(ed.end);
+  try { assertValid(out); } catch (err) { return { error: `the moved code would not be valid (${String(err.message).slice(0, 80)})` }; }
+  return { html: out };
+}
+
+/**
+ * Moves of the rearranged structure, in the order they were made: `ops` = [{ ordinal, target, position: "before" | "after" | "inside", name?, targetName? }]
+ * (ordinals as the file had them before the first move). -> { html, applied: [index], failed: [{ index, reason }] }.
+ */
+export function moveElements(html, ops) {
+  let cur = tagMv(html);
+  const applied = [], failed = [];
+  ops.forEach((op, i) => {
+    if (!Number.isInteger(op.ordinal) || !Number.isInteger(op.target)) return void failed.push({ index: i, reason: `${op.name ?? "the component"} or its new place is not a JSX element written in the file` });
+    const r = moveElement(cur, { id: op.ordinal, target: op.target, position: op.position, name: op.name });
+    if (r.error) failed.push({ index: i, reason: r.error }); else { cur = r.html; applied.push(i); }
+  });
+  return { html: stripMv(cur), applied, failed };
 }

@@ -76,7 +76,9 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       sep,
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
       item("Description…", "screen:desc", { enabled: has }),
-      item("Structure…", "screen:structure", { enabled: has }),
+      item("Show Component Tree…", "screen:structure", { enabled: has }),
+      item("Undo Screen Change", "screen:undo", { accelerator: "Alt+CmdOrCtrl+Z", enabled: has }),
+      item("Redo Screen Change", "screen:redo", { accelerator: "Alt+Shift+CmdOrCtrl+Z", enabled: has }),
       item("Add Rule…", "screen:rule", { enabled: has }),
       item("Mention in Chat", "screen:mention", { enabled: has }),
       sep,
@@ -97,7 +99,8 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
 
   const edit = {
     label: "Edit",
-    submenu: [{ role: "undo" }, { role: "redo" }, sep, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }],
+    // Undo / Redo: in a text field they undo the typing, anywhere else the last change of the screen (the renderer decides)
+    submenu: [item("Undo", "edit:undo", { accelerator: "CmdOrCtrl+Z" }), item("Redo", "edit:redo", { accelerator: "Shift+CmdOrCtrl+Z" }), sep, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }],
   };
 
   const view = {

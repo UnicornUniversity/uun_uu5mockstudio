@@ -76,3 +76,4 @@ body[data-glass] #chat #form #modemenu .mm-item.on:not(#a):not(#b):not(#c):not(#
 body[data-glass] #chat #form #modemenu .mm-item:hover:not(#a):not(#b):not(#c):not(#d){background:var(--g-fill)!important}
 body[data-glass] #chat #form #modemenu{background:rgba(255,255,255,.88)!important}
 :root[data-theme="dark"] body[data-glass] #chat #form #modemenu{background:rgba(44,46,62,.9)!important}
+body[data-glass] #previewbar{background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important}

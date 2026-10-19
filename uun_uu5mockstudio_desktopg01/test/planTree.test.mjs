@@ -156,3 +156,19 @@ test("layout: siblings left to right, depth top-down, no overlap; collapse hides
   assert.equal(dropTarget(L, by("0.0").x + 40, by("0.0").y + 5, [0]), null, "not into its own subtree");
   assert.equal(dropTarget(L, -50, -50), null);
 });
+
+test("a change of the order of the children is a change", () => {
+  const a = { name: "S", kind: "screen", children: [{ name: "A", kind: "new" }, { name: "B", kind: "new" }, { name: "C", kind: "new" }] };
+  const b = moveNode(a, [2], -1).tree;
+  const lines = describeEdits(a, b);
+  assert.equal(lines.length, 1); assert.match(lines[0], /order changed in S: A, B, C -> A, C, B/);
+  assert.equal(describeEdits(a, a).length, 0);
+  assert.match(approvalMessage({ text: "t", tree: b, original: { text: "t", tree: a } }), /order changed in S/);
+});
+
+test("two components of the same name that swapped places are a change when they have ordinals", () => {
+  const a = { name: "S", kind: "screen", children: [{ name: "Text", kind: "library", ordinal: 1 }, { name: "Text", kind: "library", ordinal: 2 }] };
+  const b = moveNode(a, [1], -1).tree;
+  const lines = describeEdits(a, b);
+  assert.equal(lines.length, 1); assert.match(lines[0], /Text #1, Text #2 -> Text #2, Text #1/);
+});

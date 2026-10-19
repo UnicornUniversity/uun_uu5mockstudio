@@ -70,7 +70,7 @@ export function toLiteral(v, pad = "") {
  * components it is nested in, the props written in the file as editable controls, and the other props it supports.
  * Editing writes to the HTML file through `api`.
  */
-export function createPropsPanel({ api, onUse }) {
+export function createPropsPanel({ api, onUse, onStructure }) {
   let pick = null, info = null, ordinals = [], level = 0, useSub = false;
   const root = $("insp-comp");
 
@@ -293,6 +293,7 @@ export function createPropsPanel({ api, onUse }) {
     names.slice().reverse().forEach((n, i, arr) => { const idx = arr.length - 1 - i; add(short(n), n, idx === level && !(idx === 0 && useSub), () => selectLevel(idx, false)); });
     if (pick.sub) add(`${short(pick.sub.name) || "item"} · ${pick.sub.prop}[${pick.sub.index + 1}]`, `Item ${pick.sub.index + 1} of ${pick.sub.prop}`, level === 0 && useSub, () => selectLevel(0, true));
     $("insp-name").textContent = info.element.name;
+    $("insp-struct").hidden = !onStructure || Boolean(info.element.item);
     const subLine = info.element.item ? `Item ${info.element.item.index + 1} of ${info.element.item.prop} in ${names[0]}` : "";
     $("insp-text").textContent = subLine || (level === 0 && pick.text ? `“${pick.text}”` : "");
     const d = info.doc;
@@ -323,12 +324,13 @@ export function createPropsPanel({ api, onUse }) {
     if (r?.error) { $("insp-err").textContent = r.error; return false; }
     info = r; $("insp-err").textContent = ""; render(); return true;
   }
-  async function selectLevel(i, item) { level = i; useSub = item; ordinals = pick.chainOrdinals.slice(i); await load(); }
+  async function selectLevel(i, item) { level = i; useSub = item; api.markLevel?.(pick.file, i, item); ordinals = pick.chainOrdinals.slice(i); await load(); }
 
   $("insp-add").onchange = (e) => {
     const name = e.target.value; if (!name) return;
     setProp(name, defaultFor(docProp(name), palettes()));
   };
+  $("insp-struct").onclick = () => pick && info && !info.element.item && onStructure?.({ file: pick.file, ordinal: ordinals[0], name: info.element.name });
   $("insp-use").onclick = () => pick && info && onUse({ ...pick, chain: info.chain, element: info.element, sub: info.element.item ? pick.sub : null });
 
   return {

@@ -94,10 +94,13 @@ export const INJECT = `(async () => {
     Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
   };
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); };
+  let levels = [], lastSub = null; // the components around the last pick, nearest first (the panel can pick one of them without a click)
   const click = (e) => {
     stop(e);
     const hit = resolve(e.target); if (!hit) return;
     const f = hit.T, sub = hit.sub, shown = sub ? sub.fiber : f;
+    levels = []; lastSub = sub;
+    for (let g = f, last = null; g && levels.length < 8; g = g.return) { const o = ordOf(g); if (o !== null && o !== last) { levels.push(outermost(g)); last = o; } }
     const key = keyOf(f, sub), additive = e.shiftKey || e.metaKey || e.ctrlKey;
     if (additive) { if (sel.has(key)) sel.delete(key); else sel.set(key, shown); } else { sel.clear(); sel.set(key, shown); }
     paintSel();
@@ -123,6 +126,8 @@ export const INJECT = `(async () => {
   document.documentElement.style.cursor = "crosshair";
   window.__studioInspect = {
     drop(key) { sel.delete(key); paintSel(); }, clear() { sel.clear(); paintSel(); },
+    /* The frame goes to the component i levels above the last pick (or to the picked item of a list). */
+    markLevel(i, item) { const fib = item && lastSub ? lastSub.fiber : levels[i]; if (!fib) return; sel.clear(); sel.set(keyOf(levels[i] ?? levels[0], item ? lastSub : null), fib); paintSel(); },
     off() {
       removeEventListener("keydown", esc, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
       removeEventListener("scroll", paintSel, true); removeEventListener("resize", paintSel); clearInterval(selTimer);
@@ -142,6 +147,7 @@ export function createInspector({ onPick, onEscape }) {
     injectIfOn: (view) => on && run(view, INJECT),
     /** Takes the frame of one marked component off the page of `view` / takes all frames off the pages of `views`. */
     drop: (view, key) => run(view, `window.__studioInspect && window.__studioInspect.drop(${JSON.stringify(key)})`),
+    markLevel: (view, i, item) => run(view, `window.__studioInspect && window.__studioInspect.markLevel(${Number(i)}, ${item ? "true" : "false"})`),
     clearIn: (views) => { for (const view of views) run(view, "window.__studioInspect && window.__studioInspect.clear()"); },
     /** Call from each webview's console-message event. Returns true when the message was an inspector pick. */
     handleConsole(file, message) {

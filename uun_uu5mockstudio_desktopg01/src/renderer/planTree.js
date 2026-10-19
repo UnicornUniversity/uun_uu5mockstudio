@@ -265,6 +265,13 @@ export function describeEdits(original, edited) {
   const a = signatures(original), b = signatures(edited), lines = [];
   for (const [s, n] of a) if ((b.get(s) ?? 0) < n) lines.push(`removed or changed: ${s}`);
   for (const [s, n] of b) if ((a.get(s) ?? 0) < n) lines.push(`added or changed: ${s}`);
+  // the same components in another order under a parent (the signatures above do not see it)
+  const orders = (t) => { const m = new Map(); const w = (n, path) => { const key = `${path} > ${n.name}`; if (n.children?.length) { const k = m.get(key) ?? []; k.push(n.children.map((c) => (c.ordinal != null ? `${c.name} #${c.ordinal}` : c.name))); m.set(key, k); } (n.children ?? []).forEach((c) => w(c, key)); }; w(t, ""); return m; };
+  const oa = orders(original), ob = orders(edited);
+  for (const [key, lists] of ob) {
+    const was = oa.get(key) ?? [];
+    lists.forEach((names, i) => { const before = was[i]; if (before && before.length === names.length && before.join("\u0000") !== names.join("\u0000") && [...before].sort().join("\u0000") === [...names].sort().join("\u0000")) lines.push(`order changed in ${key.split(" > ").at(-1)}: ${before.join(", ")} -> ${names.join(", ")}`); });
+  }
   const notes = (t) => { const o = []; const w = (n) => { if (n.note) o.push(`${n.name}: ${n.note}`); (n.children ?? []).forEach(w); }; w(t); return o.join("\n"); };
   if (!lines.length && notes(original) !== notes(edited)) lines.push("notes of components changed");
   return lines;
@@ -290,5 +297,39 @@ export function approvalMessage({ text, tree, original, questions = [], answers 
     ...(edits.length ? ["", "What the user changed in the tree:", ...edits.map((l) => `- ${l}`)] : []),
     ...(textChanged ? ["", "The text of the plan was edited too."] : []),
     ...answered,
+  ].join("\n");
+}
+
+/** The tree as indented lines (names with the marks of the notation): what the agent reads as the structure before the change. */
+export function outlineText(tree) {
+  const lines = [];
+  const walk = (n, d) => {
+    const tags = [n.relation ? "×N" : "", n.render ? `[R: ${n.render}]` : "", n.disabled ? `[D: ${n.disabled}]` : "", n.label ? `// ${n.label}` : "", n.note ? `(${n.note})` : ""].filter(Boolean);
+    lines.push(`${"  ".repeat(d)}${n.name}${tags.length ? ` ${tags.join(" ")}` : ""}`);
+    (n.children ?? []).forEach((c) => walk(c, d + 1));
+  };
+  walk(tree, 0);
+  return lines.join("\n");
+}
+
+/** The request to the agent to rebuild an existing screen after the user rearranged its structure (`original` = as read from the file, `tree` = as rearranged). */
+export function regenerateMessage({ file, original, tree, notes = [], part = null }) {
+  const edits = describeEdits(original, tree);
+  return [
+    ...(notes.length ? [`I rearranged the structure of the screen ${file}. The app already moved what it could in the file; these moves it could not make:`, ...notes.map((n) => `- ${n}`), ""] : []),
+    ...(part ? [`This is the structure of one component of the screen, ${part} (the root of the tree below); the rest of the screen stays as it is.`] : []),
+    `Change the screen ${file} so that its component structure becomes the one below. I rearranged the tree of the screen (drag and drop). Keep everything else as it is: the texts, data, props, behaviour, conditions and the look of the components. Only move the components (each with everything inside it) and adapt the code around them; a component that is defined in the file stays defined once.`,
+    "",
+    "What I changed (parent > component):",
+    ...(edits.length ? edits.map((l) => `- ${l}`) : ["- (nothing)"]),
+    "",
+    "Structure before:",
+    outlineText(original),
+    "",
+    "Structure now (JSON; \"ordinal\" is the position of the component's JSX element in the file):",
+    "```uu5-tree",
+    serializeTree(tree),
+    "```",
+    "Afterwards reload the screen and check that it renders without errors.",
   ].join("\n");
 }

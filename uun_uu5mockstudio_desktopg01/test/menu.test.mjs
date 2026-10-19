@@ -88,8 +88,10 @@ test("no projects at all: the submenu says so instead of being empty", () => {
 });
 
 test("Edit menu keeps the standard text editing roles", () => {
-  const roles = find(buildMenuTemplate({ platform: "darwin", projects }), "Edit").submenu.map((i) => i.role).filter(Boolean);
-  assert.deepEqual(roles, ["undo", "redo", "cut", "copy", "paste", "selectAll"]);
+  const edit = find(buildMenuTemplate({ platform: "darwin", projects }), "Edit").submenu;
+  assert.deepEqual(edit.map((i) => i.role).filter(Boolean), ["cut", "copy", "paste", "selectAll"]);
+  const steps = edit.filter((i) => /^edit:/.test(i.action ?? "") || i.label === "Undo" || i.label === "Redo");
+  assert.deepEqual(steps.map((i) => i.label), ["Undo", "Redo"], "Undo and Redo go through the app: a text field or the last change of the screen");
 });
 
 test("View exposes canvas zoom, inspector and theme; developer tools only in dev", () => {
