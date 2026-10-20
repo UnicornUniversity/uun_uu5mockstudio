@@ -77,3 +77,5 @@ body[data-glass] #chat #form #modemenu .mm-item:hover:not(#a):not(#b):not(#c):no
 body[data-glass] #chat #form #modemenu{background:rgba(255,255,255,.88)!important}
 :root[data-theme="dark"] body[data-glass] #chat #form #modemenu{background:rgba(44,46,62,.9)!important}
 body[data-glass] #previewbar{background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important}
+body[data-glass][data-chat="float"] #chat.collapsed{background:transparent!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body[data-glass][data-chat="float"] #chat.collapsed #chatbubble{background:linear-gradient(180deg,#5b8cff,#3b6cf0);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 24px rgba(59,108,240,.5),inset 0 1px 0 rgba(255,255,255,.5)}

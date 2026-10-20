@@ -1,20 +1,20 @@
 const KEY = "uu5studio.chat", KEY_FS = "uu5studio.chatfs";
-const MIN_W = 320, MIN_H = 280, EDGE = 8, FS_MARGIN = 16;
+const MIN_W = 320, MIN_H = 280, EDGE = 8, FS_MARGIN = 16, BUBBLE = 56;
 const read = (key) => { try { return JSON.parse(localStorage.getItem(key)) ?? {}; } catch { return {}; } };
 const num = (v, d) => (Number.isFinite(v) ? v : d);
 const between = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
 /**
  * The chat panel is docked (left column) or floating over the canvas: draggable by its header, resizable from all
- * edges, minimizable to a small bar in its corner (button or double-click on the header).
+ * edges, minimizable (button or double-click on the header) to a round chat bubble (by default in the bottom-left corner of the window); a click on the bubble opens it again, and the bubble can be dragged.
  * During the fullscreen preview the same panel is a floating window above the preview (or docked on the left, the preview then
  * starts to its right) with its own remembered geometry, docked and minimized state; leaving fullscreen puts it back exactly where it was.
  * `onModeChange(mode, shiftX)`: shiftX is how far the canvas content has to move so it stays put on screen.
  */
 export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
   const a = read(KEY), f = read(KEY_FS);
-  const st = { mode: a.mode === "float" ? "float" : "dock", x: a.x, y: a.y, w: num(a.w, 400), h: num(a.h, 0), collapsed: Boolean(a.collapsed) }; // normal context
-  const fsSt = { x: f.x, y: f.y, w: num(f.w, 380), h: num(f.h, 0), collapsed: Boolean(f.collapsed), docked: Boolean(f.docked) }; // fullscreen context (floating unless docked)
+  const st = { mode: a.mode === "float" ? "float" : "dock", x: a.x, y: a.y, w: num(a.w, 400), h: num(a.h, 0), collapsed: Boolean(a.collapsed), bx: a.bx, by: a.by }; // normal context
+  const fsSt = { x: f.x, y: f.y, w: num(f.w, 380), h: num(f.h, 0), collapsed: Boolean(f.collapsed), docked: Boolean(f.docked), bx: f.bx, by: f.by }; // fullscreen context (floating unless docked)
   let fsActive = false, restoredAt = 0; // restoredAt: a dblclick right after restoring a minimized bar must not collapse it again
   const cur = () => (fsActive ? fsSt : st);
   const floating = () => (fsActive ? !fsSt.docked : st.mode === "float");
@@ -42,15 +42,12 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     toggleBtn.setAttribute("aria-pressed", String(fl));
     if (!fl) { chat.style.cssText = ""; return; }
     if (!c.collapsed) { fit(); Object.assign(chat.style, { left: c.x + "px", top: c.y + "px", width: c.w + "px", height: c.h + "px" }); return; }
-    // minimized: a small bar that keeps the bottom-right corner of the expanded panel. It is the bar that has to stay inside the
-    // window (so it can reach every edge); the expanded rect follows it and is clamped again when the panel is restored.
-    if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !c.h) fit(); // first use: take the default position
-    c.w = between(Math.round(c.w), MIN_W, innerWidth - 2 * EDGE); c.h = between(Math.round(c.h), MIN_H, innerHeight - 2 * EDGE);
-    Object.assign(chat.style, { width: "max-content", height: "auto" });
-    const bw = chat.offsetWidth, bh = chat.offsetHeight, ex = c.w - bw, ey = c.h - bh; // the bar's real size, not an estimate
-    const left = between(c.x + ex, EDGE, innerWidth - bw - EDGE), top = between(c.y + ey, EDGE, innerHeight - bh - EDGE);
-    c.x = left - ex; c.y = top - ey;
-    Object.assign(chat.style, { left: left + "px", top: top + "px" });
+    // minimized: a round bubble with a position of its own (by default in the bottom-left corner), kept inside the window
+    c.w = between(Math.round(c.w), MIN_W, innerWidth - 2 * EDGE); c.h = c.h ? between(Math.round(c.h), MIN_H, innerHeight - 2 * EDGE) : c.h;
+    Object.assign(chat.style, { width: BUBBLE + "px", height: BUBBLE + "px" });
+    c.bx = between(Math.round(num(c.bx, 16)), EDGE, innerWidth - BUBBLE - EDGE);
+    c.by = between(Math.round(num(c.by, innerHeight - BUBBLE - 16)), EDGE, innerHeight - BUBBLE - EDGE);
+    Object.assign(chat.style, { left: c.bx + "px", top: c.by + "px" });
   }
 
   function setMode(mode) {
@@ -89,7 +86,17 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     });
   });
   header.addEventListener("dblclick", (e) => { if (!e.target.closest(CONTROLS) && !cur().collapsed && Date.now() - restoredAt > 600) toggleCollapsed(); });
-  // a minimized bar restores with a click anywhere on it (like a minimized chat widget)
+  // the round bubble of a minimized chat: a drag moves it, a click opens the chat
+  chat.querySelector("#chatbubble").addEventListener("pointerdown", (e) => {
+    if (!floating() || e.button !== 0) return;
+    const c = cur(), sx = e.clientX, sy = e.clientY, x0 = num(c.bx, 16), y0 = num(c.by, innerHeight - BUBBLE - 16);
+    let dragged = false;
+    track(e, (ev) => {
+      if (!dragged && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
+      dragged = true; c.bx = x0 + ev.clientX - sx; c.by = y0 + ev.clientY - sy; apply();
+    }, () => { if (!dragged) { restoredAt = Date.now(); toggleCollapsed(); } });
+  });
+  // (the header of a minimized chat is hidden; this stays for the keyboard-less case of an old layout)
   header.addEventListener("click", (e) => { if (floating() && cur().collapsed && !e.target.closest("#chatmin")) { restoredAt = Date.now(); toggleCollapsed(); } });
   for (const h of chat.querySelectorAll(".crs")) {
     const dir = ["nw", "ne", "sw", "se", "n", "s", "e", "w"].find((d) => h.classList.contains("crs-" + d));

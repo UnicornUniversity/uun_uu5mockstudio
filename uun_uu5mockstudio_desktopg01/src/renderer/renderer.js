@@ -245,7 +245,7 @@ function tickWork() { const s = Math.round((Date.now() - workStart) / 1000); $("
 function setBusy(b) {
   const was = busy; busy = b; setup?.paintStrip(); updateBuildBtn();
   $("stop").hidden = !b; $("send").hidden = b; $("send").disabled = !ready || !project;
-  $("working").hidden = !b; $("chatbusy").hidden = !b;
+  $("working").hidden = !b; $("chatbusy").hidden = !b; $("chatbubble").classList.toggle("busy", b);
   clearInterval(workTimer);
   if (!b && workFile) setWorkFile(null);
   if (b) {

@@ -648,3 +648,14 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 #canvas,#canvas .frame,#canvas .fbody,#canvas .shield,#canvas webview{-webkit-user-select:none;user-select:none}
 #canvas :is(input,textarea,select,[contenteditable]){-webkit-user-select:text;user-select:text}
 #canvas webview::selection,#canvas .fbody::selection{background:transparent}
+
+/* the minimized chat is a round bubble with the chat icon (a click opens it, a drag moves it) */
+#chatbubble{display:none}
+body[data-chat="float"] #chat.collapsed{width:56px;height:56px;min-width:0;max-width:none;border:0;border-radius:50%;overflow:visible;background:transparent;box-shadow:none}
+body[data-chat="float"] #chat.collapsed > :not(#chatbubble){display:none!important}
+body[data-chat="float"] #chat.collapsed #chatbubble{display:grid;place-items:center;position:absolute;inset:0;padding:0;border:0;border-radius:50%;background:var(--acc);color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:none}
+body[data-chat="float"] #chat.collapsed #chatbubble:hover{filter:brightness(1.08)}
+#chatbubble .ico{width:26px;height:26px;stroke-width:1.9}
+#chatbubble.busy::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--acc);animation:bubblepulse 1.5s ease-out infinite;pointer-events:none}
+@keyframes bubblepulse{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.22);opacity:0}}
+@media (prefers-reduced-motion:reduce){#chatbubble.busy::after{animation:none;opacity:.7}}
