@@ -7,13 +7,14 @@ const read = () => { try { return JSON.parse(localStorage.getItem(KEY)) ?? {}; }
 
 /**
  * The notes of the screen that is open in fullscreen: one sticky panel floating over the preview with every note of the screen
- * (edit, add, delete). Minimized (the default) it is a small round note bubble with the number of notes, by default in the bottom-right
+ * (edit, add, delete). Minimized (the default) it is a small round note bubble: without a note it adds one, with notes it shows their number and opens the panel, by default in the bottom-right
  * corner (the chat bubble is in the bottom-left one); a click opens the panel, a drag moves the bubble. Where the panel and the bubble sit and whether it
  * is minimized is remembered for fullscreen in general.
  */
 export function createFsNote({ host, onEdit, onDelete, onBlur, onAdd }) {
   const st = { x: undefined, y: undefined, bx: undefined, by: undefined, min: true, ...read() };
   const items = new Map(); // note id -> row
+  let active = false; // the fullscreen preview is open: the bubble is there even when the screen has no note (a click adds one)
   const card = document.createElement("div"); card.className = "fnote fsnote"; card.hidden = true;
   card.innerHTML = `<div class="fn-head"><span class="fn-grip" aria-hidden="true">⠿</span><span class="fn-title">Notes</span><button class="fn-add" type="button" title="Add a note" aria-label="Add a note">${ICON_PLUS}</button><button class="fn-min" type="button"></button></div><div class="fsn-list"></div>`;
   host.append(card);
@@ -23,9 +24,11 @@ export function createFsNote({ host, onEdit, onDelete, onBlur, onAdd }) {
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch { /* not persisted */ } };
   function render() {
     const n = items.size, W = innerWidth, H = innerHeight;
-    card.hidden = n === 0 || st.min; bubble.hidden = n === 0 || !st.min;
+    if (n === 0) st.min = true; // without notes there is nothing to open: only the bubble (it adds one)
+    card.hidden = n === 0 || st.min || !active; bubble.hidden = !active || !st.min;
     title.textContent = n > 1 ? `Notes (${n})` : "Note"; minBtn.innerHTML = ICON_UNDERSCORE; minBtn.title = "Minimize the notes"; minBtn.setAttribute("aria-label", "Minimize the notes");
-    bubble.querySelector(".fsn-badge").textContent = String(n); bubble.querySelector(".fsn-badge").hidden = n < 2;
+    bubble.querySelector(".fsn-badge").textContent = String(n); bubble.querySelector(".fsn-badge").hidden = n < 1;
+    bubble.title = n ? `Notes of this screen (${n})` : "Add a note to this screen"; bubble.setAttribute("aria-label", n ? `Open the notes of this screen (${n})` : "Add a note to this screen");
     // the default places (the bubble and the panel in the bottom-right corner) follow the window; only a place the user chose is remembered
     const bx = Math.max(8, Math.min(Number.isFinite(st.bx) ? st.bx : W - BUBBLE - 16, W - BUBBLE - 8)), by = Math.max(48, Math.min(Number.isFinite(st.by) ? st.by : H - BUBBLE - 16, H - BUBBLE - 8));
     if (Number.isFinite(st.bx)) st.bx = bx; if (Number.isFinite(st.by)) st.by = by;
@@ -55,7 +58,7 @@ export function createFsNote({ host, onEdit, onDelete, onBlur, onAdd }) {
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY, x0 = bubble.offsetLeft, y0 = bubble.offsetTop; let dragged = false;
     const move = (ev) => { if (!dragged && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return; dragged = true; st.bx = x0 + ev.clientX - sx; st.by = y0 + ev.clientY - sy; render(); };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); save(); if (!dragged) { st.min = false; save(); render(); } };
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); save(); if (dragged) return; if (!items.size) return void onAdd?.(); st.min = false; save(); render(); };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   };
   card.querySelector(".fn-head").onpointerdown = (e) => {
@@ -69,8 +72,8 @@ export function createFsNote({ host, onEdit, onDelete, onBlur, onAdd }) {
   addEventListener("resize", render);
   return {
     /** A screen was opened in fullscreen (set() follows); `minimize`: the preview was not open before, so the notes start as a bubble. */
-    open({ minimize = false } = {}) { if (minimize) { st.min = true; save(); } },
-    close() { for (const r of items.values()) r.remove(); items.clear(); card.hidden = true; bubble.hidden = true; },
+    open({ minimize = false } = {}) { active = true; if (minimize) { st.min = true; save(); } render(); },
+    close() { active = false; for (const r of items.values()) r.remove(); items.clear(); card.hidden = true; bubble.hidden = true; },
     /** Makes the rows match `notes` ([{id, text}]); the one being typed in keeps its text. */
     set(notes) {
       for (const [id, r] of [...items]) if (!notes.some((n) => n.id === id)) { r.remove(); items.delete(id); }

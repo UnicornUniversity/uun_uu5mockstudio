@@ -8,5 +8,5 @@ test("renderer.js declares the objects its handlers use", async () => {
   const src = await readFile(new URL("../src/renderer/renderer.js", import.meta.url), "utf8");
   for (const name of ["canvas", "memory", "propsPanel", "iconPicker", "inspector", "dock"]) assert.match(src, new RegExp(`^(const|let) ${name}\\b`, "m"), `${name} is not declared`);
   assert.match(src, /^let repo\b/m);
-  for (const fn of ["showRepo", "linkRepoFlow", "updateNoteButton", "pickBranch"]) assert.match(src, new RegExp(`(function ${fn}\\b|const ${fn}\\b)`), `${fn} is missing`);
+  for (const fn of ["showRepo", "linkRepoFlow", "pickBranch"]) assert.match(src, new RegExp(`(function ${fn}\\b|const ${fn}\\b)`), `${fn} is missing`);
 });

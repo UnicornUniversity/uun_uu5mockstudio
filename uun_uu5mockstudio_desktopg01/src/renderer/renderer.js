@@ -615,7 +615,7 @@ new ResizeObserver(() => layoutFullscreen()).observe($("fsstage")); // the previ
 async function openFullscreen(file) {
   const entering = !fsFile; // a switch to another screen in the fullscreen preview keeps the chat and the notes as they are
   if (fsFile) closeFullscreen();
-  fsFile = file; updateScreenCtx(); fsNote.open({ minimize: entering }); fsNote.set(memory.notesOf(file)); updateNoteButton(); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
+  fsFile = file; updateScreenCtx(); fsNote.open({ minimize: entering }); fsNote.set(memory.notesOf(file)); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
   fsView = document.createElement("webview");
   fsView.setAttribute("preload", webviewPreload); fsView.setAttribute("webpreferences", "backgroundThrottling=no");
   fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); });
@@ -767,7 +767,7 @@ async function pickBranch(name) {
 const memory = createMemory({
   api: window.studio, toast, getScreens: () => canvas.files(),
   setCards: (file, notes) => { canvas.setScreenNotes(file, notes); if (file === fsFile) fsNote.set(notes); },
-  onNotes: () => updateNoteButton(),
+  onNotes: () => {},
 });
 // the notes of the screen that is open in fullscreen
 const fsNote = createFsNote({
@@ -780,10 +780,6 @@ async function addNote(file, at) {
   if (file === fsFile) fsNote.focus(id); else canvas.showNote(file, id, at);
   return id;
 }
-$("fsnotebtn").onclick = () => fsFile && addNote(fsFile);
-const updateNoteButton = () => {
-  $("fsnotebtn").textContent = fsFile && memory.count(fsFile) ? `Add note (${memory.count(fsFile)})` : "Add note";
-};
 const REVEAL_LABEL = { darwin: "Show in Finder", win32: "Show in Explorer" }[window.studio.platform] ?? "Show in folder"; // what the file button does
 // the business rules: a dialog from the toolbar icon; the icon shows how many rules there are
 rules = createRulesPanel({
@@ -844,7 +840,7 @@ const SCREEN_MENUS = {
 function updateSelbar() {
   const f = canvas.selected();
   $("selbar").hidden = !f; $("selmenu").hidden = true;
-  $("selname").textContent = f ? f.replace(".html", "") : ""; updateNoteButton();
+  $("selname").textContent = f ? f.replace(".html", "") : "";
   for (const b of $("selbar").querySelectorAll("button.on")) b.classList.remove("on");
   $("selinspect").classList.toggle("on", inspector.on && !chatPick); // the inspector switch on the bar follows the state
   drags.clear(); // a different screen: prepare the files to drag again
@@ -954,7 +950,6 @@ syncTheme();
 // ---------- docked / floating chat panel ----------
 const dock = createChatDock({ chat: $("chat"), header: $("chat").querySelector("header"), toggleBtn: $("chatmode"), onModeChange: (_mode, shiftX) => canvas.panBy(shiftX, 0) });
 $("chatmin").onclick = () => dock.toggleCollapsed();
-$("fschat").onclick = () => dock.toggleCollapsed();
 
 // ---------- app info + updates ----------
 document.body.dataset.platform = window.studio.platform;
