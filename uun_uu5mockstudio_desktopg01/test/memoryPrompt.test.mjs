@@ -28,3 +28,12 @@ test("the studio prompt names every browser tool and asks to look before changin
   assert.match(p, /first take a browser_screenshot/); assert.match(p, /browser_click never changes files/);
   assert.match(p, /\/p\/Demo\/<kebab-name>\.html/); assert.ok(p.endsWith("MEMORY BLOCK"), "the project memory comes last");
 });
+
+test("the agent records business rules itself: the ones the user states and the ones the screen implements, the inferred ones marked", async () => {
+  const { memoryPrompt, planPrompt } = await import("../src/main/claudeService.mjs");
+  const p = memoryPrompt({ cwd: "/p/demo", rules: "" });
+  assert.match(p, /without being asked and without asking for permission/);
+  assert.match(p, /who may do what \(roles, permissions\), the conditions of a change of state, validations/);
+  assert.match(p, /ends with `\(assumed\)`/);
+  assert.match(planPrompt(), /business rules the plan implies/);
+});

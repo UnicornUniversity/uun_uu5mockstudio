@@ -7,7 +7,7 @@ const short = (name) => String(name ?? "").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\.
 
 /** "action" when the list prop holds actions of this grammar (an `itemList` only of the components that render it as actions). */
 export function listKind(prop, componentName) {
-  if (prop === "actionList" || prop === "iconRightList") return "action";
+  if (prop === "actionList" || prop === "iconRightList" || prop === "getActionList") return "action"; // getActionList: a function that returns the list
   if (prop === "itemList" && ["ActionGroup", "Dropdown", "ContextMenu"].includes(short(componentName))) return "action";
   return null;
 }

@@ -153,7 +153,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
       const { deltaY, x, y, vw } = e.args[0], r = view.getBoundingClientRect(), cr = root.getBoundingClientRect();
       zoomAt(r.left - cr.left + x * (r.width / vw), r.top - cr.top + y * (r.width / vw), cam.z * Math.exp(-Math.max(-40, Math.min(40, deltaY)) * 0.01));
     });
-    view.addEventListener("dom-ready", () => { try { view.send("studio-pan-wheel", inspecting ? "plain" : "alt"); } catch { /* not ready yet */ } if (!f.ready) { f.ready = true; onReady?.(file, view.getWebContentsId()); } onPageReady?.(f); });
+    view.addEventListener("dom-ready", () => { try { view.send("studio-pan-wheel", "alt"); } catch { /* not ready yet */ } if (!f.ready) { f.ready = true; onReady?.(file, view.getWebContentsId()); } onPageReady?.(f); });
 
     devSel.onchange = async () => {
       if (devSel.value === "custom") {
@@ -259,7 +259,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     setCamera: (c, animate) => { if (c) { cam = { ...c }; applyCam(animate); } },
     camera: () => ({ ...cam }),
     zoomPercent: () => Math.round(cam.z * 100),
-    setInspecting: (v) => { inspecting = v; updateShields(); for (const f of frames.values()) { try { f.view.send("studio-pan-wheel", v ? "plain" : "alt"); } catch { /* the page is not ready: dom-ready sends it */ } } },
+    setInspecting: (v) => { inspecting = v; updateShields(); for (const f of frames.values()) { try { f.view.send("studio-pan-wheel", "alt"); } catch { /* the page is not ready: dom-ready sends it */ } } },
     /** Auto arrange: flow the screens left to right, wrapping into rows, with no overlaps. Keeps the current reading order. */
     arrange: () => {
       const list = [...frames.values()].sort((a, b) => (Math.round(a.y / 400) - Math.round(b.y / 400)) || a.x - b.x);

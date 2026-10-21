@@ -255,6 +255,26 @@ function textOf(ex, cx, depth = 0) {
 }
 const publicText = (t) => (t ? { kind: t.kind, via: t.via, langs: t.langs.map(({ lang, value }) => ({ lang, value })) } : undefined);
 
+
+/**
+ * The array literal that holds the items of a list prop, wherever it is written: `[…]`, a constant, a function that returns it
+ * (`getActionList={getActionList}`, `() => […]`), or a condition between arrays (`cond ? [{…}] : []`, `cond && […]`).
+ * Of several arrays only the one that holds items counts; null when it is not one array.
+ */
+function findListArray(ex, decls, depth = 0) {
+  if (!ex || depth > 5) return null;
+  const only = (list) => { const found = list.map((e) => findListArray(e, decls, depth + 1)).filter((a) => a && a.elements.length); return found.length === 1 ? found[0] : null; };
+  switch (ex.type) {
+    case "ArrayExpression": return ex;
+    case "ParenthesizedExpression": return findListArray(ex.expression, decls, depth + 1);
+    case "Identifier": { const d = lookupDecl(decls, ex.name, ex.start); return d ? findListArray(d.init, decls, depth + 1) : null; }
+    case "ConditionalExpression": return only([ex.consequent, ex.alternate]);
+    case "LogicalExpression": return only([ex.left, ex.right]);
+    case "ArrowFunctionExpression": case "FunctionExpression": case "FunctionDeclaration": return only(returnsOf(ex).map((r) => r.expr));
+    default: return null;
+  }
+}
+
 /** All JSX elements of the file in document order, with their attributes and source ranges (offsets into `html`). */
 export function parseElements(html) {
   const elements = [];
@@ -290,7 +310,7 @@ export function parseElements(html) {
           if (lit) return { ...attr, ...lit, code };
           const init = ex.type === "Identifier" ? decls.get(ex.name) : null;
           const ref = init ? { name: ex.name, start: abs(init.start), end: abs(init.end), code: script.code.slice(init.start, init.end), json: jsonOf(init) } : null;
-          const arr = ex.type === "ArrayExpression" ? ex : init?.type === "ArrayExpression" ? init : null;
+          const arr = (ex.type === "ArrayExpression" ? ex : init?.type === "ArrayExpression" ? init : null) ?? findListArray(ex, declList);
           const valueRef = resolveValueRef(ex, declList, ex.start, abs), resolvedText = textOf(ex, cx);
           return { ...attr, type: "code", value: code, code, json: jsonOf(ex), branches: branchesOf(ex, script.code, abs), ...(ref ? { ref } : {}), ...(valueRef ? { valueRef } : {}), ...(resolvedText ? { resolved: resolvedText } : {}), ...(arr ? { items: arrayItems(arr, script.code, abs, cx), itemsRange: { start: abs(arr.start), end: abs(arr.end) } } : {}) };
         }

@@ -336,7 +336,8 @@ test("describeList shows the items with their properties; a list built in code i
   assert.equal(l.items.length, 3);
   assert.deepEqual(l.items[1].attrs.map((a) => a.name), ["icon", "children", "collapsed"]);
   assert.equal(l.items[0].attrs.find((a) => a.name === "onClick").type, "code");
-  assert.throws(() => describeList(wrap("cond ? [] : [{ children: 'x' }]"), block(wrap("cond ? [] : [{ children: 'x' }]")), "actionList"), /built dynamically/);
+  assert.throws(() => describeList(wrap("makeList(cond)"), block(wrap("makeList(cond)")), "actionList"), /built dynamically/);
+  assert.equal(describeList(wrap("cond ? [] : [{ children: 'x' }]"), block(wrap("cond ? [] : [{ children: 'x' }]")), "actionList").items.length, 1, "a condition between arrays is the array that has items");
 });
 
 test("removeItem keeps commas, comments and layout", () => {
@@ -545,4 +546,37 @@ const X = () => <Box><Block><Text>a</Text><Button /></Block><Text>b</Text></Box>
   const part = structureOf(html, "x", { ordinal: block });
   assert.equal(part.name, "Block"); assert.deepEqual(part.children.map((c) => c.name), ["Text", "Button"]);
   assert.equal(structureOf(html, "x", { ordinal: 999 }), null);
+});
+
+test("list props written as a condition between arrays, or as a function that returns the list", () => {
+  const html = `<script type="text/babel">
+import { Block } from "uu5g05-elements";
+import { ContentContainer } from "uu_plus4u5g02-elements";
+const P = ({ can }) => {
+  function getActionList() {
+    return [
+      { icon: "uugds-plus-circle", children: "Přidat záznam", onClick: () => {} },
+      { icon: "uugds-reload", children: "Obnovit", collapsed: true },
+    ];
+  }
+  return (
+    <div>
+      <Block actionList={can ? [{ icon: "uugds-plus-circle", children: "Přidat" }] : []} />
+      <ContentContainer getActionList={getActionList} />
+      <ContentContainer getActionList={() => [{ children: "A" }, { children: "B" }]} />
+    </div>
+  );
+};
+</script>`;
+  const els = parseElements(html), block = els.find((e) => e.name === "Block"), ccs = els.filter((e) => e.name === "ContentContainer");
+  const bi = describeItem(html, block.ordinal, "actionList", 0, 1);
+  assert.equal(bi.attrs.find((a) => a.name === "children").value, "Přidat");
+  const fi = describeItem(html, ccs[0].ordinal, "getActionList", 1, 2);
+  assert.equal(fi.attrs.find((a) => a.name === "children").value, "Obnovit");
+  const out = setItemProp(html, ccs[0].ordinal, "getActionList", 1, "children", { type: "string", value: "Znovu" }, 2);
+  assert.match(out, /children: "Znovu", collapsed: true/); assert.match(out, /children: "Přidat záznam"/);
+  const ai = describeItem(html, ccs[1].ordinal, "getActionList", 1, 2);
+  assert.equal(ai.attrs.find((a) => a.name === "children").value, "B");
+  const list = describeList(html, ccs[0].ordinal, "getActionList");
+  assert.equal(list.items.length, 2);
 });

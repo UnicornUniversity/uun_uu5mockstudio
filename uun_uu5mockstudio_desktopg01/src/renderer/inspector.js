@@ -47,7 +47,13 @@ export const INJECT = `(async () => {
     let T = T0; const ord = ordOf(T0);
     for (let g = T0.return; g; g = g.return) { const o = ordOf(g); if (o === null) continue; if (o === ord) T = g; else break; }
     const path = []; for (let f = clicked; f && f !== T; f = f.return) path.unshift(f);
-    const lists = Object.entries(T.memoizedProps || {}).filter(([k, v]) => k !== "children" && Array.isArray(v) && v.some(plainObj));
+    // lists are props that hold an array of objects, and getXxxList() functions without parameters whose result is one (ContentContainer.getActionList)
+    const lists = Object.entries(T.memoizedProps || {}).flatMap(([k, v]) => {
+      if (k === "children") return [];
+      if (Array.isArray(v)) return v.some(plainObj) ? [[k, v]] : [];
+      if (typeof v === "function" && v.length === 0 && /^get[A-Z][A-Za-z0-9_]*List$/.test(k)) { try { const r = v(); return Array.isArray(r) && r.some(plainObj) ? [[k, r]] : []; } catch (e) { return []; } }
+      return [];
+    });
     if (!lists.length) return null;
     for (let gi = 0; gi < path.length; gi++) {
       const pp = path[gi].memoizedProps; if (!pp || typeof pp !== "object") continue;
@@ -124,6 +130,9 @@ export const INJECT = `(async () => {
   addEventListener("scroll", paintSel, true); addEventListener("resize", paintSel);
   for (const t of events) addEventListener(t, swallow, true);
   document.documentElement.style.cursor = "crosshair";
+  // buttons, links and inputs set a cursor of their own (the hand): while picking, everything shows the crosshair
+  const cursorCss = document.createElement("style"); cursorCss.id = "__studio_inspect_cursor"; cursorCss.textContent = "*, *::before, *::after { cursor: crosshair !important; }";
+  document.documentElement.appendChild(cursorCss);
   window.__studioInspect = {
     drop(key) { sel.delete(key); paintSel(); }, clear() { sel.clear(); paintSel(); },
     /* The frame goes to the component i levels above the last pick (or to the picked item of a list). */
@@ -132,7 +141,7 @@ export const INJECT = `(async () => {
       removeEventListener("keydown", esc, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
       removeEventListener("scroll", paintSel, true); removeEventListener("resize", paintSel); clearInterval(selTimer);
       for (const t of events) removeEventListener(t, swallow, true);
-      box.remove(); for (const m of marks) m.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
+      box.remove(); for (const m of marks) m.remove(); cursorCss.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
     },
   };
 })()`;

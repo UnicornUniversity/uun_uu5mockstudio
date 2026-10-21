@@ -194,6 +194,7 @@ async function answerPlan(e) {
 }
 async function buildPlan(e) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  setPlanMode(false); // building is the agent's work: the message field goes back to Agent
   const message = approvalMessage({ text: e.text, tree: e.tree, original: e.original, questions: e.questions, answers: e.answers });
   e.state = "approved"; e.editing = false; paint(e); persist();
   push({ kind: "user", text: message.startsWith("Plan approved: build") && !message.includes("Answers of the user") ? "Build the plan." : "Build the plan, as I edited it and answered." });
@@ -509,7 +510,7 @@ function renderChips() {
   const box = $("chips"); box.hidden = !chips.length; box.replaceChildren();
   chips.forEach((c, i) => {
     const t = Object.assign(document.createElement("span"), { textContent: `📍 #${c.ref} ${describePick(c)}`, title: describePick(c) });
-    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: () => { removeRef(c); chips.splice(i, 1); renderChips(); } });
+    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: () => { removeRef(c); dropMark(c); pickedKeys.delete(chipKey(c)); chips.splice(i, 1); renderChips(); } });
     const chip = Object.assign(document.createElement("div"), { className: "chip" });
     chip.append(t, x); box.append(chip);
   });
@@ -533,6 +534,17 @@ function insertRef(p) {
   const t = $("prompt"), pre = t.value.slice(0, t.selectionStart), sep = pre && !/\s$/.test(pre) ? " " : "";
   t.setRangeText(`${sep}[#${p.ref} ${refLabel(p)}] `, t.selectionStart, t.selectionEnd, "end");
 }
+/** The frame the inspector keeps on the page around a component that was linked in the message. */
+function dropMark(c) { const v = c.file ? viewOfFile(c.file) : null; if (v && c.key) inspector.drop(v, c.key); }
+/** A link [#n …] that was deleted from the text takes its chip and its frame on the page with it. */
+function syncChipsWithText() {
+  if (!chips.length) return;
+  const text = $("prompt").value, keep = chips.filter((c) => new RegExp(`\\[#${c.ref} [^\\]]*\\]`).test(text));
+  if (keep.length === chips.length) return;
+  for (const c of chips) if (!keep.includes(c)) { dropMark(c); pickedKeys.delete(chipKey(c)); }
+  chips = keep; renderChips();
+}
+$("prompt").addEventListener("input", syncChipsWithText);
 function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new RegExp(`\\s?\\[#${p.ref} [^\\]]*\\]`), ""); }
 
 // ---------- project menu: export + offline CDN cache ----------
@@ -601,15 +613,16 @@ function layoutFullscreen() {
 }
 new ResizeObserver(() => layoutFullscreen()).observe($("fsstage")); // the preview follows the stage when the chat docks / floats during fullscreen
 async function openFullscreen(file) {
+  const entering = !fsFile; // a switch to another screen in the fullscreen preview keeps the chat and the notes as they are
   if (fsFile) closeFullscreen();
-  fsFile = file; updateScreenCtx(); fsNote.open(); fsNote.set(memory.notesOf(file)); updateNoteButton(); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
+  fsFile = file; updateScreenCtx(); fsNote.open({ minimize: entering }); fsNote.set(memory.notesOf(file)); updateNoteButton(); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
   fsView = document.createElement("webview");
   fsView.setAttribute("preload", webviewPreload); fsView.setAttribute("webpreferences", "backgroundThrottling=no");
   fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); });
   fsView.src = `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(file)}`;
   fsWrap = Object.assign(document.createElement("div"), { className: "fswrap" }); fsWrap.append(fsView);
   $("fsstage").replaceChildren(fsWrap); $("fs").hidden = false; layoutFullscreen();
-  dock.enterFullscreen(); // the chat stays available as a floating window above the preview
+  dock.enterFullscreen({ minimize: entering }); // the chat stays available above the preview, minimized to its bubble when the preview opens
   await window.studio.setFullScreen(true);
   fsView.addEventListener("dom-ready", () => fsView?.focus(), { once: true });
 }
@@ -823,9 +836,10 @@ addEventListener("blur", () => { $("ctxmenu").hidden = true; });
 
 // ---------- actions on the selected screen (bar above the canvas) ----------
 const SCREEN_MENUS = {
-  export: [["image", "Image… (PNG, JPEG, PDF)"], ["copy-html", "Save a copy of the HTML…"]],
-  // on macOS these open the system share sheet (contacts and apps such as Messages, Mail, AirDrop, WhatsApp, Signal); elsewhere an e-mail draft
-  share: [["share-png", "Share image…"], ["share-html", "Share HTML file…"], ["share-zip", "Share the whole project (ZIP)…"]],
+  export: [["image", "Image… (PNG, JPEG, PDF)"], ["copy-html", "Save a copy of the HTML…"], ["zip", "Save the whole project (ZIP)…"]],
+  // on macOS these open the system share sheet (contacts and apps such as Messages, Mail, AirDrop, WhatsApp, Signal); elsewhere an e-mail draft.
+  // The two "drag" entries are files to take with the mouse into a chat, a mail or a folder.
+  share: [["share-png", "Share image…"], ["share-html", "Share HTML file…"], ["share-zip", "Share the whole project (ZIP)…"], ["-", ""], ["drag-png", "Drag the image into an app"], ["drag-html", "Drag the HTML file into an app"]],
 };
 function updateSelbar() {
   const f = canvas.selected();
@@ -833,7 +847,7 @@ function updateSelbar() {
   $("selname").textContent = f ? f.replace(".html", "") : ""; updateNoteButton();
   for (const b of $("selbar").querySelectorAll("button.on")) b.classList.remove("on");
   $("selinspect").classList.toggle("on", inspector.on && !chatPick); // the inspector switch on the bar follows the state
-  drags.clear(); for (const c of $("selbar").querySelectorAll(".dchip")) delete c.dataset.state; // a different screen: prepare again
+  drags.clear(); // a different screen: prepare the files to drag again
 }
 // ----- the bar above the selected screen can be moved: by its grip or its name, the place is remembered, a double click puts it back
 const SELBAR_KEY = "uu5studio.selbarPos";
@@ -862,47 +876,36 @@ for (const id of ["selmove", "selname"]) {
   h.addEventListener("dblclick", () => { placeSelbar({ x: 0, y: 0 }); saveSelbar(); });
 }
 async function screenAction(act, file) {
-  if (act === "copy-html") report(await window.studio.exportHtml(file), (r) => `Saved: ${r.path.split("/").pop()}`);
+  if (act === "zip") report(await window.studio.exportZip(), (r) => `ZIP saved (${r.files} screens)`);
+  else if (act === "copy-html") report(await window.studio.exportHtml(file), (r) => `Saved: ${r.path.split("/").pop()}`);
   else if (act === "image") { await showFrame(file); report(await window.studio.exportImage(file), (r) => `Image saved: ${r.path.split("/").pop()}`); }
   else if (act === "fullscreen") openFullscreen(file);
   else if (act === "more") { const r = $("morebtn").getBoundingClientRect(); showContextMenu({ file, clientX: r.left, clientY: r.bottom + 6 }); }
   else if (act === "reveal") window.studio.revealScreen(file);
   else if (act.startsWith("share-")) { const kind = act.slice(6); if (kind === "png") await showFrame(file); notifyShare(await window.studio.shareMail(kind, file)); }
 }
-// ----- drag the selected screen as a file (into WhatsApp, Signal, Teams, Mail, a folder, ...)
+// ----- drag the selected screen as a file (into WhatsApp, Signal, Teams, Mail, a folder, ...): the two entries at the end of the Share menu
 const drags = new Map(); // kind -> { file, path, at }
-// one of the two is always chosen (and remembered); only the chosen one can be dragged
-let dragKind = (() => { try { return localStorage.getItem("uu5studio.dragKind") === "html" ? "html" : "png"; } catch { return "png"; } })();
-function applyDragKind() {
-  for (const c of document.querySelectorAll("#seldrag .dchip")) {
-    const on = c.dataset.drag === dragKind;
-    c.classList.toggle("on", on); c.draggable = on; c.setAttribute("aria-pressed", String(on));
-    c.title = on ? "Drag this into a chat, a mail or a folder" : "Click to drag this instead";
-  }
-}
-applyDragKind();
-async function prepareDrag(chip) {
-  const file = canvas.selected(), kind = chip.dataset.drag; if (!file) return;
-  const have = drags.get(kind);
+async function prepareDrag(kind) {
+  const file = canvas.selected(); if (!file) return;
+  const el = () => document.querySelector(`#selmenu [data-drag="${kind}"]`), have = drags.get(kind);
   if (have && have.file === file && Date.now() - have.at < 15000 && have.path) return;
-  chip.dataset.state = "preparing"; drags.set(kind, { file, path: null, at: Date.now() });
+  if (el()) el().dataset.state = "preparing"; drags.set(kind, { file, path: null, at: Date.now() });
   const r = await window.studio.dragPrepare(kind, file);
-  if (r?.error) { delete chip.dataset.state; drags.delete(kind); return toast(r.error, { err: true }); }
-  drags.set(kind, { file, path: r.path, at: Date.now() }); chip.dataset.state = "ready";
+  if (r?.error) { if (el()) delete el().dataset.state; drags.delete(kind); return toast(r.error, { err: true }); }
+  drags.set(kind, { file, path: r.path, at: Date.now() }); if (el()) el().dataset.state = "ready";
 }
-for (const chip of document.querySelectorAll("#seldrag .dchip")) {
-  chip.addEventListener("pointerenter", () => chip.dataset.drag === dragKind && prepareDrag(chip));
-  chip.addEventListener("click", () => {
-    dragKind = chip.dataset.drag; try { localStorage.setItem("uu5studio.dragKind", dragKind); } catch { /* not persisted */ }
-    applyDragKind(); prepareDrag(chip);
-  });
-  chip.addEventListener("dragstart", (e) => {
+function dragEntry(kind, label) {
+  const btn = Object.assign(document.createElement("button"), { textContent: `⠿  ${label}`, className: "dragrow", draggable: true, title: "Press, hold and drag it into a chat, a mail or a folder" });
+  btn.dataset.drag = kind;
+  btn.onclick = (e) => { e.stopPropagation(); toast("Drag this entry (press and hold) into a chat, a mail or a folder."); };
+  btn.addEventListener("dragstart", (e) => {
     e.preventDefault();
-    if (chip.dataset.drag !== dragKind) return;
-    const d = drags.get(chip.dataset.drag);
+    const d = drags.get(kind);
     if (!d?.path || d.file !== canvas.selected()) return toast("The file is still being prepared: try again in a moment.");
-    window.studio.dragStart(d.path);
+    window.studio.dragStart(d.path); $("selmenu").hidden = true;
   });
+  return btn;
 }
 $("selbar").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -911,7 +914,12 @@ $("selbar").onclick = (e) => {
   if (b.dataset.act) return screenAction(b.dataset.act, file);
   const m = $("selmenu"), open = !m.hidden && m.dataset.for === b.dataset.menu;
   m.hidden = true; updateSelbar(); if (open) return;
-  m.replaceChildren(...SCREEN_MENUS[b.dataset.menu].map(([act, label]) => Object.assign(document.createElement("button"), { textContent: label, onclick: () => { m.hidden = true; b.classList.remove("on"); screenAction(act, file); } })));
+  m.replaceChildren(...SCREEN_MENUS[b.dataset.menu].map(([act, label]) => {
+    if (act === "-") return document.createElement("hr");
+    if (act.startsWith("drag-")) return dragEntry(act.slice(5), label);
+    return Object.assign(document.createElement("button"), { textContent: label, onclick: () => { m.hidden = true; b.classList.remove("on"); screenAction(act, file); } });
+  }));
+  if (b.dataset.menu === "share") { prepareDrag("png"); prepareDrag("html"); } // the files are ready when the user takes one
   const cr = $("canvas").getBoundingClientRect(), br = b.getBoundingClientRect();
   m.style.left = br.left - cr.left + "px"; m.style.top = br.bottom - cr.top + 6 + "px"; m.dataset.for = b.dataset.menu; m.hidden = false; b.classList.add("on");
 };

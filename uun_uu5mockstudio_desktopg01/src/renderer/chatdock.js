@@ -20,12 +20,12 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
   const floating = () => (fsActive ? !fsSt.docked : st.mode === "float");
   const save = () => { try { localStorage.setItem(fsActive ? KEY_FS : KEY, JSON.stringify(cur())); } catch {} };
 
-  /** Geometry of the expanded panel, kept inside the window. Defaults: bottom left, or bottom right in fullscreen. */
+  /** Geometry of the expanded panel, kept inside the window. Defaults: bottom left (the notes of the fullscreen preview are bottom right). */
   function fit() {
     const c = cur(), W = innerWidth, H = innerHeight;
     c.w = between(Math.round(c.w), MIN_W, W - 2 * EDGE);
     c.h = c.h ? between(Math.round(c.h), MIN_H, H - 2 * EDGE) : Math.min(fsActive ? 560 : 680, H - 96);
-    c.x = between(Math.round(num(c.x, fsActive ? W - c.w - FS_MARGIN : 2 * EDGE)), EDGE, W - c.w - EDGE);
+    c.x = between(Math.round(num(c.x, fsActive ? FS_MARGIN : 2 * EDGE)), EDGE, W - c.w - EDGE);
     c.y = between(Math.round(num(c.y, H - c.h - (fsActive ? FS_MARGIN : 2 * EDGE))), EDGE, H - c.h - EDGE);
   }
 
@@ -45,9 +45,10 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     // minimized: a round bubble with a position of its own (by default in the bottom-left corner), kept inside the window
     c.w = between(Math.round(c.w), MIN_W, innerWidth - 2 * EDGE); c.h = c.h ? between(Math.round(c.h), MIN_H, innerHeight - 2 * EDGE) : c.h;
     Object.assign(chat.style, { width: BUBBLE + "px", height: BUBBLE + "px" });
-    c.bx = between(Math.round(num(c.bx, 16)), EDGE, innerWidth - BUBBLE - EDGE);
-    c.by = between(Math.round(num(c.by, innerHeight - BUBBLE - 16)), EDGE, innerHeight - BUBBLE - EDGE);
-    Object.assign(chat.style, { left: c.bx + "px", top: c.by + "px" });
+    // the default place (the bottom-left corner) follows the window; only a place the user chose is remembered
+    const bx = between(Math.round(num(c.bx, 16)), EDGE, innerWidth - BUBBLE - EDGE), by = between(Math.round(num(c.by, innerHeight - BUBBLE - 16)), EDGE, innerHeight - BUBBLE - EDGE);
+    if (Number.isFinite(c.bx)) c.bx = bx; if (Number.isFinite(c.by)) c.by = by;
+    Object.assign(chat.style, { left: bx + "px", top: by + "px" });
   }
 
   function setMode(mode) {
@@ -89,7 +90,7 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
   // the round bubble of a minimized chat: a drag moves it, a click opens the chat
   chat.querySelector("#chatbubble").addEventListener("pointerdown", (e) => {
     if (!floating() || e.button !== 0) return;
-    const c = cur(), sx = e.clientX, sy = e.clientY, x0 = num(c.bx, 16), y0 = num(c.by, innerHeight - BUBBLE - 16);
+    const c = cur(), sx = e.clientX, sy = e.clientY, x0 = chat.offsetLeft, y0 = chat.offsetTop;
     let dragged = false;
     track(e, (ev) => {
       if (!dragged && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
@@ -127,7 +128,7 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     toggleCollapsed,
     collapsed: () => floating() && cur().collapsed,
     /** Fullscreen preview opened / closed: the chat becomes (and stops being) a floating window above it. */
-    enterFullscreen: () => { fsActive = true; apply(); },
+    enterFullscreen: ({ minimize = false } = {}) => { fsActive = true; if (minimize && !fsSt.docked) fsSt.collapsed = true; apply(); },
     exitFullscreen: () => { fsActive = false; apply(); },
   };
 }

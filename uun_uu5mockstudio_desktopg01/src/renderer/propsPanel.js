@@ -8,6 +8,8 @@ const SKIP_ADD = new Set(["children", "elementRef", "elementAttrs", "uu5Tag"]);
 const CODE_TYPE = /func|object|array|node|element|ref|\[\]|shape/i;
 // props whose values come from uuGds palettes, even when the component has no reference page
 const WELL_KNOWN = { colorScheme: { type: "colorScheme" }, borderRadius: { type: "borderRadius" } };
+// enums that a component documents only as "oneOf" (no values), such as Uu5Forms.SubmitButton: the values are the same everywhere
+const WELL_KNOWN_ENUMS = { significance: ["common", "highlighted", "distinct", "subdued"] };
 // list props whose items come from a fixed set even when the component has no reference page (Uu5.Utils.NestingLevel.valueList, plus the modal level of ContentContainer)
 const WELL_KNOWN_LISTS = { nestingLevelList: ["uve", "route", "areaCollection", "area", "boxCollection", "box", "spotCollection", "spot", "inline", "modal"] };
 // A prop that holds an icon: documented as one, or named like one (icon, typeIcon, rightIcon, iconRight, stateIcon ...). Names that only
@@ -30,7 +32,9 @@ export function kindOf(prop, attr, palettes = {}, name = "") {
     try { const v = JSON.parse(attr.json); if (Array.isArray(v) && v.every((x) => typeof x === "string")) return { kind: "multi", options: listOptions, value: v }; } catch { /* not plain data */ }
   }
   if (attr?.type === "code") return { kind: "code" };
-  const type = prop?.type ?? "";
+  let type = prop?.type ?? "";
+  if (!prop?.enum && WELL_KNOWN[name] && !/^(bool|number|object|func|array)/i.test(type)) type = WELL_KNOWN[name].type; // documented as "oneOf" / "string" without the values
+  if (!prop?.enum && WELL_KNOWN_ENUMS[name] && !/^(bool|number|object|func|array)/i.test(type)) return { kind: "select", options: WELL_KNOWN_ENUMS[name] };
   if (type === "colorScheme" && palettes.colorScheme) return { kind: "select", options: palettes.colorScheme };
   if (type === "borderRadius" && palettes.borderRadius) return { kind: "select", options: palettes.borderRadius };
   if (prop?.enum) return { kind: "select", options: prop.enum };

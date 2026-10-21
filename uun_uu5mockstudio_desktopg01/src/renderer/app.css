@@ -659,3 +659,10 @@ body[data-chat="float"] #chat.collapsed #chatbubble:hover{filter:brightness(1.08
 #chatbubble.busy::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--acc);animation:bubblepulse 1.5s ease-out infinite;pointer-events:none}
 @keyframes bubblepulse{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.22);opacity:0}}
 @media (prefers-reduced-motion:reduce){#chatbubble.busy::after{animation:none;opacity:.7}}
+
+/* the notes of a screen in fullscreen: minimized, a small round note bubble (with the number of notes), like the chat bubble */
+.fsn-bubble{position:absolute;z-index:70;width:56px;height:56px;padding:0;display:grid;place-items:center;border:1px solid #e3cf5a;border-radius:50%;background:#ffd84d;color:#3b3300;box-shadow:0 8px 24px rgba(0,0,0,.3);cursor:pointer;touch-action:none}
+.fsn-bubble[hidden]{display:none}.fsn-bubble:hover{filter:brightness(1.05)}.fsn-bubble .ico{width:26px;height:26px;stroke-width:1.8}
+.fsn-badge{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#e8590c;color:#fff;font:700 11px/19px system-ui,sans-serif;text-align:center}.fsn-badge[hidden]{display:none}
+#selmenu button.dragrow{cursor:grab;color:var(--mute)}#selmenu button.dragrow:hover{color:var(--fg)}#selmenu button.dragrow[data-state="preparing"]::after{content:"  (preparing…)";opacity:.6}
+#selmenu hr{border:0;border-top:1px solid var(--line);margin:4px 8px;height:0}

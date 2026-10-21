@@ -14,3 +14,11 @@ test("a list of plain strings with known items is a multi choice, anything else 
   const k = kindOf(null, attr('["area", "box"]'), {}, "nestingLevelList");
   assert.equal(k.kind, "multi"); assert.ok(k.options.includes("areaCollection") && k.options.includes("modal"));
 });
+
+test("colorScheme and significance are choices even when the component documents them as oneOf without values", async () => {
+  const { kindOf } = await import("../src/renderer/propsPanel.js");
+  const palettes = { colorScheme: ["primary", "neutral"] };
+  assert.deepEqual(kindOf({ type: "oneOf", name: "colorScheme" }, { type: "string", value: "primary" }, palettes, "colorScheme"), { kind: "select", options: ["primary", "neutral"] });
+  assert.equal(kindOf({ type: "oneOf" }, { type: "string", value: "common" }, palettes, "significance").kind, "select");
+  assert.equal(kindOf({ type: "bool" }, { type: "boolean", value: true }, palettes, "colorScheme").kind, "bool", "a documented type of another kind wins");
+});
