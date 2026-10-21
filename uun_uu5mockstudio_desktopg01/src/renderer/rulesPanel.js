@@ -4,6 +4,8 @@ import { parseRules, editItem, deleteItem, countRules } from "./rulesDoc.js";
 
 const MODE_KEY = "uu5studio.rulesMode";
 const SCOPE_KEY = "uu5studio.rulesScope";
+const FOLD_KEY = "uu5studio.rulesCollapsed";
+const readFolded = () => { try { const a = JSON.parse(localStorage.getItem(FOLD_KEY)); return new Set(Array.isArray(a) ? a : []); } catch { return new Set(); } };
 const readScope = () => { try { return localStorage.getItem(SCOPE_KEY) === "global" ? "global" : "project"; } catch { return "project"; } };
 const readMode = () => { try { return localStorage.getItem(MODE_KEY) === "code" ? "code" : "rendered"; } catch { return "rendered"; } };
 
@@ -13,7 +15,7 @@ const readMode = () => { try { return localStorage.getItem(MODE_KEY) === "code" 
  * `onCount(n)` tells the toolbar icon how many rules there are, so that it can show a badge while the dialog is closed.
  */
 export function createRulesPanel({ api, getScreens, onCount }) {
-  let md = "", dirty = false, mode = readMode(), loaded = false, scope = readScope(), globalCount = 0;
+  let md = "", dirty = false, mode = readMode(), loaded = false, scope = readScope(), globalCount = 0, projectCount = 0, folded = readFolded(); // folded: the sections (General, Screen: x) the user rolled up, as "scope|heading"
   // the rules of this project (BUSINESS_RULES.md) or of all projects (GLOBAL_RULES.md): the same dialog works on either
   const S = () => (scope === "global"
     ? { get: () => api.rulesGetGlobal(), set: (t) => api.rulesSetGlobal(t), add: (t) => api.rulesAddGlobal(t) }
@@ -37,10 +39,18 @@ export function createRulesPanel({ api, getScreens, onCount }) {
 
   function paint() {
     const items = parseRules(md), out = [];
+    // the rules of every section, to show how many a rolled-up section hides
+    const counts = new Map(); { let cur = null; for (const l of items) { if (l.kind === "h2") { cur = l.text; counts.set(cur, 0); } else if (l.kind === "item" && l.id && cur != null) counts.set(cur, counts.get(cur) + 1); } }
+    let hide = false;
     for (let k = 0; k < items.length; k++) {
       const l = items[k];
       if (l.kind === "blank" || l.kind === "h1") continue; // the dialog title says it
-      if (l.kind === "h2") out.push(`<h5 class="rc-h2">${esc(l.text)}</h5>`);
+      if (l.kind === "h2") {
+        hide = folded.has(`${scope}|${l.text}`);
+        out.push(`<h5 class="rc-h2" role="button" tabindex="0" aria-expanded="${!hide}" data-h="${esc(l.text)}" title="${hide ? "Show" : "Hide"} the rules of this section"><span class="rc-caret" aria-hidden="true">${hide ? "▸" : "▾"}</span>${esc(l.text)}${hide ? `<span class="rc-n">${counts.get(l.text) ?? 0}</span>` : ""}</h5>`);
+        continue;
+      }
+      if (hide) { if (l.kind === "code") while (items[k + 1]?.kind === "code") k++; continue; }
       else if (l.kind === "item") out.push(`<div class="rc-item" data-line="${l.i}">${l.id ? `<span class="rc-id">${esc(l.id)}</span>` : `<span class="rc-dot">•</span>`}${l.screen ? `<span class="rc-scr" title="Rule of the screen ${esc(l.screen)}">${esc(l.screen)}</span>` : ""}<span class="rc-text" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="Rule text">${esc(l.text)}</span><button class="rc-del" type="button" title="Delete this rule" aria-label="Delete this rule">${ICON_TRASH}</button></div>`);
       else if (l.kind === "code") { const t = [l.text]; while (items[k + 1]?.kind === "code") t.push(items[++k].text); out.push(markdown(t.join("\n"))); }
       else out.push(`<div class="rc-p">${markdown(l.text)}</div>`);
@@ -48,9 +58,15 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     if (!items.some((l) => l.kind === "item")) out.push(`<p class="mute rc-empty">No rules yet. Claude records the rules that come up in your requests, or add one below.</p>`);
     view.innerHTML = out.join("");
   }
+  /** "This project (3)" / "All projects (1)": how many rules each of the two files holds. */
+  function scopeLabels() {
+    const set = (id, text, n) => { const b = box.querySelector(`.rc-scope [data-scope="${id}"]`); if (b) b.textContent = n ? `${text} (${n})` : text; };
+    set("project", "This project", projectCount); set("global", "All projects", globalCount);
+  }
   function fill() {
     code.value = md; paint();
-    for (const b of box.querySelectorAll(".rc-scope button")) { b.classList.toggle("on", b.dataset.scope === scope); if (b.dataset.scope === "global") b.textContent = globalCount ? `All projects (${globalCount})` : "All projects"; }
+    for (const b of box.querySelectorAll(".rc-scope button")) b.classList.toggle("on", b.dataset.scope === scope);
+    scopeLabels();
     q(".rc-about").innerHTML = scope === "global" ? "Kept in <code>GLOBAL_RULES.md</code> in the folder of your projects. These rules apply in every project; Claude records a rule here when you say it holds always, for every screen or in all projects." : "Kept in <code>BUSINESS_RULES.md</code> in the project folder. Claude records rules that come up in your requests; later tasks that build the target components read this file.";
     q(".rc-screen").hidden = scope === "global";
     screenSel.replaceChildren(new Option("General", ""), ...getScreens().map((s) => new Option(`Screen: ${s.replace(/\.html$/, "")}`, s.replace(/\.html$/, ""))));
@@ -58,7 +74,8 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     const t = q(".rc-toggle"), toCode = mode === "rendered"; // the icon shows where a click leads
     t.innerHTML = toCode ? ICON_CODE : ICON_VIEW; t.title = toCode ? "Show the Markdown code" : "Show the rendered rules"; t.setAttribute("aria-label", t.title);
     saveBtn.hidden = mode !== "code"; q(".rc-add").hidden = mode !== "rendered";
-    if (scope === "project") onCount?.(countRules(md)); else globalCount = countRules(md);
+    if (scope === "project") { projectCount = countRules(md); onCount?.(projectCount); } else globalCount = countRules(md);
+    scopeLabels();
   }
   async function write(next) {
     const r = await S().set(next);
@@ -85,7 +102,17 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     const el = e.target.closest?.(".rc-text"); if (!el) return;
     const revert = el.dataset.revert === "1"; delete el.dataset.revert; commitItem(el, revert);
   });
-  view.addEventListener("click", (e) => { const b = e.target.closest(".rc-del"); if (b) deleteLine(b.closest(".rc-item")); });
+  view.addEventListener("click", (e) => {
+    const b = e.target.closest(".rc-del"); if (b) return deleteLine(b.closest(".rc-item"));
+    const h = e.target.closest(".rc-h2"); if (h) toggleSection(h.dataset.h);
+  });
+  view.addEventListener("keydown", (e) => { const h = e.target.closest?.(".rc-h2"); if (h && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleSection(h.dataset.h); } });
+  /** Rolls a section up or opens it again; the choice is remembered. */
+  function toggleSection(heading) {
+    const key = `${scope}|${heading}`; if (!folded.delete(key)) folded.add(key);
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch { /* not remembered */ }
+    paint(); view.querySelector(`.rc-h2[data-h="${CSS.escape(heading)}"]`)?.focus();
+  }
   view.addEventListener("paste", (e) => { // plain text only, one line
     if (!e.target.closest?.(".rc-text")) return;
     e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData?.getData("text/plain") ?? "").replace(/\s+/g, " "));
@@ -158,7 +185,7 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   // ---- open / close
   const isOpen = () => !box.hidden;
   async function reload() {
-    if (scope === "global") onCount?.(countRules((await api.rulesGet().catch(() => "")) ?? "")); // the badge of the icon is always the project's
+    if (scope === "global") { projectCount = countRules((await api.rulesGet().catch(() => "")) ?? ""); onCount?.(projectCount); scopeLabels(); } // the badge of the icon is always the project's
     if (dirty || (isOpen() && box.contains(document.activeElement) && document.activeElement.matches?.(".rc-text, .rc-code"))) return; // not from under the cursor
     md = (await S().get()) ?? ""; loaded = true; fill();
   }
@@ -167,7 +194,7 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     err.textContent = ""; setMeta(""); dirty = false; saveBtn.disabled = true;
     if (screen && mode !== "rendered") { mode = "rendered"; try { localStorage.setItem(MODE_KEY, mode); } catch { /* not remembered */ } }
     if (screen && scope !== "project") scope = "project"; // a rule of a screen belongs to the project
-    md = (await S().get()) ?? ""; loaded = true; globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); fill();
+    md = (await S().get()) ?? ""; loaded = true; globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); projectCount = scope === "project" ? countRules(md) : countRules((await api.rulesGet().catch(() => "")) ?? ""); fill();
     if (screen) screenSel.value = screen.replace(/\.html$/, "");
     box.hidden = false;
     (mode === "code" ? code : addIn).focus();
@@ -185,13 +212,13 @@ export function createRulesPanel({ api, getScreens, onCount }) {
     /** A project was opened (or none): the dialog closes and the badge follows the new file. */
     async load(hasProject) {
       box.hidden = true; dirty = false; md = "";
-      if (!hasProject) { loaded = false; onCount?.(0); return; }
-      md = (await api.rulesGet()) ?? ""; loaded = true; onCount?.(countRules(md));
+      if (!hasProject) { loaded = false; projectCount = 0; onCount?.(0); return; }
+      md = (await api.rulesGet()) ?? ""; loaded = true; projectCount = countRules(md); onCount?.(projectCount);
     },
     /** GLOBAL_RULES.md changed (by the agent or by hand). */
     async reloadGlobal() {
       if (scope === "global") return reload();
-      globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); box.querySelector('.rc-scope [data-scope="global"]').textContent = globalCount ? `All projects (${globalCount})` : "All projects";
+      globalCount = countRules((await api.rulesGetGlobal().catch(() => "")) ?? ""); scopeLabels();
     },
     isLoaded: () => loaded,
   };

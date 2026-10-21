@@ -350,11 +350,13 @@ function renderTabs() {
 $("tabs").addEventListener("wheel", (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); $("tabs").scrollLeft += e.deltaY; } }, { passive: false });
 async function deleteScreen(file) {
   const name = file.replace(/\.html$/, "");
-  const ok = await askConfirm({ title: `Delete the screen “${name}”?`, detail: `The file ${file} will be removed from the project “${project}”. It is moved to the trash, so you can restore it.`, ok: "Delete screen" });
+  const info = await window.studio.screenDeleteInfo(file).catch(() => null);
+  const also = info ? [info.rules ? `${info.rules} business rule${info.rules === 1 ? "" : "s"}` : "", info.description ? "its description" : "", info.notes ? `${info.notes} note${info.notes === 1 ? "" : "s"}` : ""].filter(Boolean) : [];
+  const ok = await askConfirm({ title: `Delete the screen “${name}”?`, detail: `The file ${file} will be removed from the project “${project}”. It is moved to the trash, so you can restore it.${also.length ? ` What belongs to the screen goes with it: ${also.join(", ")}. The rules and the description are copied to .studio/removed-screen-memory.md in the project, so they can be restored by hand.` : ""}`, ok: "Delete screen" });
   if (!ok) return;
   const r = await window.studio.deleteScreen(file);
   if (r?.canceled) return;
-  if (r?.error) toast(r.error, { err: true }); else toast(`The screen ${file.replace(".html", "")} was deleted (the file is in the trash).`);
+  if (r?.error) toast(r.error, { err: true }); else { toast(`The screen ${file.replace(".html", "")} was deleted (the file is in the trash${r?.rules ? `; ${r.rules} rule${r.rules === 1 ? "" : "s"} removed` : ""}).`); rules?.reload?.(); }
 }
 window.studio.onNavigated((file) => { if (canvas.get(file)) canvas.focus(file); });
 window.studio.onPreviewChanged(({ project: p, screens, changed }) => {

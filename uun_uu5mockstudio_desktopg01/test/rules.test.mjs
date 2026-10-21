@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import fs from "node:fs";
 import { appendRule, nextRuleId, summarizeChange, readRules, writeNotes, readNotes, parseNotes, serializeNotes, newNoteId, screensWithNotes, notePath, TEMPLATE } from "../src/main/rules.mjs";
 
 const tmp = () => mkdtemp(path.join(os.tmpdir(), "rules-"));
@@ -112,4 +113,28 @@ test("planning mode: the prompt asks for a plan with a tree, and no tool may cha
 test("planning mode removes the file tools from the agent; building keeps them", () => {
   assert.deepEqual(disallowedTools(false), ["Bash"]);
   for (const t of ["Bash", ...PLAN_DENIED]) assert.ok(disallowedTools(true).includes(t), t);
+});
+
+import { removeScreenRules, forgetScreen, screenMemoryInfo } from "../src/main/rules.mjs";
+
+test("the rules of a deleted screen: its section and the items that name it elsewhere go, the others stay", () => {
+  const md = `# Business rules\n\n## General\n\n- R-001 general rule\n- R-004 (screen: detail) a rule of detail written in General\n\n## Screen: detail\n\n- R-010 (screen: detail) first\n- R-011 (screen: detail) second\n\n## Screen: list\n\n- R-020 (screen: list) of the list\n`;
+  const r = removeScreenRules(md, "detail.html");
+  assert.equal(r.count, 3);
+  assert.doesNotMatch(r.md, /detail/); assert.match(r.md, /R-001 general rule/); assert.match(r.md, /## Screen: list[\s\S]*R-020/);
+  assert.equal(removeScreenRules(md, "other").md, md, "nothing to remove: the text is untouched");
+});
+
+test("forgetScreen removes the rules and the description and keeps a copy; the info counts them", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uu5studio-forget-"));
+  fs.writeFileSync(path.join(dir, "BUSINESS_RULES.md"), "# Business rules\n\n## General\n\n- R-001 keep\n\n## Screen: gone\n\n- R-010 (screen: gone) bye\n");
+  fs.writeFileSync(path.join(dir, "PROJECT.md"), "# Project description\n\nAbout.\n\n## Screen: gone\n\nA screen that goes.\n\n## Screen: stays\n\nStays.\n");
+  const info = await screenMemoryInfo(dir, "gone.html");
+  assert.deepEqual([info.rules, info.description], [1, true]);
+  const r = await forgetScreen(dir, "gone.html");
+  assert.deepEqual(r, { rules: 1, description: true });
+  assert.doesNotMatch(fs.readFileSync(path.join(dir, "BUSINESS_RULES.md"), "utf8"), /gone|bye/); assert.match(fs.readFileSync(path.join(dir, "BUSINESS_RULES.md"), "utf8"), /R-001 keep/);
+  const proj = fs.readFileSync(path.join(dir, "PROJECT.md"), "utf8"); assert.doesNotMatch(proj, /A screen that goes/); assert.match(proj, /Stays\./);
+  const kept = fs.readFileSync(path.join(dir, ".studio", "removed-screen-memory.md"), "utf8"); assert.match(kept, /R-010 \(screen: gone\) bye/); assert.match(kept, /A screen that goes/);
+  fs.rmSync(dir, { recursive: true });
 });

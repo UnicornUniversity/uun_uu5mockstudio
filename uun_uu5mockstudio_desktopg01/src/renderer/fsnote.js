@@ -72,7 +72,7 @@ export function createFsNote({ host, onEdit, onDelete, onBlur, onAdd }) {
   addEventListener("resize", render);
   return {
     /** A screen was opened in fullscreen (set() follows); `minimize`: the preview was not open before, so the notes start as a bubble. */
-    open({ minimize = false } = {}) { active = true; if (minimize) { st.min = true; save(); } render(); },
+    open({ minimize = false } = {}) { active = true; if (minimize) { st.min = true; st.x = st.y = st.bx = st.by = undefined; save(); } render(); },
     close() { active = false; for (const r of items.values()) r.remove(); items.clear(); card.hidden = true; bubble.hidden = true; },
     /** Makes the rows match `notes` ([{id, text}]); the one being typed in keeps its text. */
     set(notes) {

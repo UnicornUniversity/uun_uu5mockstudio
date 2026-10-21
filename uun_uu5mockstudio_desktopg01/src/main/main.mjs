@@ -28,7 +28,7 @@ import { tagHtml, structureOf, structureOutline, moveElements, describeElement, 
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
-import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes } from "./rules.mjs";
+import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes, screenMemoryInfo, forgetScreen } from "./rules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // App-wide settings (not tied to a project): last opened project, offline CDN mode, projects folder
@@ -449,6 +449,7 @@ app.whenReady().then(async () => {
     return { shared: true, method: "eml", path: eml };
   }));
   ipcMain.handle("screen:reveal", guard((_e, file) => void shell.showItemInFolder(path.join(dir(), path.basename(String(file))))));
+  ipcMain.handle("screen:deleteInfo", guard((_e, file) => screenMemoryInfo(dir(), path.basename(String(file)))));
   ipcMain.handle("screen:delete", guard(async (_e, file) => {
     const name = path.basename(String(file));
     if (!name.endsWith(".html")) throw new Error("Only .html screens can be deleted.");
@@ -457,7 +458,8 @@ app.whenReady().then(async () => {
     await shell.trashItem(target);
     if (fs.existsSync(target)) throw new Error(`Could not delete file ${name}.`);
     const note = notePath(dir(), name); if (fs.existsSync(note)) await shell.trashItem(note); // the note goes with its screen
-    return { ok: true };
+    const memory = await forgetScreen(dir(), name); // and so do its rules and its description (a copy stays in .studio/removed-screen-memory.md)
+    return { ok: true, ...memory };
   }));
 
   // ----- project memory: a linked git repository (read-only for the agent), business rules, notes of a screen

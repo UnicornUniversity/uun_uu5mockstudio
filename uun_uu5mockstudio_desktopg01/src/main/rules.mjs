@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { PROJECT_FILE, setProjectText, setScreenText, extractFromRules } from "../renderer/projectDoc.js";
+import { PROJECT_FILE, setProjectText, setScreenText, getScreenText, extractFromRules } from "../renderer/projectDoc.js";
 
 /** Project memory kept as plain Markdown next to the screens: BUSINESS_RULES.md (project-wide) and <screen>.notes.md (per screen). */
 export const RULES_FILE = "BUSINESS_RULES.md";
@@ -129,3 +129,36 @@ export async function writeNotes(projectDir, file, notes) {
 }
 /** Names of the screens (file names) that have a note. */
 export const screensWithNotes = (projectDir) => fs.readdirSync(projectDir).filter((f) => f.endsWith(".notes.md")).map((f) => `${f.slice(0, -9)}.html`);
+
+// ---------------------------------------------------------------- what belongs to a screen that is deleted
+/** The rules of a screen out of BUSINESS_RULES.md: its `## Screen: <name>` section and any `- R-nnn (screen: <name>)` item elsewhere. -> { md, removed: the removed text, count: rules removed } */
+export function removeScreenRules(md, screen) {
+  const name = String(screen).replace(/\.html$/i, "").trim().toLowerCase(), keep = [], removed = [];
+  let skipping = false, code = false;
+  for (const line of String(md ?? "").split("\n")) {
+    if (/^\s*```/.test(line)) code = !code;
+    if (!code && /^##\s/.test(line)) { const m = line.match(/^##\s+Screen:\s*(.+?)\s*$/i); skipping = Boolean(m && m[1].trim().toLowerCase() === name); }
+    const own = !code && /^\s*[-*]\s+R-\d+\s+\(screen:\s*([^)]*)\)/.exec(line);
+    if (skipping || (own && own[1].trim().toLowerCase() === name)) removed.push(line); else keep.push(line);
+  }
+  const text = removed.join("\n").trim();
+  return { md: text ? `${keep.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "")}\n` : String(md ?? ""), removed: text, count: removed.filter((l) => /^\s*[-*]\s+R-\d+/.test(l)).length };
+}
+/** What the deletion of a screen takes with it besides the file: its rules, its description in PROJECT.md and its notes. */
+export async function screenMemoryInfo(projectDir, file) {
+  const name = String(file).replace(/\.html$/i, "");
+  return { rules: removeScreenRules(await readRules(projectDir), name).count, description: Boolean(getScreenText(await readProject(projectDir), name)), notes: (await readNotes(projectDir, file)).length };
+}
+/** Takes the rules and the description of a deleted screen out of the project files; what was removed is kept in .studio/removed-screen-memory.md. */
+export async function forgetScreen(projectDir, file) {
+  const name = String(file).replace(/\.html$/i, ""), kept = [];
+  const rules = removeScreenRules(await readRules(projectDir), name);
+  if (rules.removed) { await writeRules(projectDir, rules.md); kept.push(`Rules:\n${rules.removed}`); }
+  const project = await readProject(projectDir), description = getScreenText(project, name);
+  if (description) { await writeProject(projectDir, setScreenText(project, name, "")); kept.push(`Description:\n${description}`); }
+  if (kept.length) {
+    const dir = path.join(projectDir, ".studio"); await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.appendFile(path.join(dir, "removed-screen-memory.md"), `\n## ${new Date().toISOString().slice(0, 10)} · screen ${name}\n\n${kept.join("\n\n")}\n`);
+  }
+  return { rules: rules.count, description: Boolean(description) };
+}

@@ -11,6 +11,26 @@ const GAP = 120, TITLE_H = 34, MIN_Z = 0.1, MAX_Z = 2;
  * Infinite canvas with one <webview> frame per mockup.
  * Unselected frames are covered by a "shield" so drag/pan work; a selected frame is interactive.
  */
+/** The menu of the device sizes of a screen: a normal-sized popover on the page (not inside the scaled title bar of the frame). */
+let devMenu = null;
+function closeDevMenu() { if (!devMenu) return; removeEventListener("pointerdown", devMenu.away, true); removeEventListener("keydown", devMenu.key, true); devMenu.el.remove(); devMenu = null; }
+function openDevMenu(f, anchor) {
+  const was = devMenu?.anchor === anchor; closeDevMenu(); if (was) return;
+  const m = document.createElement("div"); m.id = "devmenu"; m.setAttribute("role", "menu");
+  for (const o of f.devSel.options) {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: o.textContent, className: o.value === f.devSel.value ? "on" : "" });
+    b.setAttribute("role", "menuitemradio"); b.setAttribute("aria-checked", String(o.value === f.devSel.value));
+    b.onclick = () => { closeDevMenu(); f.devSel.value = o.value; f.devSel.dispatchEvent(new Event("change")); };
+    m.append(b);
+  }
+  document.body.append(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; m.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8)) + "px";
+  const away = (e) => { if (!m.contains(e.target)) closeDevMenu(); }, key = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeDevMenu(); } };
+  devMenu = { el: m, anchor, away, key };
+  setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
+}
+
 export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset }) {
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
@@ -94,8 +114,10 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     f.el.style.width = d.w + "px"; // the frame is exactly as wide as the screen, so a long title is cut off instead of widening it
     f.body.style.width = d.w + "px"; f.body.style.height = d.h + "px";
     f.devSel.value = f.device;
+    f.syncDev?.();
     updateCompact();
     f.customOpt.textContent = f.device === "custom" ? `Custom ${d.w}×${d.h}` : "Custom size…";
+    f.syncDev?.();
   }
   function updateShields() {
     for (const f of frames.values()) f.shield.hidden = inspecting || f.file === selected;
@@ -128,10 +150,15 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     const right = [...frames.values()].reduce((m, f) => Math.max(m, f.x + size(f).w), -GAP);
     const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h };
     const el = document.createElement("div"); el.className = "frame";
-    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev"></select><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
+    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
     const fname = el.querySelector(".fname"); fname.textContent = file.replace(/\.html$/, ""); fname.title = file; // full name on hover
     const devSel = el.querySelector(".fdev");
     devSel.innerHTML = Object.entries(DEVICES).map(([k, d]) => `<option value="${k}">${d.label} ${d.w}×${d.h}</option>`).join("") + `<option value="custom">Custom size…</option>`;
+    // the size menu is not a native <select>: the title bar is scaled with the zoom of the canvas, and a native menu would be scaled with it
+    const devBtn = el.querySelector(".fdevbtn");
+    const syncDev = () => { devBtn.textContent = `${devSel.selectedOptions[0]?.textContent ?? ""} ▾`; };
+    devBtn.onpointerdown = (e) => e.stopPropagation();
+    devBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, devBtn); };
     const body = el.querySelector(".fbody");
     const view = document.createElement("webview");
     view.setAttribute("webpreferences", "backgroundThrottling=no");
@@ -142,7 +169,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     const desc = document.createElement("div"); desc.className = "fdesc"; desc.hidden = true; desc.title = "Description of the screen (click to edit)";
     desc.addEventListener("pointerdown", (e) => e.stopPropagation()); desc.addEventListener("click", () => onDescClick?.(file));
     el.append(desc);
-    Object.assign(f, { el, body, view, shield, desc, devSel, customOpt: devSel.querySelector('option[value="custom"]') });
+    Object.assign(f, { el, body, view, shield, desc, devSel, syncDev, customOpt: devSel.querySelector('option[value="custom"]') });
+    syncDev();
     view.addEventListener("ipc-message", (e) => {
       if (e.channel === "studio-contextmenu") {
         const { x, y, vw } = e.args[0], r = view.getBoundingClientRect(), k = r.width / vw;
@@ -184,7 +212,6 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
         addEventListener("pointermove", move); addEventListener("pointerup", up);
       };
     }
-    devSel.onpointerdown = (e) => e.stopPropagation();
     const exp = el.querySelector(".fexp");
     exp.onpointerdown = (e) => e.stopPropagation();
     exp.onclick = () => onFullscreen?.(file);

@@ -128,7 +128,12 @@ export function createChatDock({ chat, header, toggleBtn, onModeChange }) {
     toggleCollapsed,
     collapsed: () => floating() && cur().collapsed,
     /** Fullscreen preview opened / closed: the chat becomes (and stops being) a floating window above it. */
-    enterFullscreen: ({ minimize = false } = {}) => { fsActive = true; if (minimize && !fsSt.docked) fsSt.collapsed = true; apply(); },
+    enterFullscreen: ({ minimize = false } = {}) => {
+      fsActive = true;
+      // the preview was opened: the chat starts minimized in its corner (the bubble and the panel, bottom left), wherever it was left the last time
+      if (minimize && !fsSt.docked) { fsSt.collapsed = true; fsSt.x = fsSt.y = fsSt.bx = fsSt.by = undefined; }
+      apply();
+    },
     exitFullscreen: () => { fsActive = false; apply(); },
   };
 }

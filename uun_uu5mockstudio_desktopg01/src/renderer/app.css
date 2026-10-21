@@ -69,7 +69,7 @@ main{overflow:hidden}
 .ftitle{height:max(34px,calc(30px*var(--iz,1)));display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 2px;cursor:grab;user-select:none;color:var(--mute);font-size:calc(13px*var(--iz,1))}
 .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fctl{flex:none}
-.frame[data-compact="1"] .fdev,.frame[data-compact="2"] .fdev,.frame[data-compact="2"] .ffit,.frame[data-compact="3"] .fctl{display:none}
+.frame[data-compact="1"] .fdevbtn,.frame[data-compact="2"] .fdevbtn,.frame[data-compact="2"] .ffit,.frame[data-compact="3"] .fctl{display:none}
 .ftitle select{font-size:inherit;padding:0 4px;border-radius:5px;opacity:.8}
 .frame.sel .ftitle{color:var(--acc)}
 .fbody{position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 0 0 calc(1px*var(--iz,1)) var(--line),0 12px 40px rgba(0,0,0,.45)}
@@ -468,7 +468,7 @@ body[data-chat="float"] #chat header .tools #chatmode .when-float{display:inline
 #lb-detail .ld-props td{padding:5px 6px;vertical-align:top}#lb-detail .ld-props tr:not(.ld-desc-row) td{border-top:1px solid var(--line)}
 #lb-detail .pn code{font:600 12px ui-monospace,Menlo,monospace}#lb-detail .req{margin-left:6px;font-size:10px;color:#e8590c}
 #lb-detail .ptype{font:12px ui-monospace,Menlo,monospace;color:var(--mute)}#lb-detail .pv{display:inline-block;margin:1px 4px 1px 0;padding:0 6px;border-radius:6px;background:var(--panel);border:1px solid var(--line);font:11px ui-monospace,Menlo,monospace}
-#lb-detail .pd{font:12px ui-monospace,Menlo,monospace;color:var(--mute);white-space:nowrap}#lb-detail .ld-desc-row td{padding:0 6px 6px;color:var(--mute);font-size:12px;line-height:1.45}
+#lb-detail .pdef{font:12px ui-monospace,Menlo,monospace;color:var(--mute);white-space:nowrap}#lb-detail .pdef.long{max-width:11rem;overflow:hidden;text-overflow:ellipsis;cursor:pointer}#lb-detail .pdef.long:hover{color:var(--fg)}#lb-detail .pdef.long.open{max-width:none;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg)}#lb-detail .ld-desc-row td{padding:0 6px 6px;color:var(--mute);font-size:12px;line-height:1.45}
 #lb-detail .ld-docs{margin:14px 0 0;font-size:12px}#lb-detail .ld-docs .ld-link{margin-left:0}
 #lb-detail code.ic{font:11.5px ui-monospace,Menlo,monospace;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:0 4px}
 #lb-detail .ld-link{margin-left:auto;font-size:12px;color:var(--acc);text-decoration:none;white-space:nowrap}#lb-detail .ld-link:hover{text-decoration:underline}
@@ -665,3 +665,8 @@ body[data-chat="float"] #chat.collapsed #chatbubble:hover{filter:brightness(1.08
 .fsn-badge{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#e8590c;color:#fff;font:700 11px/19px system-ui,sans-serif;text-align:center}.fsn-badge[hidden]{display:none}
 #selmenu button.dragrow{cursor:grab;color:var(--mute)}#selmenu button.dragrow:hover{color:var(--fg)}#selmenu button.dragrow[data-state="preparing"]::after{content:"  (preparing…)";opacity:.6}
 #selmenu hr{border:0;border-top:1px solid var(--line);margin:4px 8px;height:0}
+.ftitle .fdevbtn{font-size:inherit;line-height:1.3;padding:0 6px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:inherit;opacity:.85;cursor:pointer;white-space:nowrap}.ftitle .fdevbtn:hover{opacity:1}
+#devmenu{position:fixed;z-index:60;min-width:190px;padding:5px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 10px 30px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:1px;font-size:13px}
+#devmenu button{font-size:13px;padding:6px 10px 6px 28px;border:0;border-radius:8px;background:none;color:var(--fg);text-align:left;position:relative}#devmenu button:hover{background:var(--bg)}#devmenu button.on::before{content:"✓";position:absolute;left:10px;color:var(--acc)}
+.rc-h2{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}.rc-h2:hover{opacity:1}.rc-h2:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.rc-caret{display:inline-block;width:12px;font-size:11px;opacity:.8}.rc-n{margin-left:4px;padding:0 7px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:10px;letter-spacing:0;opacity:.9}

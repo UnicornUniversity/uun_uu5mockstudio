@@ -33,7 +33,9 @@ export function createLibraryPicker({ api }) {
       const table = el("table", "ld-props"), tbody = document.createElement("tbody");
       table.createTHead().innerHTML = "<tr><th>Prop</th><th>Type</th><th>Default</th></tr>";
       for (const p of d.props) {
-        const tr = document.createElement("tr"), n = el("td", "pn"), t = el("td", "pt"), df = el("td", "pd", p.default ?? "");
+        const tr = document.createElement("tr"), n = el("td", "pn"), t = el("td", "pt"), df = el("td", "pdef", p.default ?? "");
+        // a long default (an object, a function, several lines) is one clipped line; a click shows all of it, another click clips it again
+        if (String(p.default ?? "").length > 28 || /\n/.test(String(p.default ?? ""))) { df.classList.add("long"); df.title = "Click to show or hide all of it"; df.tabIndex = 0; df.onclick = () => df.classList.toggle("open"); df.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); df.classList.toggle("open"); } }; }
         n.append(el("code", "", p.name)); if (p.required) n.append(el("span", "req", "required"));
         if (p.enum) for (const v of p.enum) t.append(el("span", "pv", v)); else t.append(el("span", "ptype", p.type));
         tr.append(n, t, df); tbody.append(tr);

@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld("studio", {
   jsxSetText: (file, ordinals, scope, lang, value) => invoke("jsx:setText", { file, ordinals, scope, lang, value }),
   jsxStructure: (file, ordinal) => invoke("jsx:structure", { file, ordinal }),
   jsxMoves: (file, ops) => invoke("jsx:moves", { file, ops }),
+  screenDeleteInfo: (file) => invoke("screen:deleteInfo", file),
   screenUndo: (file) => invoke("screen:undo", file),
   screenRedo: (file) => invoke("screen:redo", file),
   screenHistory: (file) => invoke("screen:history", file),
