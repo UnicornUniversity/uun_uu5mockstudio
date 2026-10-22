@@ -1086,7 +1086,7 @@ function updateNoProject() {
   if (none) document.body.dataset.noproject = "1"; else delete document.body.dataset.noproject;
   $("prompt").disabled = none; $("send").disabled = none || !ready || busy;
   $("prompt").placeholder = none ? "Open or create a project first…" : "Describe the screen you want to design…";
-  if (none) { closeFullscreen(); dashboard.show(projectList, { plan: planMode }); } else dashboard.hide();
+  if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("repostrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
 }
 /** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
 let autoNamed = null; // a project started from the dashboard keeps its first, rough name until the first screen exists

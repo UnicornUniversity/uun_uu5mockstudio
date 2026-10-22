@@ -22,7 +22,7 @@ Screens load the uu5 libraries from the Plus4U CDN. The app caches them, so scre
 
 ## Updates of the app
 
-**Help → Check for Updates…** (and a check in the background after the start, at most every six hours) asks GitHub for the latest release. A strip above the chat offers **Download**, **Notes** (the release notes) and **Later**. On macOS the **Download** button installs the new version itself (from 0.3.0 on) and restarts the app.
+**Help → Check for Updates…** (and a check in the background after the start, at most every six hours) asks GitHub for the latest release. The update notices (app and plugins) sit in one place: under the header of the dashboard, and in a strip above the chat inside a project; messages such as “You are up to date” appear at the bottom of the window in both. A strip above the chat offers **Download**, **Notes** (the release notes) and **Later**. On macOS the **Download** button installs the new version itself (from 0.3.0 on) and restarts the app.
 
 ## Where things are stored
 
