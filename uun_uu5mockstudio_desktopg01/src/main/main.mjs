@@ -282,18 +282,25 @@ app.whenReady().then(async () => {
   ipcMain.handle("projects:list", () => projects.list());
   // the picture of a project for the dashboard: its newest screen painted in a hidden window (kept in .studio/thumb.jpg)
   const thumbs = createThumbs({ projects, port, render: async (html, count) => {
+    // the page is served by the preview server itself (a route made for this one picture), so that its frames are same-origin and can be looked into
+    const route = `/__thumb/${Date.now()}-${Math.random().toString(36).slice(2)}.html`;
+    routes[route] = html;
     const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { backgroundThrottling: false } });
     try {
-      await w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
-      for (let t = 0; t < 40; t++) { // the screens load their libraries from the CDN: wait until every frame has loaded
-        const n = await w.webContents.executeJavaScript("window.__loaded || 0").catch(() => 0);
-        if (n >= count) break;
-        await new Promise((r) => setTimeout(r, 400));
+      await w.loadURL(`http://127.0.0.1:${port}${route}`);
+      const lengths = () => w.webContents.executeJavaScript(`[...document.querySelectorAll("iframe")].map((f) => { try { return (f.contentDocument.body.innerText || "").trim().length; } catch { return -1; } })`).catch(() => []);
+      let ready = 0, last = [];
+      for (let t = 0; t < 60 && ready < 2; t++) { // the libraries come from the CDN (slow on a cold cache): wait until every screen shows text, twice in a row
+        await new Promise((r) => setTimeout(r, 500));
+        last = await lengths();
+        ready = last.length === count && last.every((n) => n >= 20) ? ready + 1 : 0;
       }
-      await new Promise((r) => setTimeout(r, 1200)); // the pages render after they have loaded
+      await new Promise((r) => setTimeout(r, 500));
       const img = await captureWithFallback(w.webContents, { nativeImage });
-      return img ? img.resize({ width: 640, quality: "good" }).toJPEG(82) : null;
-    } catch { return null; } finally { w.destroy(); }
+      if (!img) return null;
+      const buf = img.resize({ width: 640, quality: "good" }).toJPEG(82);
+      return last.some((n) => n >= 20) ? buf : { buf, cache: false }; // nothing rendered at all: show it, but try again next time
+    } catch { return null; } finally { w.destroy(); delete routes[route]; }
   } });
   ipcMain.handle("projects:thumb", guard((_e, name) => thumbs.get(String(name))));
   ipcMain.handle("projects:close", guard(() => closeProject()));

@@ -38,7 +38,7 @@ export function compositionHtml(frames, urlOf) {
 /**
  * The picture of a project on the dashboard: its whole canvas, kept in <project>/.studio/thumb.jpg and made again only when a screen
  * or the layout changed (`thumb.json` holds a signature of both). `render(html, count)` returns a JPEG buffer (or null when nothing
- * could be painted); pictures are made one after another so several hidden windows never compete for the CDN.
+ * could be painted, or `{ buf, cache: false }` when the screens had not rendered yet); pictures are made one after another so several hidden windows never compete for the CDN.
  */
 export function createThumbs({ projects, port, render }) {
   let chain = Promise.resolve();
@@ -51,13 +51,15 @@ export function createThumbs({ projects, port, render }) {
     const layout = (await readState(dir)).layout?.frames ?? {};
     const frames = framesOf(files.slice(0, MAX_SCREENS), layout);
     const mtimes = await Promise.all(frames.map(async (f) => (await stat(path.join(dir, f.file))).mtimeMs));
-    const sig = createHash("sha1").update(JSON.stringify([frames, mtimes])).digest("hex");
+    const sig = createHash("sha1").update(JSON.stringify(["v2", frames, mtimes])).digest("hex");
     const cache = path.join(dir, ".studio", "thumb.jpg"), side = path.join(dir, ".studio", "thumb.json");
     const known = await readFile(side, "utf8").then((t) => JSON.parse(t).sig).catch(() => null);
     if (known === sig) { const buf = await readFile(cache).catch(() => null); if (buf) return asUrl(buf); }
     const html = compositionHtml(frames, (f) => `http://127.0.0.1:${port}/${encodeURIComponent(name)}/${encodeURIComponent(f)}`);
-    const buf = await render(html, frames.length);
+    const out = await render(html, frames.length);
+    const buf = Buffer.isBuffer(out) ? out : out?.buf;
     if (!buf) return null;
+    if (out.cache === false) return asUrl(buf); // not rendered yet: shown, not kept
     await mkdir(path.dirname(cache), { recursive: true });
     await writeFile(cache, buf); await writeFile(side, JSON.stringify({ sig }));
     return asUrl(buf);
