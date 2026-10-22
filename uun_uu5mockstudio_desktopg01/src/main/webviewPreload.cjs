@@ -1,8 +1,8 @@
 // Preload of every mockup <webview>. A trackpad pinch arrives in Chromium as ctrl+wheel and would go to the mockup page
 // itself; forward it to the canvas (which zooms) and keep plain scrolling for the page.
 const { ipcRenderer } = require("electron");
-// Two-finger scrolling over a screen of the canvas: normally it scrolls the screen and Alt / Option moves the whole canvas; while components are
-// being inspected it is the other way round ("plain"): the canvas moves and Alt / Option scrolls the screen. The fullscreen preview has no canvas to move.
+// Two-finger scrolling over a screen of the canvas: it scrolls the screen and Alt / Option moves the whole canvas ("alt"), with the inspector on as well. "plain" (the canvas
+// moves without Alt) is no longer used by the canvas but still works. The fullscreen preview has no canvas to move.
 let panMode = null; // null | "alt" | "plain", set by the canvas
 ipcRenderer.on("studio-pan-wheel", (_e, mode) => { panMode = mode || null; });
 window.addEventListener("wheel", (e) => {
@@ -13,11 +13,12 @@ window.addEventListener("wheel", (e) => {
   e.preventDefault();
   ipcRenderer.sendToHost("studio-zoom", { deltaY: e.deltaY, x: e.clientX, y: e.clientY, vw: window.innerWidth });
 }, { passive: false, capture: true });
-// Cmd/Ctrl+Shift+F toggles fullscreen preview even while the mockup has keyboard focus. Esc is deliberately left to the
-// mockup (modals use it), so fullscreen is closed with the bar button or the same shortcut.
+// Cmd/Ctrl+Enter (or Shift+F) toggles present mode even while the mockup has keyboard focus.
 window.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); ipcRenderer.sendToHost("studio-fullscreen"); }
+  if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") || ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !/^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName || ""))) { e.preventDefault(); ipcRenderer.sendToHost("studio-fullscreen"); }
 }, true);
+// Esc leaves present mode unless the mockup used it itself (a modal closes, a menu shuts: it calls preventDefault).
+window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.defaultPrevented) ipcRenderer.sendToHost("studio-escape"); });
 // A right click inside a screen opens the app's menu (add a note here, ...): the page cannot show it, the canvas can.
 window.addEventListener("contextmenu", (e) => {
   e.preventDefault();

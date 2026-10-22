@@ -5,11 +5,12 @@ const $ = (id) => document.getElementById(id);
  * uu5-development plugin and add it to the message as @Name. Click selects one, Shift / Cmd / Ctrl + click several, a double click adds at once.
  * `api` = window.studio (docsSearch, docsLibraries, docsDescribe). Resolves the names of the chosen components or null.
  */
-export function createLibraryPicker({ api }) {
+export function createLibraryPicker({ api, onAdd }) {
   const box = $("libbox"), list = $("lb-list"), detail = $("lb-detail"), search = $("lb-search"), lib = $("lb-lib"), note = $("lb-note"), add = $("lb-add");
-  let resolve = null, chosen = new Set(), last = null, results = [], seq = 0, libsLoaded = false;
+  const view = $("libview"), card = view.parentElement;
+  let inline = false, inlineHost = null, backTo = null, resolve = null, chosen = new Set(), last = null, results = [], seq = 0, libsLoaded = false;
 
-  function done(value) { box.hidden = true; const r = resolve; resolve = null; r?.(value); }
+  function done(value) { if (inline) { if (value?.length) onAdd?.(value); chosen = new Set(); paint(); return; } box.hidden = true; const r = resolve; resolve = null; r?.(value); if (backTo) { const h = backTo; backTo = null; this_.showInline(h); } }
   const refreshButtons = () => { add.disabled = !chosen.size; add.textContent = chosen.size > 1 ? `Add ${chosen.size} to message` : "Add to message"; };
 
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
@@ -77,18 +78,29 @@ export function createLibraryPicker({ api }) {
   search.oninput = run; lib.onchange = run;
   add.onclick = () => done([...chosen]);
   $("lb-x").onclick = () => done(null);
-  box.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { e.stopPropagation(); done(null); }
+  view.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { if (!inline) { e.stopPropagation(); done(null); } }
     else if (e.key === "Enter" && chosen.size && e.target !== lib) { e.preventDefault(); done([...chosen]); }
   });
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape" && !inline) { e.stopPropagation(); done(null); } });
   box.addEventListener("mousedown", (e) => { if (e.target === box) done(null); });
 
-  return {
+  const this_ = {
+    /** The same browser as a tab of the side panel: `host` takes the view over from the dialog; "Add to message" calls `onAdd(names)`. */
+    async showInline(host) {
+      inline = true; inlineHost = host; host.append(view); chosen = new Set(); refreshButtons();
+      await loadLibraries(); await run();
+    },
+    /** Back to the dialog (the view is put into its card again). */
+    leaveInline() { if (!inline) return; inline = false; inlineHost = null; card.append(view); },
+    focusSearch() { search.focus(); },
     async open(query = "") {
+      if (inline) { backTo = inlineHost; this.leaveInline(); } // the dialog borrows the view; the side panel gets it back
       chosen = new Set(); last = null; detail.textContent = ""; search.value = query;
       box.hidden = false; refreshButtons(); search.focus();
       await loadLibraries(); await run();
       return new Promise((r) => { resolve = r; });
     },
   };
+  return this_;
 }

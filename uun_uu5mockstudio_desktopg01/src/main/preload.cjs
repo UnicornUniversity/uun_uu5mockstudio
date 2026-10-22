@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("studio", {
   setFullScreen: (on) => invoke("window:fullscreen", on),
   setTheme: (t) => invoke("theme:set", t),
   listProjects: () => invoke("projects:list"),
+  projectThumb: (name) => invoke("projects:thumb", name),
   closeProject: () => invoke("projects:close"),
   onMenu: on("menu:action"),
   onGlass: on("glass:set"),

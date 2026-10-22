@@ -84,7 +84,7 @@ App-wide data (settings, CDN cache, read-only snapshots of linked branches) is i
 | `src/renderer` | the UI: canvas, chat, inspector, rules and description dialogs |
 | `test` | unit tests (`npm test`) |
 | `scripts` | helper and demo scripts, [publishing to GitHub](uun_uu5mockstudio_desktopg01/docs/RELEASING.md) |
-| `docs` | [RELEASING.md](uun_uu5mockstudio_desktopg01/docs/RELEASING.md) (build and release), [DEMO.md](uun_uu5mockstudio_desktopg01/docs/DEMO.md) (script of the demo video) |
+| `docs` | [**Documentation index**](uun_uu5mockstudio_desktopg01/docs/README.md) (user guide, technical docs), [RELEASING.md](uun_uu5mockstudio_desktopg01/docs/RELEASING.md) (build and release), [DEMO.md](uun_uu5mockstudio_desktopg01/docs/DEMO.md) (script of the demo video) |
 
 ## License
 

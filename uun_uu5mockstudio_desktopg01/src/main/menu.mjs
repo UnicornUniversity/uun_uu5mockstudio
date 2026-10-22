@@ -25,6 +25,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("New Project…", "project:new", { accelerator: "CmdOrCtrl+N" }),
       openProject,
       item("Switch Project…", "project:switcher", { accelerator: "CmdOrCtrl+O" }),
+      item("Dashboard", "project:close", { accelerator: "Shift+CmdOrCtrl+D", enabled: has }),
       item("Close Project", "project:close", { accelerator: "Shift+CmdOrCtrl+W", enabled: has }),
       sep,
       { label: "Export", enabled: has, submenu: [
@@ -71,7 +72,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
   const screen = {
     label: "Screen",
     submenu: [
-      item("Fullscreen Preview", "screen:fullscreen", { accelerator: "Shift+CmdOrCtrl+F", enabled: has }),
+      item("Present", "screen:fullscreen", { accelerator: "CmdOrCtrl+Enter", enabled: has }),
       item("Reload Screen", "screen:reload", { enabled: has }),
       sep,
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
@@ -110,6 +111,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Zoom Out", "view:zoomout", { accelerator: "CmdOrCtrl+-" }),
       item("Show All Screens", "view:fit", { accelerator: "CmdOrCtrl+0" }),
       item("Arrange Screens", "view:arrange", { enabled: has }),
+      { label: "Device for All Screens", enabled: has, submenu: [["Desktop", "desktop"], ["Laptop", "laptop"], ["Tablet", "tablet"], ["Mobile", "mobile"]].map(([l, d]) => item(l, "view:device:" + d)) },
       sep,
       item("Element Inspector", "view:inspector", { enabled: has }),
       sep,

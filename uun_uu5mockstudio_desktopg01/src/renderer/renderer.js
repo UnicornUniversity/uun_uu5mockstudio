@@ -9,6 +9,7 @@ import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
+import { createDashboard, newProjectName, projectNameFromScreen } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
@@ -229,11 +230,10 @@ const WORK = {
 };
 const EMPTY_TEXT = "No mockup yet. Describe it in the chat.";
 let workStart = 0, workTimer;
-// Which screen the agent is working on: shown on the canvas frame, its tab and (in fullscreen) the fullscreen bar.
+// Which screen the agent is working on: shown on the canvas frame, its tab and .
 let workFile = null;
 function setWorkFile(file) {
   workFile = file; canvas.setWorking(file); renderTabs();
-  $("fs").classList.toggle("working", Boolean(file) && file === fsFile);
 }
 const toolFile = (b) => { const i = b.input ?? {}, p = i.file_path ?? i.path ?? i.file; return typeof p === "string" && p.endsWith(".html") ? p.split("/").pop() : null; };
 function updateScreenCtx() {
@@ -243,8 +243,17 @@ function updateScreenCtx() {
 }
 function setWork(label) { if (busy) $("work-label").textContent = label; }
 function tickWork() { const s = Math.round((Date.now() - workStart) / 1000); $("work-time").textContent = s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`; }
+/** The project made from the dashboard gets the name of its first screen (the agent has chosen a good one by then). */
+async function nameAfterFirstScreen() {
+  if (!autoNamed || autoNamed !== project || busy) return;
+  const first = canvas.files()[0]; if (!first) return;
+  const name = projectNameFromScreen(first, projectList.map((p) => p.name).filter((n) => n !== project));
+  autoNamed = null;
+  if (name && name !== project) await changeProject(() => window.studio.renameProject(project, name));
+}
 function setBusy(b) {
-  const was = busy; busy = b; setup?.paintStrip(); updateBuildBtn();
+  const was = busy; busy = b; setup?.paintStrip();
+  if (was && !b) setTimeout(nameAfterFirstScreen, 700); updateBuildBtn();
   $("stop").hidden = !b; $("send").hidden = b; $("send").disabled = !ready || !project;
   $("working").hidden = !b; $("chatbusy").hidden = !b; $("chatbubble").classList.toggle("busy", b);
   clearInterval(workTimer);
@@ -371,7 +380,6 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
 });
 $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.zoomBy(0.8);
 $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
-$("alldev").onchange = (e) => { if (e.target.value) canvas.setDeviceAll(e.target.value); e.target.value = ""; };
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
 const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules"]; // topmost first
@@ -383,7 +391,7 @@ addEventListener("keydown", (e) => {
   open[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
 }, true);
 addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); toggleFullscreen(canvas.selected()); return; }
+  if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") || ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.target.matches("textarea,input,select"))) { e.preventDefault(); toggleFullscreen(canvas.selected()); return; }
   if (fsFile || confirmOpen) return;
   if (e.target.matches("textarea,input,select")) return;
   if ((e.metaKey || e.ctrlKey) && e.key === "0") { e.preventDefault(); canvas.fitAll(true); }
@@ -400,12 +408,11 @@ let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick
 function setInspect(v, { chat = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v);
-  $("inspect").classList.toggle("on", v && !chatPick); $("selinspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
+  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
-$("selinspect").onclick = () => $("inspect").click(); // the same switch, on the bar above the screen
 const inspectedFile = () => propsPanel.file ?? activeMarked?.file ?? canvas.selected() ?? null; // the screen the user works with (undo falls back to the last change in the project)
 $("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
@@ -602,43 +609,51 @@ function askConfirm({ title, detail = "", ok = "Delete", danger = true }) {
   });
 }
 
-// ---------- fullscreen preview ----------
-let fsFile = null, fsView = null, fsWrap = null;
+// ---------- present mode ----------
+// One screen over the whole window, nothing else: no chat, notes, inspector or bars; only the corner button (and Esc) leaves.
+let fsFile = null, fsView = null, fsWrap = null, fsDev = "";
 /** The webview always fills its wrapper; only the wrapper is sized (webviews keep a stale guest viewport when resized directly). */
 function layoutFullscreen() {
   if (!fsWrap) return;
-  const dev = DEVICES[$("fsdev").value];
-  fsWrap.classList.toggle("dev", Boolean(dev));
+  const dev = DEVICES[fsDev];
+  fsWrap.classList.toggle("dev", Boolean(dev)); $("fs").classList.toggle("dev", Boolean(dev));
   if (!dev) { fsWrap.style.cssText = ""; return; }
   const st = $("fsstage").getBoundingClientRect(), k = Math.min(1, (st.width - 40) / dev.w, (st.height - 40) / dev.h);
   Object.assign(fsWrap.style, { width: dev.w + "px", height: dev.h + "px", transform: `scale(${k})` });
 }
-new ResizeObserver(() => layoutFullscreen()).observe($("fsstage")); // the preview follows the stage when the chat docks / floats during fullscreen
+addEventListener("resize", layoutFullscreen);
+const closeFsDevMenu = () => { $("fsdevmenu").hidden = true; };
+$("fsdevbtn").onclick = (e) => {
+  e.stopPropagation(); const m = $("fsdevmenu");
+  if (!m.hidden) return closeFsDevMenu();
+  m.replaceChildren(...[["", "Full window"], ...Object.entries(DEVICES).map(([k, d]) => [k, `${d.label} ${d.w}×${d.h}`])].map(([k, label]) => {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: label, className: k === fsDev ? "on" : "" });
+    b.onclick = () => { fsDev = k; closeFsDevMenu(); layoutFullscreen(); }; return b;
+  }));
+  m.hidden = false;
+};
+addEventListener("pointerdown", (e) => { if (!$("fsdevmenu").hidden && !$("fsctl").contains(e.target)) closeFsDevMenu(); }, true);
 async function openFullscreen(file) {
-  const entering = !fsFile; // a switch to another screen in the fullscreen preview keeps the chat and the notes as they are
   if (fsFile) closeFullscreen();
-  fsFile = file; updateScreenCtx(); fsNote.open({ minimize: entering }); fsNote.set(memory.notesOf(file)); $("fs").classList.toggle("working", file === workFile); $("fsname").textContent = file.replace(/\.html$/, ""); $("fsdev").value = "";
+  fsDev = ""; closeFsDevMenu();
+  fsFile = file; updateScreenCtx();
   fsView = document.createElement("webview");
   fsView.setAttribute("preload", webviewPreload); fsView.setAttribute("webpreferences", "backgroundThrottling=no");
-  fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); });
+  fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); else if (e.channel === "studio-escape") { if (!$("fsdevmenu").hidden) closeFsDevMenu(); else closeFullscreen(); } });
   fsView.src = `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(file)}`;
   fsWrap = Object.assign(document.createElement("div"), { className: "fswrap" }); fsWrap.append(fsView);
   $("fsstage").replaceChildren(fsWrap); $("fs").hidden = false; layoutFullscreen();
-  dock.enterFullscreen({ minimize: entering }); // the chat stays available above the preview, minimized to its bubble when the preview opens
   await window.studio.setFullScreen(true);
   fsView.addEventListener("dom-ready", () => fsView?.focus(), { once: true });
 }
 function closeFullscreen() {
   if (!fsFile) return;
-  fsFile = null; fsNote.close(); fsView = null; fsWrap = null; $("fsstage").replaceChildren(); $("fs").hidden = true; $("fs").classList.remove("working"); updateScreenCtx();
-  dock.exitFullscreen();
+  fsFile = null; fsView = null; fsWrap = null; $("fs").classList.remove("dev"); closeFsDevMenu(); $("fsstage").replaceChildren(); $("fs").hidden = true; updateScreenCtx();
   window.studio.setFullScreen(false);
 }
 function toggleFullscreen(file) { if (fsFile) closeFullscreen(); else if (file) openFullscreen(file); }
 $("fsclose").onclick = closeFullscreen;
-$("fsreload").onclick = () => fsView?.reload();
-$("fsdev").onchange = layoutFullscreen;
-addEventListener("resize", layoutFullscreen);
+addEventListener("keydown", (e) => { if (fsFile && e.key === "Escape") { e.preventDefault(); if (!$("fsdevmenu").hidden) closeFsDevMenu(); else closeFullscreen(); } });
 
 // ---------- @ mentions of screens ----------
 const screenNames = () => canvas.files().map((f) => f.replace(/\.html$/, ""));
@@ -710,7 +725,21 @@ function insertMention(name) {
   else { const sep = t.value && !/\s$/.test(t.value.slice(0, t.selectionStart)) ? " " : ""; t.setRangeText(sep + "@" + name + " ", t.selectionStart, t.selectionEnd, "end"); }
   $("mentions").hidden = true; mentionIdx = 0; t.focus();
 }
-const libraryPicker = createLibraryPicker({ api: window.studio });
+const libraryPicker = createLibraryPicker({ api: window.studio, onAdd: (names) => { setPanelTab("agent"); for (const n of names) insertMention(n); } });
+// ---------- panel tabs: Agent | Components ----------
+const TAB_KEY = "uu5studio.panelTab";
+let panelTab = "agent";
+function setPanelTab(tab, { focus = true } = {}) {
+  panelTab = tab === "components" ? "components" : "agent";
+  try { localStorage.setItem(TAB_KEY, panelTab); } catch { /* not remembered */ }
+  $("chat").dataset.tab = panelTab;
+  for (const b of document.querySelectorAll("#ptabs button")) { const on = b.dataset.tab === panelTab; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
+  $("libpane").hidden = panelTab !== "components";
+  if (panelTab === "components") { libraryPicker.showInline($("libpane")); if (focus) libraryPicker.focusSearch(); }
+  else { libraryPicker.leaveInline(); if (focus) $("prompt").focus(); }
+}
+for (const b of document.querySelectorAll("#ptabs button")) b.onclick = () => setPanelTab(b.dataset.tab);
+try { setPanelTab(localStorage.getItem(TAB_KEY), { focus: false }); } catch { setPanelTab("agent", { focus: false }); }
 $("libbtn").onclick = async () => {
   const names = await libraryPicker.open();
   if (!names?.length) return $("prompt").focus();
@@ -794,10 +823,11 @@ $("rulesbtn").onclick = openRules;
 desc = createDescPanel({
   api: window.studio, getScreens: () => canvas.files(),
   onScreens: (map) => canvas.setDescriptions(map),
-  onProject: (text) => { $("descstrip").hidden = text == null; $("ds-text").textContent = text ?? ""; $("ds-main").title = text ? `${text}\n\nClick to edit the description` : "Click to add a project description"; },
+  onProject: (text) => { $("descstrip").hidden = !text; $("descbtn").classList.toggle("on", Boolean(text)); $("ds-text").textContent = text ?? ""; $("ds-main").title = text ? `${text}\n\nClick to edit the description` : "Click to add a project description"; },
 });
 const openDesc = (focus) => project && desc.open({ focus });
 $("ds-main").onclick = () => openDesc(null);
+$("descbtn").onclick = () => openDesc(null);
 window.studio.onMemoryChanged((ev) => {
   if (ev.kind === "global") return void rules.reloadGlobal();
   if (ev.project !== project) return;
@@ -822,7 +852,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Open fullscreen", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
     ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
@@ -842,9 +872,7 @@ const SCREEN_MENUS = {
 function updateSelbar() {
   const f = canvas.selected();
   $("selbar").hidden = !f; $("selmenu").hidden = true;
-  $("selname").textContent = f ? f.replace(".html", "") : "";
   for (const b of $("selbar").querySelectorAll("button.on")) b.classList.remove("on");
-  $("selinspect").classList.toggle("on", inspector.on && !chatPick); // the inspector switch on the bar follows the state
   drags.clear(); // a different screen: prepare the files to drag again
 }
 // ----- the bar above the selected screen can be moved: by its grip or its name, the place is remembered, a double click puts it back
@@ -854,7 +882,7 @@ try { const s = JSON.parse(localStorage.getItem(SELBAR_KEY)); if (Number.isFinit
 const placeSelbar = (p) => { selbarPos = p; $("selbar").style.setProperty("--sb-x", `${p.x}px`); $("selbar").style.setProperty("--sb-y", `${p.y}px`); };
 const saveSelbar = () => { try { localStorage.setItem(SELBAR_KEY, JSON.stringify(selbarPos)); } catch { /* not remembered */ } };
 placeSelbar(selbarPos);
-for (const id of ["selmove", "selname"]) {
+for (const id of ["selmove"]) {
   const h = $(id);
   h.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -943,10 +971,10 @@ refreshCdn();
 const THEME_ICON = { auto: "◐", light: "☀", dark: "☾" }, THEME_NAME = { auto: "automatic", light: "light", dark: "dark" };
 function syncTheme() {
   const pref = window.__theme.get();
-  $("themebtn").textContent = THEME_ICON[pref]; $("themebtn").title = `Appearance: ${THEME_NAME[pref]} (click to switch)`;
+  for (const id of ["dash-theme"]) { $(id).textContent = THEME_ICON[pref]; $(id).title = `Appearance: ${THEME_NAME[pref]} (click to switch)`; }
   window.studio.setTheme(pref === "auto" ? "system" : pref);
 }
-$("themebtn").onclick = () => { window.__theme.next(); syncTheme(); };
+for (const id of ["dash-theme"]) $(id).onclick = () => { window.__theme.next(); syncTheme(); };
 syncTheme();
 
 // ---------- docked / floating chat panel ----------
@@ -1056,17 +1084,30 @@ function loadProject(info) {
 function updateNoProject() {
   const none = !project;
   if (none) document.body.dataset.noproject = "1"; else delete document.body.dataset.noproject;
-  $("welcome").hidden = !none;
   $("prompt").disabled = none; $("send").disabled = none || !ready || busy;
   $("prompt").placeholder = none ? "Open or create a project first…" : "Describe the screen you want to design…";
-  const list = $("w-list"); list.replaceChildren();
-  if (none) for (const p of projectList) {
-    const b = Object.assign(document.createElement("button"), { type: "button" });
-    b.append(Object.assign(document.createElement("span"), { textContent: p.name }), Object.assign(document.createElement("small"), { textContent: `${p.screens} ${p.screens === 1 ? "screen" : "screens"}` }));
-    b.onclick = () => changeProject(() => window.studio.openProject(p.name)); list.append(b);
-  }
+  if (none) { closeFullscreen(); dashboard.show(projectList, { plan: planMode }); } else dashboard.hide();
 }
-$("w-new").onclick = () => newProjectFlow();
+/** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
+let autoNamed = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
+const dashboard = createDashboard({
+  api: window.studio,
+  onOpen: (name) => changeProject(() => window.studio.openProject(name)),
+  onNew: () => newProjectFlow(),
+  onDelete: async (name) => {
+    const ok = await askConfirm({ title: `Delete the project “${name}”?`, detail: "The project folder (screens and chat history) is moved to the trash, so you can restore it.", ok: "Delete project" });
+    if (ok) await changeProject(() => window.studio.deleteProject(name));
+  },
+  onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
+  onStart: async ({ text, plan, model }) => {
+    if (!ready) return toast("Claude Code is not ready.", { err: true });
+    const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
+    if (!project || r?.error) return;
+    autoNamed = project; // once the agent has made a screen, the project is renamed after it
+    dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
+    $("form").requestSubmit();
+  },
+});
 /** Write pending chat/canvas changes of the current project before the workspace is swapped. */
 async function flushSaves() {
   clearTimeout(saveTimer); clearTimeout(saveLayoutTimer);
@@ -1157,6 +1198,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
   const needProject = (fn) => (project ? fn() : toast("Open or create a project first.", { err: true }));
   const onMenuAction = async (action) => {
     if (action.startsWith("project:open:")) return changeProject(() => window.studio.openProject(action.slice("project:open:".length)));
+    if (action.startsWith("view:device:")) return canvas.setDeviceAll(action.slice("view:device:".length));
     if (action.startsWith("view:theme:")) { window.__theme.set(action.slice("view:theme:".length)); return syncTheme(); }
     switch (action) {
       case "project:new": return newProjectFlow();

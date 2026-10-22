@@ -28,7 +28,7 @@ const CARDS = [
   },
   {
     title: "A canvas for all screens",
-    text: "Zoom and pan (⌥ + two-finger scroll moves the canvas while you work inside a screen), choose a device size, arrange the screens with one click, or open one fullscreen. Pin sticky notes to a screen: they stay with it, right on the canvas.",
+    text: "Zoom and pan (⌥ + two-finger scroll moves the canvas while you work inside a screen), choose a device size, arrange the screens with one click, or present one. Pin sticky notes to a screen: they stay with it, right on the canvas.",
     art: S(`${frame(14, 30, 120, 130)}${line(26, 46, 60)}${line(26, 62, 90, "t-line s")}${line(26, 78, 80, "t-line s")}
       ${frame(150, 30, 150, 130, "t-card t-sel")}${line(162, 46, 70)}<rect x="162" y="62" width="126" height="40" rx="5" class="t-fill"/>${line(162, 114, 100, "t-line s")}
       ${frame(316, 30, 110, 130)}${line(328, 46, 50)}${line(328, 62, 80, "t-line s")}

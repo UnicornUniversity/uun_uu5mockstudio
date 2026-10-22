@@ -23,8 +23,8 @@ body[data-glass] #chat #prompt{background:var(--g-fill-strong)!important;border:
 body[data-glass] #chat :is(.ai,.plan){background:var(--g-fill-strong);border-color:var(--g-edge)}
 
 /* dialogs: the scrim blurs what is behind, the card is glass */
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome){background:var(--g-scrim)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#welcome) .card{
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg){background:var(--g-scrim)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg) .card{
   background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important;border-radius:24px!important;
   box-shadow:0 30px 80px var(--g-shadow),inset 0 1px 0 var(--g-hi)!important}
 
@@ -80,3 +80,9 @@ body[data-glass] #previewbar{background:var(--g-fill-strong)!important;-webkit-b
 body[data-glass][data-chat="float"] #chat.collapsed{background:transparent!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body[data-glass][data-chat="float"] #chat.collapsed #chatbubble{background:linear-gradient(180deg,#5b8cff,#3b6cf0);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 24px rgba(59,108,240,.5),inset 0 1px 0 rgba(255,255,255,.5)}
 body[data-glass] #devmenu{background:rgba(255,255,255,.88)!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--g-edge)}:root[data-theme="dark"] body[data-glass] #devmenu{background:rgba(44,46,62,.92)!important}
+
+/* the zoom pill is one capsule with plain buttons in it (not a capsule per button) */
+body[data-glass] #bar #zoompill{background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:999px;box-shadow:0 1px 3px var(--g-shadow);padding:2px}
+body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3){background:none!important;border:0!important;box-shadow:none!important;border-radius:999px!important;padding:3px 9px}
+body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3):hover{background:color-mix(in srgb,var(--fg) 10%,transparent)!important}
+body[data-glass] #bar #zoompill .zsep{margin:6px 1px;background:var(--g-edge)}

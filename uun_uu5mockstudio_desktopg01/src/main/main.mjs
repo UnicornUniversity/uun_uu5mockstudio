@@ -13,6 +13,8 @@ import { createCdnCache } from "./cdnCache.mjs";
 import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
+import { createThumbs } from "./thumbs.mjs";
+import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
 import { saveAttachments } from "./attachments.mjs";
@@ -50,9 +52,8 @@ app.whenReady().then(async () => {
   const projects = createProjects(root, { trash: (p) => shell.trashItem(p) });
   await projects.migrateLegacy(legacyDir);
   await projects.flattenAll();
-  // lastProject === null means the user closed the project last time: start without one (first run: undefined -> default project)
-  const startName = loadApp().lastProject;
-  let current = startName === null ? null : await projects.ensure(startName);
+  // the app starts on the dashboard (no project open): the user writes a prompt there or picks a project
+  let current = null;
   const dir = () => { if (!current) throw new Error("No project is open."); return projects.dirOf(current); };
   const listScreens = () => fs.readdirSync(dir()).filter((f) => f.endsWith(".html"));
 
@@ -70,7 +71,7 @@ app.whenReady().then(async () => {
 
   const win = new BrowserWindow({
     width: 1500, height: 940, title: "uu5Mock Studio",
-    titleBarStyle: "hiddenInset",
+    titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 22 }, // the lights are centred in the 58 px header rows (chat, dashboard)
     ...(devIcon && process.platform !== "darwin" ? { icon: devIcon } : {}),
     // no throttling: the agent verifies previews while the app is in the background
     webPreferences: { preload: path.join(here, "preload.cjs"), webviewTag: true, backgroundThrottling: false },
@@ -97,6 +98,7 @@ app.whenReady().then(async () => {
   }
   /** The folder that holds all projects: open it in the file manager, or pick another one (applied by restarting the app). */
   async function projectsFolder(op) {
+    if (op === "path") return { path: root, locked: rootLocked };
     if (op === "open") { const err = await shell.openPath(root); return err ? { error: err } : { path: root }; }
     if (rootLocked) return { error: "The projects folder is fixed by the STUDIO_PROJECTS_DIR environment variable." };
     if (op === "reset") { saveApp({ projectsRoot: null, lastProject: undefined }); app.relaunch(); app.exit(0); return { ok: true }; }
@@ -274,11 +276,26 @@ app.whenReady().then(async () => {
     await migrateDescriptions(dir()).catch(() => {}); claude = await newClaude(); lastRules = await readRules(dir()); startWatch();
     return payload();
   };
-  if (current) await openProject(current);
   rebuildMenu(await projects.list());
 
   ipcMain.handle("app:info", payload);
   ipcMain.handle("projects:list", () => projects.list());
+  // the picture of a project for the dashboard: its newest screen painted in a hidden window (kept in .studio/thumb.jpg)
+  const thumbs = createThumbs({ projects, port, render: async (html, count) => {
+    const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { backgroundThrottling: false } });
+    try {
+      await w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+      for (let t = 0; t < 40; t++) { // the screens load their libraries from the CDN: wait until every frame has loaded
+        const n = await w.webContents.executeJavaScript("window.__loaded || 0").catch(() => 0);
+        if (n >= count) break;
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      await new Promise((r) => setTimeout(r, 1200)); // the pages render after they have loaded
+      const img = await captureWithFallback(w.webContents, { nativeImage });
+      return img ? img.resize({ width: 640, quality: "good" }).toJPEG(82) : null;
+    } catch { return null; } finally { w.destroy(); }
+  } });
+  ipcMain.handle("projects:thumb", guard((_e, name) => thumbs.get(String(name))));
   ipcMain.handle("projects:close", guard(() => closeProject()));
   ipcMain.handle("projects:open", guard((_e, name) => openProject(name)));
   ipcMain.handle("projects:create", guard(async (_e, name) => openProject(await projects.create(name))));

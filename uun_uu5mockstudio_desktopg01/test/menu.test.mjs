@@ -54,7 +54,7 @@ test("Screen and Chat menus carry the actions that used to hide in File and in t
   const sent = [];
   const t = buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", send: (a) => sent.push(a) });
   const screen = find(t, "Screen").submenu, chat = find(t, "Chat").submenu;
-  assert.equal(find(screen, "Fullscreen Preview").accelerator, "Shift+CmdOrCtrl+F");
+  assert.equal(find(screen, "Present").accelerator, "CmdOrCtrl+Enter");
   assert.equal(find(screen, "Add Note").accelerator, "Alt+CmdOrCtrl+N");
   for (const l of ["Reload Screen", "Description…", "Add Rule…", "Mention in Chat", "Show in Finder", "Delete Screen…"]) assert.ok(find(screen, l), l);
   assert.equal(find(chat, "New Chat").accelerator, "Shift+CmdOrCtrl+N"); assert.equal(find(chat, "Floating / Docked Chat").accelerator, "Shift+CmdOrCtrl+L");
@@ -73,10 +73,10 @@ test("Open Project lists every project, ticks the open one and opens by name", (
 test("without an open project the project-specific items are disabled and creating one is not", () => {
   const t = buildMenuTemplate({ platform: "darwin", projects, current: null });
   const file = find(t, "File").submenu;
-  for (const l of ["Close Project", "Export", "Share"]) assert.equal(find(file, l).enabled, false, l);
+  for (const l of ["Dashboard", "Close Project", "Export", "Share"]) assert.equal(find(file, l).enabled, false, l);
   assert.notEqual(find(file, "New Project…").enabled, false);
   assert.notEqual(find(file, "Switch Project…").enabled, false);
-  for (const [menu, labels] of [["Project", ["Rename Project…", "Delete Project…", "Business Rules…", "Project Description…", "Show Project in Finder"]], ["Screen", ["Fullscreen Preview", "Reload Screen", "Add Note", "Description…", "Delete Screen…"]], ["Chat", ["New Chat", "Chat History…"]]]) {
+  for (const [menu, labels] of [["Project", ["Rename Project…", "Delete Project…", "Business Rules…", "Project Description…", "Show Project in Finder"]], ["Screen", ["Present", "Reload Screen", "Add Note", "Description…", "Delete Screen…"]], ["Chat", ["New Chat", "Chat History…"]]]) {
     for (const l of labels) assert.equal(find(find(t, menu).submenu, l).enabled, false, `${menu} > ${l}`);
   }
   assert.notEqual(find(find(t, "Project").submenu, "Projects Folder").enabled, false);

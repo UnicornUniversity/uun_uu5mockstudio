@@ -36,11 +36,13 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
   }
   fields.addEventListener("keydown", (e) => {
     const el = e.target.closest?.(".rc-desc"); if (!el) return;
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); el.dataset.revert = "1"; el.blur(); }
+    if (e.key === "Escape") { if (!el.dataset.dirty) return; e.preventDefault(); e.stopPropagation(); el.dataset.revert = "1"; el.blur(); } // an edit: Esc takes it back; nothing changed: Esc closes the dialog
     else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); el.blur(); }
   });
+  fields.addEventListener("input", (e) => { const el = e.target.closest?.(".rc-desc"); if (el) el.dataset.dirty = "1"; });
   fields.addEventListener("focusout", (e) => {
     const el = e.target.closest?.(".rc-desc"); if (!el) return;
+    delete el.dataset.dirty;
     const revert = el.dataset.revert === "1"; delete el.dataset.revert; commit(el, revert);
   });
   fields.addEventListener("paste", (e) => { // plain text only

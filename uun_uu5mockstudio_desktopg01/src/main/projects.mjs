@@ -25,7 +25,10 @@ export function createProjects(root, { trash }) {
     const out = [];
     for (const e of await readdir(root, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name.startsWith(".")) continue;
-      out.push({ name: e.name, screens: (await htmlIn(dirOf(e.name))).length, updated: (await stat(dirOf(e.name))).mtimeMs });
+      const htmls = await htmlIn(dirOf(e.name));
+      let updated = (await stat(dirOf(e.name))).mtimeMs; // the newest screen tells when the work was last touched
+      for (const f of htmls) updated = Math.max(updated, (await stat(path.join(dirOf(e.name), f))).mtimeMs);
+      out.push({ name: e.name, screens: htmls.length, updated });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, "en"));
   }

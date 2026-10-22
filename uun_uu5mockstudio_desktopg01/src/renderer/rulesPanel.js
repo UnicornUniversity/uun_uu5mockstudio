@@ -96,10 +96,12 @@ export function createRulesPanel({ api, getScreens, onCount }) {
   view.addEventListener("keydown", (e) => {
     const el = e.target.closest?.(".rc-text"); if (!el) return;
     if (e.key === "Enter") { e.preventDefault(); el.blur(); }
-    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); el.dataset.revert = "1"; el.blur(); }
+    else if (e.key === "Escape") { if (!el.dataset.dirty) return; e.preventDefault(); e.stopPropagation(); el.dataset.revert = "1"; el.blur(); } // an edit: Esc takes it back; nothing changed: Esc closes the dialog
   });
+  view.addEventListener("input", (e) => { const el = e.target.closest?.(".rc-text"); if (el) el.dataset.dirty = "1"; });
   view.addEventListener("focusout", (e) => {
     const el = e.target.closest?.(".rc-text"); if (!el) return;
+    delete el.dataset.dirty;
     const revert = el.dataset.revert === "1"; delete el.dataset.revert; commitItem(el, revert);
   });
   view.addEventListener("click", (e) => {
