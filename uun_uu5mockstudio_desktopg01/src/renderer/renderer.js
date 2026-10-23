@@ -9,6 +9,8 @@ import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
+import { attachFreeze } from "./freeze.js";
+import { usageOf, usageLabel, usageTitle } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
 import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
@@ -51,6 +53,10 @@ function entryEl(e) {
     return d;
   }
   if (e.kind === "plan") return renderPlan(e, planCtx);
+  if (e.kind === "usage") { // the tokens of one request, under its answer
+    const u = Object.assign(document.createElement("div"), { className: "usage", textContent: usageLabel(e), title: usageTitle(e) });
+    return u;
+  }
   const el = document.createElement("div");
   el.className = `msg ${e.kind === "note" ? "note" : e.kind === "err" ? "err" : e.kind}`;
   if (e.kind === "ai" && e.planning) { el.classList.add("planning"); el.textContent = "Preparing the plan…"; } // the answer in Plan mode is shown once, as the finished plan
@@ -273,7 +279,7 @@ function setBusy(b) {
 function clearPlanning() { for (const e of entries) if (e.planning) { e.planning = false; paint(e); } }
 function finishSteps(status) { for (const e of entries) if (e.kind === "steps") { for (const s of e.steps) if (s.status === "run") s.status = status; paint(e); } }
 
-window.studio.onEvent((m) => {
+const onClaudeEvent = (m) => {
   if (m.type === "system" && m.subtype === "init") learnDefaultModel(m.model);
   if (m.type === "stream_event" && m.event?.type === "content_block_start") {
     const b = m.event.content_block;
@@ -300,12 +306,15 @@ window.studio.onEvent((m) => {
   } else if (m.type === "result") {
     finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.is_error) convertPlan(); } persist();
     if (m.is_error) push({ kind: "err", text: `Error: ${m.result ?? m.subtype}` });
+    const u = usageOf(m); if (u) { push({ kind: "usage", ...u }); persist(); } // below the answer, and below the card of a plan
   } else if (m.type === "stopped") {
     planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
     planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }
-});
+};
+window.studio.onEvent(onClaudeEvent);
+window.__feed = onClaudeEvent; // lets automated checks play messages of the agent without running it
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
 let saveLayoutTimer, savedLayout = {}, rules = null, desc = null;
@@ -336,6 +345,7 @@ const canvas = createCanvas({
     return out;
   },
   onSelect: () => { renderTabs(); updateSelbar(); },
+  onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
   onPageReady: (f) => { inspector.injectIfOn(f.view); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
 function syncFrames(screens) {
@@ -378,7 +388,7 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   syncFrames(screens);
   for (const f of changed) if (!fresh.includes(f)) canvas.reload(f);
   for (const f of changed) propsPanel.refresh(f); // the inspector re-reads the picked component (or clears when it is gone)
-  if (fsFile && changed.includes(fsFile)) fsView?.reload();
+  if (fsFile && changed.includes(fsFile)) { fsFreeze?.cover(); fsView?.reload(); }
   if (fsFile && !screens.includes(fsFile)) closeFullscreen();
   if (fresh.length) canvas.focus(fresh[fresh.length - 1]);
 });
@@ -615,7 +625,7 @@ function askConfirm({ title, detail = "", ok = "Delete", danger = true }) {
 
 // ---------- present mode ----------
 // One screen over the whole window, nothing else: no chat, notes, inspector or bars; only the corner button (and Esc) leaves.
-let fsFile = null, fsView = null, fsWrap = null, fsDev = "";
+let fsFile = null, fsView = null, fsWrap = null, fsFreeze = null, fsDev = "";
 /** The webview always fills its wrapper; only the wrapper is sized (webviews keep a stale guest viewport when resized directly). */
 function layoutFullscreen() {
   if (!fsWrap) return;
@@ -645,7 +655,7 @@ async function openFullscreen(file) {
   fsView.setAttribute("preload", webviewPreload); fsView.setAttribute("webpreferences", "backgroundThrottling=no");
   fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); else if (e.channel === "studio-escape") { if (!$("fsdevmenu").hidden) closeFsDevMenu(); else closeFullscreen(); } });
   fsView.src = `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(file)}`;
-  fsWrap = Object.assign(document.createElement("div"), { className: "fswrap" }); fsWrap.append(fsView);
+  fsWrap = Object.assign(document.createElement("div"), { className: "fswrap" }); fsWrap.append(fsView); fsFreeze = attachFreeze(fsView, fsWrap);
   $("fsstage").replaceChildren(fsWrap); $("fs").hidden = false; layoutFullscreen();
   await window.studio.setFullScreen(true);
   fsView.addEventListener("dom-ready", () => fsView?.focus(), { once: true });
@@ -857,7 +867,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
-    ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;

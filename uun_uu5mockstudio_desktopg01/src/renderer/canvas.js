@@ -1,3 +1,4 @@
+import { attachFreeze, waitSettled } from "./freeze.js";
 import { ICON_MIN, ICON_MAX, ICON_TRASH } from "./icons.js";
 export const DEVICES = {
   desktop: { label: "Desktop", w: 1440, h: 900 },
@@ -31,7 +32,7 @@ function openDevMenu(f, anchor) {
   setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
 }
 
-export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset }) {
+export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset }) {
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
   let cam = { x: 40, y: 40, z: 0.5 };
@@ -160,28 +161,65 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     devBtn.onpointerdown = (e) => e.stopPropagation();
     devBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, devBtn); };
     const body = el.querySelector(".fbody");
-    const view = document.createElement("webview");
-    view.setAttribute("webpreferences", "backgroundThrottling=no");
-    const pre = preloadUrl?.(); if (pre) view.setAttribute("preload", pre); // must be set before src
-    view.src = urlFor(file);
+    const newWebview = () => {
+      const v = document.createElement("webview");
+      v.setAttribute("webpreferences", "backgroundThrottling=no");
+      const pre = preloadUrl?.(); if (pre) v.setAttribute("preload", pre); // must be set before src
+      v.src = urlFor(file);
+      return v;
+    };
+    const view = newWebview();
     const shield = document.createElement("div"); shield.className = "shield";
     body.append(view, shield);
+    f.freeze = attachFreeze(view, body); // a picture covers a screen that is reloaded by something else than the canvas (the agent's checks)
     const desc = document.createElement("div"); desc.className = "fdesc"; desc.hidden = true; desc.title = "Description of the screen (click to edit)";
     desc.addEventListener("pointerdown", (e) => e.stopPropagation()); desc.addEventListener("click", () => onDescClick?.(file));
     el.append(desc);
     Object.assign(f, { el, body, view, shield, desc, devSel, syncDev, customOpt: devSel.querySelector('option[value="custom"]') });
     syncDev();
-    view.addEventListener("ipc-message", (e) => {
+    const wire = (v) => {
+    v.addEventListener("ipc-message", (e) => {
       if (e.channel === "studio-contextmenu") {
-        const { x, y, vw } = e.args[0], r = view.getBoundingClientRect(), k = r.width / vw;
+        const { x, y, vw } = e.args[0], r = v.getBoundingClientRect(), k = r.width / vw;
         return void onContextMenu?.({ file, clientX: r.left + x * k, clientY: r.top + y * k, at: { x, y: TITLE_H + y } });
       }
       if (e.channel === "studio-pan") { const { dx, dy } = e.args[0]; cam.x -= dx; cam.y -= dy; return void applyCam(false); } // scrolling over a screen: see webviewPreload.cjs (inspecting: the canvas moves, Alt scrolls the screen; otherwise the other way round)
       if (e.channel !== "studio-zoom") return void onGuestMessage?.(file, e.channel);
-      const { deltaY, x, y, vw } = e.args[0], r = view.getBoundingClientRect(), cr = root.getBoundingClientRect();
+      const { deltaY, x, y, vw } = e.args[0], r = v.getBoundingClientRect(), cr = root.getBoundingClientRect();
       zoomAt(r.left - cr.left + x * (r.width / vw), r.top - cr.top + y * (r.width / vw), cam.z * Math.exp(-Math.max(-40, Math.min(40, deltaY)) * 0.01));
     });
-    view.addEventListener("dom-ready", () => { try { view.send("studio-pan-wheel", "alt"); } catch { /* not ready yet */ } if (!f.ready) { f.ready = true; onReady?.(file, view.getWebContentsId()); } onPageReady?.(f); });
+    v.addEventListener("dom-ready", () => {
+      try { v.send("studio-pan-wheel", "alt"); } catch { /* not ready yet */ }
+      if (v !== f.view) return; // the page of a screen that is still loading behind the shown one: the swap does the rest
+      if (!f.ready) { f.ready = true; onReady?.(file, v.getWebContentsId()); }
+      onPageReady?.(f);
+    });
+    };
+    wire(view);
+
+
+    /**
+     * Renders the screen again without a blank moment: the new page loads in a second webview that lies under the shown one; when it
+     * has content that has stopped changing (and the scroll is put back) the two are swapped. A newer call replaces one still waiting.
+     */
+    f.reloadSoft = async () => {
+      f.nextView?.remove();
+      const nv = newWebview(); f.nextView = nv; wire(nv);
+      body.insertBefore(nv, f.view);
+      const gone = () => f.nextView !== nv;
+      await new Promise((resolve) => { const t = setTimeout(resolve, 20000); const end = () => { clearTimeout(t); resolve(); }; nv.addEventListener("did-stop-loading", end, { once: true }); nv.addEventListener("did-fail-load", end, { once: true }); });
+      if (gone()) return;
+      if (!await waitSettled(nv, gone)) return;
+      const sc = await Promise.race([f.view.executeJavaScript("[window.scrollX, window.scrollY]").catch(() => null), new Promise((r) => setTimeout(() => r(null), 800))]);
+      if (Array.isArray(sc) && (sc[0] || sc[1])) await nv.executeJavaScript(`window.scrollTo(${Number(sc[0]) || 0}, ${Number(sc[1]) || 0})`).catch(() => {});
+      await new Promise((r) => setTimeout(r, 120)); // the new page paints under the old one before the old one goes
+      if (gone()) return;
+      const old = f.view; f.freeze?.destroy();
+      f.view = nv; f.nextView = null; old.remove();
+      f.freeze = attachFreeze(nv, body); f.freeze.prime();
+      onReady?.(file, nv.getWebContentsId()); onPageReady?.(f); onViewSwapped?.(f, nv);
+      try { nv.send("studio-pan-wheel", "alt"); } catch { /* the pan mode is sent again when the page is ready */ }
+    };
 
     devSel.onchange = async () => {
       if (devSel.value === "custom") {
@@ -192,7 +230,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
       layoutFrame(f); onChange?.("layout");
     };
     const fitHeight = async () => {
-      const h = await view.executeJavaScript("Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0)").catch(() => 0);
+      const h = await f.view.executeJavaScript("Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0)").catch(() => 0);
       if (!h) return;
       Object.assign(f, { device: "custom", w: size(f).w, h: clampSide(h) }); layoutFrame(f); onChange?.("layout");
     };
@@ -233,6 +271,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
   }
   function removeFrame(file) {
     const f = frames.get(file); if (!f) return;
+    f.nextView = null; f.freeze?.destroy(); // a swap that is still waiting must not go on
     f.el.remove(); frames.delete(file); if (selected === file) select(null); onGone?.(file);
   }
 
@@ -277,7 +316,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
     addFrame, removeFrame, select,
     removeAll: () => { for (const f of [...frames.keys()]) removeFrame(f); },
     selected: () => selected,
-    reload: (file) => frames.get(file)?.view.reload(),
+    reload: (file) => frames.get(file)?.reloadSoft(),
     fitAll: (animate) => fitBounds([...frames.values()], animate),
     focus: (file) => { const f = frames.get(file); if (!f) return; select(file); fitBounds([f]); },
     zoomBy: (k) => { const r = root.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, cam.z * k); },
@@ -316,6 +355,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onGuestMessage, 
       el.querySelector(".fn-text").focus();
     },
     setWorking: (file) => { workingFile = file; for (const f of frames.values()) f.el.classList.toggle("working", f.file === file); },
+    /** The menu of the device sizes of one screen at a point (the title bar of a narrow frame has no room for its own button). */
+    openDeviceMenu: (file, x, y) => { const f = frames.get(file); if (f) openDevMenu(f, { getBoundingClientRect: () => ({ left: x, bottom: y }) }); },
     setDeviceAll: (device) => { for (const f of frames.values()) { f.device = device; layoutFrame(f); } onChange?.("layout"); },
     layout: () => Object.fromEntries([...frames.values()].map((f) => [f.file, { x: f.x, y: f.y, device: f.device, ...(f.device === "custom" ? { w: f.w, h: f.h } : {}), ...(Object.keys(f.notePos).some((id) => f.noteEls.has(id)) ? { notes: Object.fromEntries(Object.entries(f.notePos).filter(([id]) => f.noteEls.has(id))) } : {}) }])),
   };

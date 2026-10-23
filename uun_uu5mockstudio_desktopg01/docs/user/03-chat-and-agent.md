@@ -4,6 +4,11 @@ The panel has two tabs: **Agent** (the chat, with the Agent / Plan switch) and *
 
 The chat is where you tell Claude what to build or change. It is a docked column on the left, or a floating window (**Chat → Floating / Docked Chat, ⇧⌘L**) that can be dragged, resized from every edge and minimized with the **_** button into a round chat bubble (a click on the bubble opens it, a drag moves it).
 
+
+## Tokens of a request
+
+Under every answer of the agent (also under a plan card) a small grey line shows how many **tokens** the request used, for example `17.3k tokens`. It is the new input plus the output, summed over all models the request used. Point at it for the details: input and output, how much was read from and written to the cache (reading from the cache is cheap and repeats with every message, so it is not in the number), and the tokens per model. The lines are part of the conversation, so they are kept with it and disappear when you delete it. A stopped request shows none.
+
 ## The message field
 
 One rounded box: your text, a strip of tools under it, and the round send button.

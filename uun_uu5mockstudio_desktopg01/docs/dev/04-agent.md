@@ -49,3 +49,7 @@ In-process (`createSdkMcpServer`), created with the callbacks `onNavigated` and 
 ## Events to the renderer
 
 `stream_event` text deltas become the answer; `assistant` messages carry tool uses (shown as steps); `user` messages carry tool results; `result` ends the turn (then a Plan answer is converted into a plan card); `stopped` and `app_error` are produced by the service. While a plan is being written the answer is shown as "Preparing the plan…" and replaced by the card when finished.
+
+## Tokens
+
+The `result` message that ends every `query()` carries `modelUsage` (per model: `inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`, `contextWindow`) and `usage` (the main loop only). `usageOf` in `src/renderer/usage.js` sums `modelUsage` over all models (subagents included) into `{ in, out, cacheRead, cacheWrite, models }`, `in` being uncached input plus cache writes; the renderer pushes it as a `usage` entry of the chat after the answer (after `convertPlan` in Plan mode). Cost and the context window are in the message but not shown.

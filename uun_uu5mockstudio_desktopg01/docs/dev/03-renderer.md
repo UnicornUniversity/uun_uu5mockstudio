@@ -6,6 +6,7 @@
 
 | File | Responsibility |
 | --- | --- |
+| `canvas.js` | (see also `reloadSoft`: a screen that changed is loaded in a **second webview under the shown one**; when it has settled, scroll restored, the two are swapped, the new webcontents id is registered (`onReady`), the inspector is injected (`onPageReady`) and `onViewSwapped` lets the renderer attach its console listener. Exact at every zoom, unlike a picture.) |
 | `canvas.js` | `createCanvas`: frames (webviews), camera (zoom, pan), shields over unselected frames, device sizes (a popover menu instead of a native select, because the title bar is scaled with the zoom), notes pinned to frames, compact title bars at small zoom. |
 | `chatdock.js` | The chat panel: docked or floating, drag and resize, the round bubble when minimized (own place, bottom-left by default), the separate context for the fullscreen preview. |
 | `fsnote.js` | The notes of the screen open in fullscreen: the panel and the bubble (bottom-right by default, shows the count; without notes it adds one). |
@@ -13,6 +14,7 @@
 | `propsPanel.js` | The inspector side panel: breadcrumb, controls per prop kind (`kindOf`), lists, JSON editor window, text and icon fields, **Show component tree**. |
 | `actionListEditor.js`, `actionGrammar.js` | The window that edits a list of actions, and the grammar of an action (fields built from the documentation of `Uu5Elements.Button`). |
 | `textField.js`, `iconField.js`, `iconPicker.js` | LSI-aware text field with a language switch; the icon field; the catalog dialog (uuGDS, uuBml, states). |
+| `freeze.js` | No flicker when a screen renders again. `waitSettled(view)`: waits until a page has content that stopped changing. `attachFreeze(view, host)`: while the webview loads (a reload not made by the canvas: the agent's checks, Present), a picture of the last good render covers it. |
 | `templatesDialog.js` | The Templates dialog: the sources with their counts, Open folder for my templates, the list of templates. |
 | `dashboard.js` | The start view (`#dash`): prompt, idea chips, project cards with thumbnails; pure helpers `ago`, `projectNameFrom`. |
 | `libraryPicker.js` | The dialog and, as the **Components** tab of the panel (`showInline` / `leaveInline`, the `#libview` node moves between the dialog and `#libpane`) "Components from the libraries": search, filter by library, description and a props table (long defaults clipped, click to expand). |
