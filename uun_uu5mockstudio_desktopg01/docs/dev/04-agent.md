@@ -52,4 +52,14 @@ In-process (`createSdkMcpServer`), created with the callbacks `onNavigated` and 
 
 ## Tokens
 
-The `result` message that ends every `query()` carries `modelUsage` (per model: `inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`, `contextWindow`) and `usage` (the main loop only). `usageOf` in `src/renderer/usage.js` sums `modelUsage` over all models (subagents included) into `{ in, out, cacheRead, cacheWrite, models }`, `in` being uncached input plus cache writes; the renderer pushes it as a `usage` entry of the chat after the answer (after `convertPlan` in Plan mode). Cost and the context window are in the message but not shown.
+The `result` message that ends every `query()` carries `modelUsage` (per model: `inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`, `contextWindow`) and `usage` (the main loop only). `usageOf` in `src/renderer/usage.js` sums `modelUsage` over all models (subagents included) into `{ in, out, cacheRead, cacheWrite, models }`, `in` being uncached input plus cache writes; the renderer pushes it as a `usage` entry of the chat after the answer (after `convertPlan` in Plan mode). The counters are **cumulative over the conversation** (Claude Code restores them when a session is resumed), so `usageDelta` subtracts the previous `usage` entry of the chat (`cum` keeps the raw counters; an entry without `cum` is from the first version and holds the counters themselves, shown as “so far”). Cost and the context window are in the message but not shown.
+
+## Economy
+
+A real conversation (one session of an ordinary project) showed where the tokens go: 1085 API calls in one session, a context of 440k on median and 960k at most re-read by every call (516M cache-read tokens), 381 tiny `Edit` calls, 111 reloads and 74 full-size screenshots (19 MB of tool results that stay in the context for the rest of the session). The measures:
+
+- `ECONOMY` (in `studioPrompt`): batch the changes, no re-reading of what was just written, one reload / check per batch, short answers; "look before you change" reads the file (in parts) or `screen_structure` first and takes a screenshot only for visual questions.
+- `shrinkScreenshot` (`screenshot.mjs`): the screenshot tool returns at most 900 px wide JPEG (quality 72) instead of a 1200 px PNG.
+- **Eco** switch of the message field: `send(prompt, model, { plan, economy })` → `ClaudeService.send` sets `effort: "low"` and appends `ECONOMY_MODE` to the system prompt.
+- The renderer remembers the context after the last main-loop API call (`contextOf(assistant message)`), stores it as `ctx` in the `usage` entry and shows the bar `#ctxwarn` from `CONTEXT_WARN` (200k) with a button that opens a new chat with a start text.
+

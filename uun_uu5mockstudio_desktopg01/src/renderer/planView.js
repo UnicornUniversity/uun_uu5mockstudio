@@ -185,18 +185,21 @@ export function renderPlan(entry, ctx) {
     return box;
   }
 
-  // ----- actions
-  const actions = el("div", { className: "plan-actions" });
+  // ----- actions: the quiet ones on the left, the way forward on the right (Build this is the only filled button)
+  const actions = el("div", { className: "plan-actions" }), left = el("div", { className: "pa-left" }), right = el("div", { className: "pa-right" });
   const btn = (label, fn, cls = "") => el("button", { type: "button", className: cls, textContent: label, onclick: fn });
   if (entry.state === "proposed") {
     if (editable) {
-      actions.append(btn("Done editing", () => { entry.editing = false; ctx.change(entry); }), btn("Reset to the agent's plan", () => {
+      left.append(btn("Reset to the agent's plan", () => {
         entry.text = entry.original.text; entry.tree = entry.original.tree ? JSON.parse(JSON.stringify(entry.original.tree)) : entry.tree; entry.sel = []; ctx.checkNames?.(entry); ctx.change(entry);
       }));
-    } else actions.append(btn("Edit plan", () => { entry.editing = true; ctx.change(entry); }));
+      right.append(btn("Done editing", () => { entry.editing = false; ctx.change(entry); }));
+    } else left.append(btn("Edit plan", () => { entry.editing = true; ctx.change(entry); }), btn("Revise…", () => ctx.revise(entry)));
     const given = (entry.questions ?? []).filter((q) => isAnswered(entry.answers?.[q.id])).length;
-    if (given) actions.append(btn("Update the plan with my answers", () => ctx.answer(entry)));
-    actions.append(btn("Revise…", () => ctx.revise(entry)), btn("Discard", () => ctx.discard(entry)), btn(editable ? "Build the edited plan" : "Build this", () => ctx.build(entry), "primary"));
+    if (given) actions.append(btn("Update the plan with my answers", () => ctx.answer(entry), "pa-wide"));
+    if (editable) left.append(btn("Revise…", () => ctx.revise(entry)));
+    right.append(btn("Discard", () => ctx.discard(entry), "danger"), btn(editable ? "Build the edited plan" : "Build this", () => ctx.build(entry), "primary"));
+    actions.append(left, right);
     root.append(actions);
   }
   return root;

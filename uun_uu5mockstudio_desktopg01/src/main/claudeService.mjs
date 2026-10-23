@@ -66,6 +66,18 @@ export function componentsInRules(docs, text) {
 }
 
 /** The part of the system prompt that describes the app and its tools to the agent (the project memory block comes last). */
+/** Every step of the agent re-reads the whole conversation, so fewer steps and a smaller context are the savings that matter. */
+export const ECONOMY = [
+  "Economy (the conversation is re-read by every step, so fewer steps and a smaller context are what saves tokens):",
+  "plan a screen first and write it with one Write, or with a few Edits that each replace a large coherent block, never dozens of tiny Edits;",
+  "do not re-read a file you have just written or edited, and do not read a whole big file when a part is enough;",
+  "reload and check the console once per batch of changes; screenshots only when really needed (see above);",
+  "keep your answers short: what you did and what the user has to decide, without repeating the code or listing every change.",
+].join(" ");
+
+/** The extra rules of the Economy switch of the message field: the cheapest way that still does what was asked. */
+export const ECONOMY_MODE = "Economy mode is ON for this request: make the smallest change that does what is asked, do not redesign or polish what was not asked for, check the result once (console and snapshot, no screenshot unless the user asked for a visual check) and answer in two or three sentences.";
+
 export function studioPrompt({ cwd, urlBase, memory = "" }) {
   return [
     "You run inside uu5Mock Studio, a desktop app that previews mockups live.",
@@ -73,8 +85,9 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
     `The app serves that folder at ${urlBase}/<name>.html and reloads the preview automatically on every file change. ${cwd} is one project of several; only work inside it.`,
     "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot, browser_click (all take the mockup file name), and screen_structure (the component structure of a screen, read from its file).",
     "The app shows every .html file of the project as a separate frame on a canvas next to the others, so several screens can coexist: use one file per screen. The user picks device sizes (desktop/tablet/mobile) per frame, so layouts must be responsive.",
-    "Verification loop (mandatory): after writing or editing a mockup call browser_open/browser_reload; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge before use. Finish with one browser_screenshot.",
-    "Look before you change: when you are asked to change or improve a screen that already exists, first take a browser_screenshot (and browser_snapshot) of it to see its current look, and base your edit on that. What is not visible at first (a dialog, a form, a tab, a menu) you open with browser_click (by its visible text) and then check with browser_screenshot; browser_click never changes files and browser_reload resets the page.",
+    "Verification loop: after you have finished a batch of changes (not after every edit) call browser_open/browser_reload once; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge before use.",
+    "Look before you change: when you are asked to change a screen that already exists, read its file first (a big file in parts with offset and limit, or use screen_structure for its component tree) and base your edit on that. Use browser_snapshot (visible text) and browser_console to see the page. Take a browser_screenshot only when the question is visual (layout, colours, spacing) and the text cannot answer it, and then one at the end, not one per step. What is not visible at first (a dialog, a form, a tab, a menu) you open with browser_click (by its visible text); browser_click never changes files and browser_reload resets the page.",
+    ECONOMY,
     "The user may attach screenshots to a message: they are image files under .studio/attachments in the project folder and their paths are listed in the message. Open them with the Read tool before acting and base your work on what they show. Never copy, edit or delete them.",
     "Use the uu5-mockup and uugds skills for composition and rules. Ask no questions unless essential; pick sensible defaults.",
     "The user can switch the message field from Agent to Plan: then you only propose a plan with a tree of the components first. For a large request (several screens, a rewrite) you may build as asked, but say in one sentence at the end that Plan lets them review a component tree before the next big step.",
@@ -88,7 +101,7 @@ export class ClaudeService {
     Object.assign(this, { cwd, urlBase, browserMcp, onEvent, sessionId, repoDir, repoLabel, globalRoot, docs, abort: undefined });
   }
 
-  async send(prompt, model, { plan = false } = {}) {
+  async send(prompt, model, { plan = false, economy = false } = {}) {
     this.abort = new AbortController();
     const repoDir = this.repoDir;
     const rules = await readRules(this.cwd), globalRules = this.globalRoot ? await readGlobalRules(this.globalRoot) : "", globalFile = this.globalRoot ? path.join(this.globalRoot, GLOBAL_FILE) : "";
@@ -111,11 +124,12 @@ export class ClaudeService {
         includePartialMessages: true,
         resume: this.sessionId,
         model,
+        ...(economy ? { effort: "low" } : {}), // less thinking: output tokens are the dearest
         abortController: this.abort,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : ""),
+          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : ""),
         },
       },
     });

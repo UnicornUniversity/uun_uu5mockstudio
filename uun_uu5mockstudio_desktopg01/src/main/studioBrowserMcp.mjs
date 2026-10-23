@@ -2,7 +2,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import path from "node:path";
 import { webContents, nativeImage } from "electron";
-import { captureWithFallback } from "./screenshot.mjs";
+import { captureWithFallback, shrinkScreenshot } from "./screenshot.mjs";
 import { clickIn } from "./mockClick.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -119,15 +119,14 @@ export function createStudioBrowser({ baseUrl, onNavigated, readStructure }) {
       async ({ file }) => {
         try { const out = readStructure?.(file); return text(out ?? "The screen has no JSX to read."); } catch (e) { return text(`Cannot read the structure: ${e.message}`); }
       }),
-    tool("browser_screenshot", "Screenshot (PNG) of a mockup as shown in the app, at the frame's current device size. Use for the final visual check.",
+    tool("browser_screenshot", "Screenshot of a mockup as shown in the app, at the frame's current device size (reduced JPEG: it stays in the conversation and costs tokens for every later step, so take one only when the problem is visual and browser_snapshot / browser_console cannot show it).",
       { file: fileParam },
       async ({ file }) => {
         const { wc } = await resolve(file);
         const img = await captureWithFallback(wc, { nativeImage });
         if (!img) return text("A screenshot is not available right now (the preview is not being painted). Do not wait for it: use browser_snapshot (visible text and interactive elements) and browser_console to check the result.");
-        const { width } = img.getSize();
-        const png = (width > 1200 ? img.resize({ width: 1200 }) : img).toPNG();
-        return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
+        const jpeg = shrinkScreenshot(img);
+        return { content: [{ type: "image", data: jpeg.toString("base64"), mimeType: "image/jpeg" }] };
       }),
   ];
 

@@ -380,7 +380,7 @@ app.whenReady().then(async () => {
     return chatView(st);
   }));
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
-  ipcMain.handle("chat:send", guard((_e, { prompt, model, plan }) => { if (!claude) throw new Error("No project is open."); claude.runChat = currentChatId; return claude.send(prompt, model, { plan: Boolean(plan) }); }));
+  ipcMain.handle("chat:send", guard((_e, { prompt, model, plan, economy }) => { if (!claude) throw new Error("No project is open."); claude.runChat = currentChatId; return claude.send(prompt, model, { plan: Boolean(plan), economy: Boolean(economy) }); }));
   ipcMain.handle("chat:stop", () => claude?.stop());
   ipcMain.handle("claude:status", (_e, refresh) => getStatus({ refresh }));
   // ----- first run: Claude Code, sign-in, plugins (progress goes to the renderer as claude:progress)

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("studio", {
   registerView: (file, id) => invoke("view:register", file, id),
   unregisterView: (file) => invoke("view:unregister", file),
   saveLayout: (project, layout) => invoke("layout:save", project, layout),
-  send: (prompt, model, opts) => invoke("chat:send", { prompt, model, plan: Boolean(opts?.plan) }),
+  send: (prompt, model, opts) => invoke("chat:send", { prompt, model, plan: Boolean(opts?.plan), economy: Boolean(opts?.economy) }),
   stop: () => invoke("chat:stop"),
   saveChat: (project, chatId, chat) => invoke("chat:save", project, chatId, chat),
   saveAttachments: (items) => invoke("attachments:save", items),

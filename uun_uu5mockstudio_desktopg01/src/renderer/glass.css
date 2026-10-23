@@ -57,7 +57,7 @@ body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions
 /* the inspector switch on the bar above a screen stays blue while it is on (the capsule rule above would make it white with a white icon) */
 body[data-glass] #selbar #selinspect.on:not(#x1):not(#x2):not(#x3):not(#x4){background:linear-gradient(180deg,#5b8cff,#3b6cf0)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
 body[data-glass] #modemenu{background:var(--g-fill-strong,var(--panel))!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--g-edge,var(--line))}
-body[data-glass] #chat #form .row :is(#modebtn,#model){background:none!important;border:0!important;box-shadow:none!important}
+body[data-glass] #chat #form .row :is(#modebtn,#model,#ecobtn){background:none!important;border:0!important;box-shadow:none!important}
 body[data-glass] #chat .inputbox{background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:20px;box-shadow:0 6px 24px var(--g-shadow),inset 0 1px 0 rgba(255,255,255,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 body[data-glass] #chat .inputbox:focus-within{border-color:var(--acc)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 25%,transparent),0 8px 28px var(--g-shadow)}
 body[data-glass] #chat .inputbox #prompt{background:transparent!important;border:0!important;border-radius:20px!important;box-shadow:none!important}
@@ -86,3 +86,7 @@ body[data-glass] #bar #zoompill{background:var(--g-fill-strong)!important;border
 body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3){background:none!important;border:0!important;box-shadow:none!important;border-radius:999px!important;padding:3px 9px}
 body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3):hover{background:color-mix(in srgb,var(--fg) 10%,transparent)!important}
 body[data-glass] #bar #zoompill .zsep{margin:6px 1px;background:var(--g-edge)}
+
+body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none;color:var(--mute)!important}
+body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d):hover{color:var(--fg)!important}
+body[data-glass] #chat #form .row #ecobtn.on:not(#a):not(#b):not(#c):not(#d){color:#2f8f49!important}

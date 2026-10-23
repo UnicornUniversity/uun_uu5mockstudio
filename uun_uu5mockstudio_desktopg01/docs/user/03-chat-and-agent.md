@@ -7,7 +7,16 @@ The chat is where you tell Claude what to build or change. It is a docked column
 
 ## Tokens of a request
 
-Under every answer of the agent (also under a plan card) a small grey line shows how many **tokens** the request used, for example `17.3k tokens`. It is the new input plus the output, summed over all models the request used. Point at it for the details: input and output, how much was read from and written to the cache (reading from the cache is cheap and repeats with every message, so it is not in the number), and the tokens per model. The lines are part of the conversation, so they are kept with it and disappear when you delete it. A stopped request shows none.
+Under every answer of the agent (also under a plan card) a small grey line shows how many **tokens** the request used, for example `17.3k tokens`. It is the new input plus the output, summed over all models the request used. (Claude Code counts cumulatively over a conversation, so the app subtracts the previous result; the first request measured in an older conversation can only show the total so far, marked “so far”.) Point at it for the details: input and output, how much was read from and written to the cache (reading from the cache is cheap and repeats with every message, so it is not in the number), and the tokens per model. The lines are part of the conversation, so they are kept with it and disappear when you delete it. A stopped request shows none.
+
+
+## Spending fewer tokens
+
+Every step of the agent reads the **whole conversation** again, so a long conversation makes every later step dear. What helps, and what the app does about it:
+
+- **Context.** The line under an answer ends with `context 439k`: how big the conversation is now. From about 200k tokens a bar above the message field suggests a **New conversation**: the screens, rules and notes stay in the project, so little is lost; the new message field already holds a start (the screens and your last request). **✕** hides the bar until the conversation grows by another 200k.
+- **Eco** (the leaf next to the model, turn it on and off): the agent thinks less, makes the smallest change that does what you ask, checks once and answers in two or three sentences. Good for small changes; turn it off for a big design.
+- **The agent works economically by default**: it writes a screen in one go (or a few large edits) instead of dozens of tiny ones, reloads and checks once per batch, reads big files in parts, takes a screenshot only when the question is visual, and the screenshots it gets are small (900 px, JPEG).
 
 ## The message field
 

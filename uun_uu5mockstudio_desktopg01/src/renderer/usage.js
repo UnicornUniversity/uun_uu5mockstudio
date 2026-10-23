@@ -1,11 +1,12 @@
 /**
  * Tokens of one request of the agent, from the `result` message of the Agent SDK. `modelUsage` (every model of the request, subagents
- * included) is the source; `usage` (the main loop only) is the fallback. The main number is what the request had to process anew:
+ * included) is the source; `usage` (the main loop only) is the fallback. The counters of a resumed conversation are **cumulative**
+ * (Claude Code restores them from the session), so the tokens of one request are the difference to the previous result (`usageDelta`). The main number is what the request had to process anew:
  * input (uncached + written to the cache) + output. Reading from the cache is cheap and repeats with every message, so it is kept apart.
  */
 const num = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v) : 0);
 
-/** `{ in, out, cacheRead, cacheWrite, models: { <model>: { in, out } } }`, or null when the message carries no tokens. */
+/** The counters of the message: `{ in, out, cacheRead, cacheWrite, models: { <model>: { in, out } } }`, or null when it carries no tokens. */
 export function usageOf(result) {
   if (!result || typeof result !== "object") return null;
   const total = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0, models: {} };
@@ -24,6 +25,22 @@ export function usageOf(result) {
   return total.in || total.out || total.cacheRead ? total : null;
 }
 
+/**
+ * What one request used: the counters of this result minus those of the previous result of the same conversation (`prev`: null for the
+ * first one). A counter that went down means a new process started to count again, so the counters are taken as they are. Null when nothing was used.
+ */
+export function usageDelta(cum, prev) {
+  if (!cum) return null;
+  if (!prev) return cum;
+  const d = { in: cum.in - prev.in, out: cum.out - prev.out, cacheRead: cum.cacheRead - prev.cacheRead, cacheWrite: cum.cacheWrite - prev.cacheWrite, models: {} };
+  if (d.in < 0 || d.out < 0 || d.cacheRead < 0 || d.cacheWrite < 0) return cum;
+  for (const [model, v] of Object.entries(cum.models ?? {})) {
+    const p = prev.models?.[model], di = v.in - (p?.in ?? 0), dout = v.out - (p?.out ?? 0);
+    if (di > 0 || dout > 0) d.models[model] = { in: Math.max(0, di), out: Math.max(0, dout) };
+  }
+  return d.in || d.out || d.cacheRead ? d : null;
+}
+
 /** 842, 4.2k, 12.4k, 120k, 1.2M (one decimal below 100k and below a million, the rest rounded down). */
 export function formatTokens(n) {
   n = Math.round(n);
@@ -33,12 +50,24 @@ export function formatTokens(n) {
   return `${(Math.floor(n / 100000) / 10).toFixed(1)}M`;
 }
 
-/** "12.4k tokens". */
-export const usageLabel = (u) => `${formatTokens(u.in + u.out)} tokens`;
+/** "12.4k tokens"; a total of the whole conversation (no earlier result to subtract: `sofar`, or an entry kept by an older version) says so. */
+export const isSoFar = (u) => Boolean(u.sofar || !u.cum);
+export const usageLabel = (u) => `${formatTokens(u.in + u.out)} tokens${isSoFar(u) ? " so far" : ""}${u.ctx ? ` · context ${formatTokens(u.ctx)}` : ""}`;
+
+/** The size of the context above which every step of the agent is dear (it reads the whole conversation again): the app suggests a new conversation. */
+export const CONTEXT_WARN = 200000;
+/** The context after the last API call of the main loop, from an `assistant` message: input + cache. Subagents have their own contexts. */
+export function contextOf(assistantMessage) {
+  const u = assistantMessage?.message?.usage;
+  if (!u || assistantMessage.parent_tool_use_id) return 0;
+  return num(u.input_tokens) + num(u.cache_creation_input_tokens) + num(u.cache_read_input_tokens);
+}
 
 /** The tooltip: input and output, the cache, the models. */
 export function usageTitle(u) {
   const lines = [`Input ${formatTokens(u.in)} · Output ${formatTokens(u.out)}`];
+  if (u.ctx) lines.push(`Context after this request: ${formatTokens(u.ctx)} tokens (each step of the agent reads it again; ${u.ctx >= CONTEXT_WARN ? "a new conversation would be cheaper" : "fine"})`);
+  if (isSoFar(u)) lines.unshift("Total of the whole conversation up to here (the counter of the session); the next requests show only their own.");
   if (u.cacheRead || u.cacheWrite) lines.push(`Cache: read ${formatTokens(u.cacheRead)}, written ${formatTokens(u.cacheWrite)} (reading is not counted above)`);
   const models = Object.entries(u.models ?? {});
   if (models.length > 1 || (models.length === 1 && models[0][0])) for (const [model, m] of models) lines.push(`${model}: ${formatTokens(m.in)} in, ${formatTokens(m.out)} out`);

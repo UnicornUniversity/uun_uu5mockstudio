@@ -22,10 +22,11 @@ test("a linked repository is described as read-only", () => {
   assert.match(p, /Linked git repository \(READ-ONLY\): \/r\/app/); assert.match(p, /Never write there/);
 });
 
-test("the studio prompt names every browser tool and asks to look before changing a screen", () => {
+test("the studio prompt names every browser tool, asks to look before changing a screen and to spend few tokens", () => {
   const p = studioPrompt({ cwd: "/p/Demo", urlBase: "http://127.0.0.1:1234/Demo", memory: "MEMORY BLOCK" });
   for (const t of ["browser_open", "browser_reload", "browser_console", "browser_snapshot", "browser_screenshot", "browser_click"]) assert.ok(p.includes(t), t);
-  assert.match(p, /first take a browser_screenshot/); assert.match(p, /browser_click never changes files/);
+  assert.match(p, /read its file first/); assert.match(p, /one at the end, not one per step/); assert.match(p, /browser_click never changes files/);
+  assert.match(p, /Economy \(the conversation is re-read by every step/); assert.match(p, /never dozens of tiny Edits/); assert.match(p, /not after every edit/);
   assert.match(p, /\/p\/Demo\/<kebab-name>\.html/); assert.ok(p.endsWith("MEMORY BLOCK"), "the project memory comes last");
 });
 
@@ -36,4 +37,14 @@ test("the agent records business rules itself: the ones the user states and the 
   assert.match(p, /who may do what \(roles, permissions\), the conditions of a change of state, validations/);
   assert.match(p, /ends with `\(assumed\)`/);
   assert.match(planPrompt(), /business rules the plan implies/);
+});
+
+test("the Economy mode adds a short rule and the screenshot for the agent is small", async () => {
+  const { ECONOMY_MODE } = await import("../src/main/claudeService.mjs");
+  assert.match(ECONOMY_MODE, /smallest change/); assert.match(ECONOMY_MODE, /two or three sentences/);
+  const { shrinkScreenshot, SCREENSHOT_WIDTH } = await import("../src/main/screenshot.mjs");
+  let asked = null;
+  const fake = (w) => ({ getSize: () => ({ width: w, height: 600 }), resize: (o) => { asked = o.width; return { toJPEG: (q) => Buffer.from(`j${q}`) }; }, toJPEG: (q) => Buffer.from(`full${q}`) });
+  assert.equal(shrinkScreenshot(fake(2880)).toString(), "j72"); assert.equal(asked, SCREENSHOT_WIDTH);
+  assert.equal(shrinkScreenshot(fake(700)).toString(), "full72", "a small one is not scaled");
 });

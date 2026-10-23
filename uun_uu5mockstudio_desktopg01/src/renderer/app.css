@@ -610,7 +610,13 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .plan-node{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
 .plan-tools{display:flex;flex-wrap:wrap;gap:4px}.plan-tools button{padding:2px 8px;font-size:12px}.plan-tools button:disabled{opacity:.4}
 .plan-field{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;align-items:center;font-size:12px}.plan-field>span{color:var(--mute)}.plan-ctrl{display:flex;gap:6px;min-width:0}.plan-ctrl input,.plan-ctrl select{flex:1;min-width:0;padding:4px 7px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}
-.plan-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}.plan-actions button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.plan-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding-top:2px}
+.pa-left,.pa-right{display:flex;flex-wrap:wrap;align-items:center;gap:2px}.pa-right{margin-left:auto}
+.plan-actions button{padding:6px 11px;border-radius:9px;font-size:12.5px;line-height:1.2;border-color:transparent;background:none;color:var(--mute);white-space:nowrap}
+.plan-actions button:hover{background:var(--bg);color:var(--fg)}
+.plan-actions button.danger:hover{color:#e5484d}
+.plan-actions button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600;padding:6px 15px;margin-left:4px}.plan-actions button.primary:hover{background:var(--acc);filter:brightness(1.1);color:#fff}
+.plan-actions button.pa-wide{flex:1 1 100%;border:1px solid var(--acc);color:var(--acc);text-align:center;padding:7px 12px}.plan-actions button.pa-wide:hover{background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--acc)}
 
 /* @ suggestions in the new rule */
 #rules .rc-add{position:relative}.rc-sugg{position:absolute;left:0;bottom:calc(100% + 4px);min-width:260px;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 12px 32px rgba(0,0,0,.3);display:flex;flex-direction:column;z-index:5}
@@ -851,3 +857,20 @@ body[data-noproject] #ptabs{display:none}
 
 /* tokens of one request, under its answer */
 .usage{align-self:flex-end;margin:-4px 4px 2px;font-size:11px;color:var(--mute);opacity:.8;cursor:default;font-variant-numeric:tabular-nums}.usage:hover{opacity:1}
+
+/* Economy switch and the bar about a big conversation */
+#ecobtn{display:inline-flex;align-items:center;gap:5px;padding:4px 6px;border:0;border-radius:999px;background:none;color:var(--mute);font-size:12.5px;white-space:nowrap;box-shadow:none}
+#ecobtn:hover{color:var(--fg)}#ecobtn.on{background:none;border:0;color:#2f8f49}
+#ecobtn:focus-visible{outline:none;background:color-mix(in srgb,var(--acc) 10%,transparent)}
+#ecobtn .ico{width:14px;height:14px}
+#ctxwarn{margin:0 12px 6px;padding:9px 12px;border:1px solid color-mix(in srgb,#e8a317 55%,var(--line));border-radius:12px;background:color-mix(in srgb,#e8a317 11%,var(--panel));font-size:12.5px;line-height:1.45}
+#ctxwarn[hidden]{display:none}.cw-row{display:flex;align-items:center;gap:6px;margin-top:6px}.cw-row #cw-new{padding:5px 12px;border-radius:9px;background:var(--fg);color:var(--panel);border-color:var(--fg);font-weight:600}.cw-row #cw-x{margin-left:auto;border-color:transparent;background:none;color:var(--mute);padding:3px 8px}
+#chat[data-tab="components"] #ctxwarn{display:none}
+#ecosw{position:relative;display:inline-flex}
+#ecotip{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);z-index:30;width:min(290px,80vw);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:12.5px;line-height:1.45;text-align:left;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s .15s,visibility 0s .27s}
+#ecosw:hover #ecotip,#ecobtn:focus-visible+#ecotip{opacity:1;visibility:visible;transition-delay:.15s,.15s}
+#ecotip p{margin:6px 0 0}#ecotip i{display:block;margin-top:8px;color:var(--mute);font-style:normal}
+#ecotip .eon,#ecotip .eoff{display:inline-block;min-width:30px;margin-right:4px;padding:0 5px;border-radius:6px;font-size:11px;font-weight:600;text-align:center}
+#ecotip .eon{background:color-mix(in srgb,#3aa655 18%,transparent);color:#2f8f49}#ecotip .eoff{background:var(--bg);color:var(--mute)}
+#form .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+#form .row #modesw{justify-self:start}#form .row #ecosw{justify-self:center}#form .row #model{justify-self:end;margin:0}

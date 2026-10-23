@@ -38,7 +38,7 @@ An item is `- R-nnn [(screen: name)] text`; the next id is the highest plus one 
 
 ## In the renderer
 
-- **Chat entries** are saved in `state.json`: `{ kind: "user", text, images? }`, `{ kind: "ai", text }`, `{ kind: "steps", steps }`, `{ kind: "note" | "err", text }`, `{ kind: "usage", in, out, cacheRead, cacheWrite, models }` (tokens of one request, see `usage.js`), `{ kind: "plan", text, tree, questions, answers, original, state, mode, sel, … }`. Transient flags are not saved (`planning`, `full`).
+- **Chat entries** are saved in `state.json`: `{ kind: "user", text, images? }`, `{ kind: "ai", text }`, `{ kind: "steps", steps }`, `{ kind: "note" | "err", text }`, `{ kind: "usage", in, out, cacheRead, cacheWrite, models, cum, ctx, sofar? }` (tokens of one request, `cum` the cumulative counters, `ctx` the context size; see `usage.js`), `{ kind: "plan", text, tree, questions, answers, original, state, mode, sel, … }`. Transient flags are not saved (`planning`, `full`).
 - **localStorage** (view preferences only; nothing the user would miss): `uu5studio.planMode`, `uu5studio.chat` / `uu5studio.chatfs` (chat dock geometry and state, normal and fullscreen), `uu5studio.fsnote2` (notes panel in fullscreen), `uu5studio.selbarPos` (bar over a screen), `uu5studio.rulesMode`, `uu5studio.rulesScope`, `uu5studio.rulesCollapsed` (rolled up sections), `uu5studio.defaultModel`, theme keys.
 - **Canvas layout** (positions and sizes of frames, device per frame, camera) is saved per project with `layout:save` into `state.json`.
 

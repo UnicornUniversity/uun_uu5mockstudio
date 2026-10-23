@@ -10,7 +10,7 @@ import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
 import { attachFreeze } from "./freeze.js";
-import { usageOf, usageLabel, usageTitle } from "./usage.js";
+import { usageOf, usageDelta, usageLabel, usageTitle, contextOf, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
 import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
@@ -96,6 +96,17 @@ function showDefaultModel(id) {
 }
 try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 let sentModel = "";
+// ---------- Economy: less thinking and the smallest change that does what was asked (a cheaper request)
+const ECO_KEY = "uu5studio.economy";
+let economy = false;
+try { economy = localStorage.getItem(ECO_KEY) === "1"; } catch { /* default: off */ }
+function setEconomy(on) {
+  economy = Boolean(on); try { localStorage.setItem(ECO_KEY, economy ? "1" : "0"); } catch { /* not remembered */ }
+  $("ecostate").textContent = economy ? "Now ON - click to turn off." : "Now OFF - click to turn on.";
+  $("ecobtn").classList.toggle("on", economy); $("ecobtn").setAttribute("aria-pressed", String(economy));
+}
+$("ecobtn").onclick = () => setEconomy(!economy);
+setEconomy(economy);
 // ---------- plan mode: the agent proposes a plan with a tree of components, the user edits it, then it is built
 const PLAN_KEY = "uu5studio.planMode";
 let planMode = false, planPending = false;
@@ -156,7 +167,7 @@ $("pv-keep").onclick = () => {
   push({ kind: "user", text: `Rebuild ${p.name} with the rearranged structure${p.done ? " (the rest of the moves is done)" : ""}.` });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = p.message; return; }
   setBusy(true); sentModel = $("model").value; planPending = false;
-  window.studio.send(p.message, sentModel || undefined, { plan: false });
+  window.studio.send(p.message, sentModel || undefined, { plan: false, economy });
 };
 /** Undo / redo of the last change the app made to the screen. */
 async function stepScreen(file, way) {
@@ -198,7 +209,7 @@ async function answerPlan(e) {
   setPlanMode(true);
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
   setBusy(true); sentModel = $("model").value; planPending = true;
-  window.studio.send(message, sentModel || undefined, { plan: true });
+  window.studio.send(message, sentModel || undefined, { plan: true, economy });
 }
 async function buildPlan(e) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
@@ -208,7 +219,7 @@ async function buildPlan(e) {
   push({ kind: "user", text: message.startsWith("Plan approved: build") && !message.includes("Answers of the user") ? "Build the plan." : "Build the plan, as I edited it and answered." });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; } // the automated checks read the message instead of starting the agent
   setBusy(true); sentModel = $("model").value;
-  window.studio.send(message, sentModel || undefined, { plan: false });
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
 }
 /** For the automated checks: an answer of the agent in plan mode, without the agent. */
 window.__plan = { dryRun: false, lastBuild: null, lastAnswer: null, answer(text) { setPlanMode(true); push({ kind: "user", text: "(plan)" }); push({ kind: "ai", text, done: true }); planPending = true; convertPlan(); } };
@@ -279,6 +290,35 @@ function setBusy(b) {
 function clearPlanning() { for (const e of entries) if (e.planning) { e.planning = false; paint(e); } }
 function finishSteps(status) { for (const e of entries) if (e.kind === "steps") { for (const s of e.steps) if (s.status === "run") s.status = status; paint(e); } }
 
+let ctxNow = 0; // the size of the context after the last API call of the running request
+/** The bar over the message field when the conversation has grown so much that every step of the agent is dear. */
+function updateCtxWarn() {
+  const lastU = [...entries].reverse().find((e) => e.kind === "usage" && e.ctx);
+  const ctx = lastU?.ctx ?? 0, key = `uu5studio.ctxwarn.${chatId}`;
+  let hidden = 0; try { hidden = Number(localStorage.getItem(key)) || 0; } catch { /* not remembered */ }
+  const show = ctx >= CONTEXT_WARN && ctx >= hidden + CONTEXT_WARN; // hidden: shown again when the context has grown by another step of 200k
+  $("ctxwarn").hidden = !show;
+  if (show) $("cw-text").textContent = `This conversation has grown to ${formatTokens(ctx)} tokens and every step of the agent reads all of it again. A new conversation is much cheaper: the screens, rules and notes stay in the project.`;
+}
+$("cw-x").onclick = () => { const lastU = [...entries].reverse().find((e) => e.kind === "usage" && e.ctx); try { localStorage.setItem(`uu5studio.ctxwarn.${chatId}`, String(lastU?.ctx ?? 0)); } catch { /* not remembered */ } updateCtxWarn(); };
+$("cw-new").onclick = async () => {
+  const lastUser = [...entries].reverse().find((e) => e.kind === "user" && e.text), screens = canvas.files().map((f) => f.replace(/\.html$/, "")).join(", ");
+  await $("newchat").onclick();
+  const excerpt = (lastUser?.text ?? "").replace(/\s+/g, " ").slice(0, 300);
+  $("prompt").value = `Continue the work on this project. The screens are: ${screens || "(none yet)"}; the rules and notes are in the project files.${excerpt ? ` The last request before was: “${excerpt}”.` : ""} `;
+  $("prompt").focus(); $("prompt").setSelectionRange($("prompt").value.length, $("prompt").value.length);
+};
+
+/** The tokens of this request: the counters of the result are cumulative over the conversation, so the previous result is subtracted. */
+function pushUsage(m) {
+  const cum = usageOf(m); if (!cum) return;
+  const prevE = [...entries].reverse().find((e) => e.kind === "usage");
+  const prev = prevE ? (prevE.cum ?? { in: prevE.in, out: prevE.out, cacheRead: prevE.cacheRead, cacheWrite: prevE.cacheWrite, models: prevE.models }) : null; // an entry of an older version holds the counters themselves
+  const ctx = ctxNow || undefined;
+  if (!prev && entries.filter((e) => e.kind === "user").length > 1) push({ kind: "usage", ...cum, cum, sofar: true, ctx }); // earlier requests were not measured: only the total is known
+  else { const d = usageDelta(cum, prev); if (d) push({ kind: "usage", ...d, cum, ctx }); }
+  persist(); updateCtxWarn();
+}
 const onClaudeEvent = (m) => {
   if (m.type === "system" && m.subtype === "init") learnDefaultModel(m.model);
   if (m.type === "stream_event" && m.event?.type === "content_block_start") {
@@ -291,6 +331,7 @@ const onClaudeEvent = (m) => {
     let e = last(); if (e?.kind !== "ai" || e.done) e = push({ kind: "ai", text: "" });
     e.text += m.event.delta.text; if (planPending) e.planning = true; paint(e);
   } else if (m.type === "assistant") {
+    ctxNow = contextOf(m) || ctxNow;
     const e = last(); if (e?.kind === "ai") e.done = true;
     for (const b of m.message.content) if (b.type === "tool_use") {
       let g = last(); if (g?.kind !== "steps") g = push({ kind: "steps", steps: [] });
@@ -306,7 +347,7 @@ const onClaudeEvent = (m) => {
   } else if (m.type === "result") {
     finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.is_error) convertPlan(); } persist();
     if (m.is_error) push({ kind: "err", text: `Error: ${m.result ?? m.subtype}` });
-    const u = usageOf(m); if (u) { push({ kind: "usage", ...u }); persist(); } // below the answer, and below the card of a plan
+    pushUsage(m); // below the answer, and below the card of a plan
   } else if (m.type === "stopped") {
     planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
@@ -1085,7 +1126,7 @@ function loadProject(info) {
   chatId = info.chatId; chatList = info.chats ?? [];
   entries = info.chat ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
-  log.replaceChildren(); entries.forEach(paint);
+  log.replaceChildren(); entries.forEach(paint); ctxNow = 0; updateCtxWarn();
   canvas.removeAll(); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
   showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); memory.setNotes(info.notes); memory.loadTexts();
@@ -1378,7 +1419,7 @@ $("form").onsubmit = async (e) => {
   ].filter(Boolean);
   sentModel = $("model").value;
   planPending = planMode;
-  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan: planMode });
+  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan: planMode, economy });
   clearChips(); if (chatPick) setInspect(false);
 };
 $("prompt").onkeydown = (e) => {
@@ -1398,7 +1439,7 @@ function showChat(v) {
   entries = v.entries ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
   loading = true; log.replaceChildren(); entries.forEach(paint); loading = false;
-  setBusy(false); clearChips();
+  setBusy(false); clearChips(); ctxNow = 0; updateCtxWarn();
 }
 const fmtWhen = (ts) => {
   const d = new Date(ts), t = d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" });

@@ -21,3 +21,10 @@ export async function captureWithFallback(wc, { nativeImage, timeout = 12000 } =
   }
   return null;
 }
+
+/** The picture the agent gets: at most 900 px wide, JPEG. A full-size PNG was ~260 KB and thousands of tokens, kept in the context for the rest of the conversation. */
+export const SCREENSHOT_WIDTH = 900;
+export function shrinkScreenshot(img, width = SCREENSHOT_WIDTH) {
+  const { width: w } = img.getSize();
+  return (w > width ? img.resize({ width }) : img).toJPEG(72);
+}
