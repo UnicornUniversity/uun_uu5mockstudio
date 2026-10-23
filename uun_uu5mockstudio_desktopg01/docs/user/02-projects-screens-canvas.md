@@ -2,9 +2,15 @@
 
 ## The dashboard
 
-The app always starts on the dashboard. In the big field write what you want to design (choose **Agent** or **Plan** and a model if you like; the chips above it fill in a sample sentence) and press Enter: a project is created (called *New project* at first, and renamed after the first screen the agent makes, e.g. `thesis-assignment-form` becomes *Thesis assignment form*), it opens, and the chat goes on there with your message already sent.
+The app always starts on the dashboard. In the big field write what you want to design (choose **Agent** or **Plan** and a model if you like; the chips above it are templates, see below) and press Enter: a project is created (called *New project* at first, and renamed after the first screen the agent makes, e.g. `thesis-assignment-form` becomes *Thesis assignment form*), it opens, and the chat goes on there with your message already sent.
 
 Below are your projects as cards (or a list, see the switch) with a picture of the whole canvas (the screens where you placed them), the number of screens and when you last worked on it. **Recents** in the left column shows the latest ones, **All projects** the whole folder A–Z; the search field filters; **New Project** makes an empty one. Pointing at a card shows a bin that deletes the project after a confirmation (the folder goes to the system trash, so it can be restored). The box at the bottom left shows the **projects folder**: **Reveal** shows it in the file manager, **Change…** chooses another folder (the app restarts). **File → Dashboard (⇧⌘D)** (or Close Project, ⇧⌘W) returns to the dashboard. The ◐ button in its corner switches the appearance (automatic / light / dark). The pictures are made in the background and kept in the project (`.studio/thumb.jpg`); they are made again when a screen or the layout changes.
+
+### Templates
+
+Above the field choose what you are designing: **Application** (a whole uu5 application: a shell with navigation and several routes, uu5Uve), **Route** (one route, uu5Route) or **Component** (form, list, detail, dashboard…). The chips are the templates of that level; a chosen template is shown as a badge in the field (the ✕ removes it) and puts a sample sentence into the field. When you send, the project starts from the template's files and the agent changes them according to your request instead of starting from scratch. **Without a template** lets the agent start freely.
+
+**Templates…** shows where the templates come from: the ones built into the app, those that installed plugins bring (a plugin can ship a `templates/` folder, so a plugin update updates them) and your own (**Open folder**: put template folders there). A later source replaces a template with the same id. How to write a template: see the technical documentation (13, Templates for new projects).
 
 ## Projects and screens
 

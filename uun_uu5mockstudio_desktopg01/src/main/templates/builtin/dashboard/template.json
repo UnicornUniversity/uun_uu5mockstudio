@@ -1,0 +1,10 @@
+{
+  "id": "dashboard",
+  "title": "Dashboard",
+  "level": "component",
+  "description": "An overview with key numbers, a chart and a list of recent items.",
+  "prompt": "An overview dashboard with key numbers, a chart and a list of recent items",
+  "order": 40,
+  "kind": "dashboard",
+  "icon": "dashboard"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "form",
+  "title": "Form",
+  "level": "component",
+  "description": "A create / edit form with fields, validation and submit / cancel.",
+  "prompt": "A form for creating an item, with validation and a confirmation",
+  "order": 10,
+  "kind": "form",
+  "icon": "form"
+}

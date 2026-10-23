@@ -9,7 +9,8 @@ import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
-import { createDashboard, newProjectName, projectNameFromScreen } from "./dashboard.js";
+import { createTemplatesDialog } from "./templatesDialog.js";
+import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
@@ -247,7 +248,10 @@ function tickWork() { const s = Math.round((Date.now() - workStart) / 1000); $("
 async function nameAfterFirstScreen() {
   if (!autoNamed || autoNamed !== project || busy) return;
   const first = canvas.files()[0]; if (!first) return;
-  const name = projectNameFromScreen(first, projectList.map((p) => p.name).filter((n) => n !== project));
+  const taken = projectList.map((p) => p.name).filter((n) => n !== project);
+  let name = null;
+  if (autoLevel === "app") name = projectNameFromTitle(await window.studio.screenTitle(first), taken); // an application is named after the application, not after its first route
+  name ??= projectNameFromScreen(first, taken);
   autoNamed = null;
   if (name && name !== project) await changeProject(() => window.studio.renameProject(project, name));
 }
@@ -382,7 +386,7 @@ $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.z
 $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules"]; // topmost first
+const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
@@ -1089,7 +1093,8 @@ function updateNoProject() {
   if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("repostrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
 }
 /** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
-let autoNamed = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
+const templatesDialog = createTemplatesDialog({ api: window.studio });
+let autoNamed = null, autoLevel = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
 const dashboard = createDashboard({
   api: window.studio,
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
@@ -1099,11 +1104,13 @@ const dashboard = createDashboard({
     if (ok) await changeProject(() => window.studio.deleteProject(name));
   },
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
-  onStart: async ({ text, plan, model }) => {
+  onTemplates: () => templatesDialog.open(),
+  onStart: async ({ text, plan, model, template, templateLevel }) => {
     if (!ready) return toast("Claude Code is not ready.", { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
     if (!project || r?.error) return;
-    autoNamed = project; // once the agent has made a screen, the project is renamed after it
+    if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); }
+    autoNamed = project; autoLevel = templateLevel; // once the agent has made a screen, the project is renamed after it
     dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
     $("form").requestSubmit();
   },
@@ -1204,6 +1211,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "project:new": return newProjectFlow();
       case "project:switcher": return $("projbtn").click();
       case "project:close": return closeProjectFlow();
+      case "templates:open": return void templatesDialog.open();
       case "project:rename": return renameProjectFlow();
       case "project:delete": return deleteProjectFlow();
       case "chat:new": return needProject(() => $("newchat").click());

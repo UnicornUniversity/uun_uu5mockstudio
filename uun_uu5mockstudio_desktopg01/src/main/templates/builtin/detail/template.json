@@ -1,0 +1,10 @@
+{
+  "id": "detail",
+  "title": "Detail",
+  "level": "component",
+  "description": "A detail of one item with key facts, sections and actions.",
+  "prompt": "A detail page of one item with tabs, key facts and actions",
+  "order": 30,
+  "kind": "detail",
+  "icon": "detail"
+}

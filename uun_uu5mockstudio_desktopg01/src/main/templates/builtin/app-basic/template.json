@@ -1,0 +1,9 @@
+{
+  "id": "app-basic",
+  "title": "Application (uu5Uve)",
+  "level": "app",
+  "description": "An application shell with local navigation and three linked routes: home, list and detail.",
+  "prompt": "An application with a home page, a list of items and an item detail",
+  "order": 10,
+  "icon": "app"
+}

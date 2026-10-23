@@ -11,6 +11,7 @@
 | `<project>/<screen>.notes.md` | the notes | `# Notes: <screen>`, then `<!-- note <id> -->` + text per note |
 | `<project>/.studio/state.json` | main | `{ chats: [{ id, title, createdAt, updatedAt, sessionId, entries }], currentChatId, layout: { frames } }` |
 | `<project>/.studio/thumb.jpg` | main (`thumbs.mjs`) | picture of the whole canvas for the dashboard (`thumb.json` holds the signature of screens + layout), redone when either changes |
+| `<project>/.studio/template/` | main (`templates.mjs`) | `template.json` + `TEMPLATE.md` of the template the project was started from (read by the agent) |
 | `<project>/.studio/attachments/` | main | images attached to messages (read by the agent, never edited) |
 | `<project>/.studio/removed-screen-memory.md` | main | rules and descriptions removed with a deleted screen (a log, by date) |
 | `<userData>/app-state.json` | main | `lastProject` (remembered but unused: the app always starts on the dashboard), `projectsRoot` (the chosen projects folder), `offline` (CDN mode), `glass`, `tourSeen`, `updateCheckedAt` / `updateLater` (app updates), `pluginsCheckedAt` / `pluginsLater` / `pluginUpdates` (plugin updates) |

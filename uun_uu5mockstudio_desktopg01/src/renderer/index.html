@@ -66,8 +66,9 @@
   <section id="dash-pane">
     <header id="dash-top" class="drag"><h1>Dashboard</h1><div class="dash-tools"><button id="dash-theme" type="button" class="icon" aria-label="Appearance"></button><button id="dash-newbtn" type="button" class="primary"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Project</button></div></header>
     <div id="dash-scroll"><main id="dash-main">
-      <div id="dash-ideas" role="group" aria-label="What to design"></div>
-      <form id="dash-form"><div class="dash-glow" aria-hidden="true"></div><div class="dash-box"><textarea id="dash-prompt" rows="3" placeholder="Design anything… A project is created for it and the chat goes on there." spellcheck="true"></textarea>
+      <div id="dash-levels-row"><div id="dash-levels" role="radiogroup" aria-label="What to design"><button type="button" data-level="app" role="radio" title="A whole application (uu5Uve): a shell with navigation and several routes">Application</button><button type="button" data-level="route" role="radio" title="One route (uu5Route) of an application">Route</button><button type="button" data-level="component" role="radio" title="A component or a screen: form, list, detail, dashboard…">Component</button></div><button id="dash-tpl" type="button" title="Where the templates come from">Templates…</button></div>
+      <div id="dash-ideas" role="group" aria-label="Templates"></div>
+      <form id="dash-form"><div class="dash-glow" aria-hidden="true"></div><div class="dash-box"><div id="dash-badge" hidden></div><textarea id="dash-prompt" rows="3" placeholder="Design anything… A project is created for it and the chat goes on there." spellcheck="true"></textarea>
         <div class="dash-row"><div id="dash-mode" role="radiogroup" aria-label="What the agent does"><button type="button" data-mode="agent" role="radio" title="The agent builds the screen">Agent</button><button type="button" data-mode="plan" role="radio" title="Get a plan with a component tree to approve first">Plan</button></div>
           <span class="grow"></span><select id="dash-model" title="Model for this request. Default = the model configured in your Claude Code."><option value="">Default model</option><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select>
           <button id="dash-send" type="submit" class="icon" title="Create a project and start (Enter)" aria-label="Create a project and start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button></div></div></form>
@@ -112,6 +113,12 @@
   <p id="lb-note" class="mute"></p>
   <div class="row"><span class="mute grow">Click selects, Shift / ⌘ / Ctrl + click several, double click adds at once.</span><button id="lb-add" type="button">Add to message</button></div>
   </div></div></div>
+<div id="tplbox" hidden><div class="card" role="dialog" aria-labelledby="tp-title">
+  <div class="dlg-head"><h2 id="tp-title">Templates</h2><button id="tp-x" type="button" class="dlg-x icon" title="Close (Esc)" aria-label="Close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>
+  <p class="mute tp-intro">Templates come with the app, from installed plugins (a plugin can bring a <code>templates/</code> folder) and from your own folder. A template is a folder with <code>template.json</code>, <code>TEMPLATE.md</code> (instructions for the agent) and starter <code>.html</code> files; a later source replaces a template with the same id.</p>
+  <div id="tp-sources"></div>
+  <p id="tp-err" class="err"></p>
+  <div id="tp-list"></div></div></div>
 <div id="iconbox" hidden><div class="card" role="dialog" aria-labelledby="ib-title">
   <div class="dlg-head"><h2 id="ib-title">Choose an icon</h2><button id="ib-x" type="button" class="dlg-x icon" title="Close (Esc)" aria-label="Close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>
   <div class="ib-tools"><select id="ib-lib" aria-label="Icon library" hidden><option value="gds">uuGDS</option><option value="bml">uuBml</option></select><input id="ib-search" type="search" placeholder="Search icons (name, keyword)…" autocomplete="off" spellcheck="false"><select id="ib-cat" aria-label="Category"></select><label><input id="ib-dep" type="checkbox"> deprecated</label></div>

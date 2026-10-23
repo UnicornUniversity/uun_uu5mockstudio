@@ -14,6 +14,7 @@ For people who develop or maintain the app. It describes how the app is built an
 10. [Build and release](10-build-and-release.md), see also [RELEASING.md](../RELEASING.md) (Czech).
 11. [Testing](11-testing.md): unit tests and driving the app through the DevTools protocol.
 12. [Security and privacy](12-security.md).
+13. [Templates for new projects](13-templates.md): the format, sources (built-in, plugins, mine), applying a template.
 
 ## Where to start
 

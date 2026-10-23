@@ -14,6 +14,7 @@ import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
 import { createThumbs } from "./thumbs.mjs";
+import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVEL_LABELS } from "./templates.mjs";
 import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
@@ -302,6 +303,36 @@ app.whenReady().then(async () => {
       return last.some((n) => n >= 20) ? buf : { buf, cache: false }; // nothing rendered at all: show it, but try again next time
     } catch { return null; } finally { w.destroy(); delete routes[route]; }
   } });
+  // ----- templates for new projects: built-in < plugins (a plugin may bring a templates/ folder) < mine
+  const tplBuiltin = path.join(here, "templates", "builtin"), tplMine = path.join(app.getPath("userData"), "templates", "mine");
+  const publicTemplate = ({ dir, ...t }) => t;
+  let all = [];
+  async function templateList() {
+    const builtin = await loadSource(tplBuiltin, "builtin"), plugins = await loadPlugins(), mine = await loadSource(tplMine, "mine");
+    all = mergeSources([builtin.templates, plugins.templates, mine.templates]);
+    const count = (source) => all.filter((t) => t.source === source || (source === "plugins" && t.source.startsWith("plugin:"))).length;
+    return {
+      templates: all.map(publicTemplate), levels: LEVEL_LABELS,
+      sources: [
+        { id: "builtin", label: "Built-in", count: count("builtin"), errors: builtin.errors },
+        { id: "plugins", label: "Plugins", count: count("plugins"), errors: plugins.errors },
+        { id: "mine", label: "My templates", count: count("mine"), errors: mine.errors, path: tplMine },
+      ],
+    };
+  }
+  ipcMain.handle("screen:title", guard((_e, file) => { // the <title> of a screen of the open project
+    const f = path.basename(String(file));
+    return /<title>([^<]*)<\/title>/i.exec(fs.readFileSync(path.join(dir(), f), "utf8"))?.[1]?.trim() ?? null;
+  }));
+  ipcMain.handle("templates:list", guard(() => templateList()));
+  ipcMain.handle("templates:reveal", guard(async () => { fs.mkdirSync(tplMine, { recursive: true }); const err = await shell.openPath(tplMine); return err ? { error: err } : { path: tplMine }; }));
+  // the starter files of a template go into the open project (called right after the project was made)
+  ipcMain.handle("templates:apply", guard(async (_e, id) => {
+    if (!all.length) await templateList();
+    const t = all.find((x) => x.id === id); if (!t) throw new Error("That template is not available any more.");
+    const r = await applyTemplate(await readTemplate(t), dir());
+    return { ...r, screens: listScreens() };
+  }));
   ipcMain.handle("projects:thumb", guard((_e, name) => thumbs.get(String(name))));
   ipcMain.handle("projects:close", guard(() => closeProject()));
   ipcMain.handle("projects:open", guard((_e, name) => openProject(name)));

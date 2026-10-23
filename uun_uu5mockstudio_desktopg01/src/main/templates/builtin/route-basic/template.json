@@ -1,0 +1,9 @@
+{
+  "id": "route-basic",
+  "title": "Route (uu5Route)",
+  "level": "route",
+  "description": "One route with the simulated Top, a route header with actions and a content area.",
+  "prompt": "A route page with a header, actions and content",
+  "order": 10,
+  "icon": "route"
+}

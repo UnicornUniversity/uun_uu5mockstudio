@@ -1,0 +1,10 @@
+{
+  "id": "list",
+  "title": "List",
+  "level": "component",
+  "description": "A list of items with search, filter, sorting and row actions.",
+  "prompt": "A list of items with search, filter, sorting and a detail panel",
+  "order": 20,
+  "kind": "list",
+  "icon": "list"
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Form</title>
+    <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
+    <script>
+      var uu5DemoDependencies = {};
+    </script>
+    <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
+    <style>
+      .uu-app-devkit-demo-middleware-controls {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="uu5"></div>
+
+    <script type="text/babel">
+      import { Utils, useState } from "uu5g05";
+      import Uu5Elements from "uu5g05-elements";
+      import Uu5Forms from "uu5g05-forms";
+      const SP = Uu5Elements.UuGds.SpacingPalette;
+
+      function Page() {
+        return (
+          <div style={{ padding: SP.getValue(["fixed", "f"]) }}>
+            <Uu5Elements.Block header="Form" borderRadius="moderate" headerType="heading" level={1}>
+              <Uu5Forms.Form onSubmit={(e) => console.log("Submit:", e.data.value)}>
+                {/* Fields, SubmitButton and CancelButton here */}
+              </Uu5Forms.Form>
+            </Uu5Elements.Block>
+          </div>
+        );
+      }
+
+      Utils.Dom.render(
+        <Uu5Elements.AlertBus>
+          <Page />
+        </Uu5Elements.AlertBus>,
+        document.getElementById("uu5"),
+      );
+    </script>
+  </body>
+</html>

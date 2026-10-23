@@ -4,6 +4,8 @@ import { accessPolicy } from "./repo.mjs";
 import { readRules, readProject, readGlobalRules, RULES_FILE, GLOBAL_FILE } from "./rules.mjs";
 import { describeComponents } from "./uu5Docs.mjs";
 import path from "node:path";
+import fs from "node:fs";
+import { templatePrompt } from "./templates.mjs";
 
 const RULES_LIMIT = 12000;
 
@@ -90,6 +92,7 @@ export class ClaudeService {
     this.abort = new AbortController();
     const repoDir = this.repoDir;
     const rules = await readRules(this.cwd), globalRules = this.globalRoot ? await readGlobalRules(this.globalRoot) : "", globalFile = this.globalRoot ? path.join(this.globalRoot, GLOBAL_FILE) : "";
+    const templateMeta = await fs.promises.readFile(path.join(this.cwd, ".studio", "template", "template.json"), "utf8").then(JSON.parse).catch(() => null); // a project started from a template
     const memory = memoryPrompt({ cwd: this.cwd, repoDir, repoLabel: this.repoLabel, rules, description: await readProject(this.cwd), globalRules, globalFile, componentsBlock: componentsInRules(this.docs, `${globalRules}\n${rules}`) }); // read fresh: a new chat has no session to remember it
     const q = query({
       prompt,
@@ -112,7 +115,7 @@ export class ClaudeService {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }) + (plan ? `\n${planPrompt()}` : ""),
+          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : ""),
         },
       },
     });

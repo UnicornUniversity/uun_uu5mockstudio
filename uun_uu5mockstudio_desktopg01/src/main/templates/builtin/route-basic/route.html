@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Route</title>
+    <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
+    <script>
+      var uu5DemoDependencies = { uu_plus4u5g02: "1.x", "uu_plus4u5g02-app": "1.x" };
+    </script>
+    <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
+    <style>
+      .uu-app-devkit-demo-middleware-controls {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="uu5"></div>
+
+    <script type="text/babel">
+      import { Utils, useState } from "uu5g05";
+      import Uu5Elements from "uu5g05-elements";
+      import Plus4U5App from "uu_plus4u5g02-app";
+
+      const SP = Uu5Elements.UuGds.SpacingPalette;
+
+      // Simulated Plus4U Top (the real Top needs the HI shell and breaks standalone mockups)
+      function SimulatedTop({ onMenu }) {
+        return (
+          <Uu5Elements.Box
+            shape="background"
+            colorScheme="dark-blue"
+            significance="highlighted"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SP.getValue(["fixed", "e"]),
+              paddingTop: SP.getValue(["fixed", "d"]),
+              paddingRight: SP.getValue(["fixed", "c"]),
+              paddingBottom: SP.getValue(["fixed", "d"]),
+              paddingLeft: 10,
+            }}
+          >
+            <Uu5Elements.Button icon="uugds-menu" colorScheme="building" significance="highlighted" borderRadius="full" onClick={onMenu} title="Menu" />
+            <div style={{ display: "flex", flexDirection: "column", gap: SP.getValue(["fixed", "b"]), minWidth: 0 }}>
+              <Uu5Elements.Text category="interface" segment="content" type="small">Organization / context line</Uu5Elements.Text>
+              <Uu5Elements.Text category="interface" segment="title" type="micro">Application name</Uu5Elements.Text>
+            </div>
+          </Uu5Elements.Box>
+        );
+      }
+
+      const ACTION_LIST = [
+        { icon: "uugds-plus-circle", children: "Create", significance: "common", colorScheme: "primary", title: "Create", onClick: () => {} },
+        { icon: "uugds-pencil", children: "Edit", significance: "common", colorScheme: "neutral", title: "Edit", onClick: () => {} },
+        { icon: "uugds-help", children: "Help", collapsed: true, significance: "subdued", colorScheme: "neutral", title: "Help", onClick: () => {} },
+      ];
+
+      function RouteBody() {
+        return (
+          <>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: SP.getValue(["fixed", "e"]),
+                paddingTop: SP.getValue(["fixed", "d"]),
+                paddingBottom: SP.getValue(["fixed", "d"]),
+                paddingLeft: SP.getValue(["fixed", "f"]),
+                paddingRight: SP.getValue(["fixed", "f"]),
+              }}
+            >
+              <div style={{ flex: "1 1 12rem", minWidth: 0 }}>
+                <Plus4U5App.RouteHeader title="Route title" category="interface" segment="title" type="major" />
+              </div>
+              <Uu5Elements.ActionGroup itemList={ACTION_LIST} />
+            </div>
+            <div style={{ padding: SP.getValue(["fixed", "f"]), display: "flex", flexDirection: "column", gap: SP.getValue(["fixed", "d"]) }}>
+              <Uu5Elements.Block header="Content" borderRadius="moderate" headerType="heading" level={2}>
+                <Uu5Elements.Text>Replace this with the content of the route.</Uu5Elements.Text>
+              </Uu5Elements.Block>
+            </div>
+          </>
+        );
+      }
+
+      function Page() {
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            <SimulatedTop onMenu={() => {}} />
+              <RouteBody />
+          </div>
+        );
+      }
+
+      Utils.Dom.render(
+        <Uu5Elements.AlertBus>
+          <Page />
+        </Uu5Elements.AlertBus>,
+        document.getElementById("uu5"),
+      );
+    </script>
+  </body>
+</html>

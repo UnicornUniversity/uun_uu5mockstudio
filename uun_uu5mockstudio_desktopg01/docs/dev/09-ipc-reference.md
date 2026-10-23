@@ -16,6 +16,14 @@ The renderer calls `window.studio.<function>(…)` (`preload.cjs`), which does `
 | `tourDone` (`tour:done`) | the welcome tour was shown |
 | `openExternal` (`open:external`), `docsOpen` (`docs:open`) | open a URL in the browser (only allowed hosts) |
 
+### Templates
+
+| Function (channel) | Arguments → result |
+| --- | --- |
+| `templatesList` (`templates:list`) | → `{ templates, levels, sources }` |
+| `templatesReveal` (`templates:reveal`) | opens the folder of my templates |
+| `templatesApply(id)` (`templates:apply`) | copies the starter files into the open project → `{ written, skipped, screens }` |
+
 ### Projects and screens
 
 | Function (channel) | Arguments → result |

@@ -2,6 +2,7 @@
 
 | File | Responsibility |
 | --- | --- |
+| `templates.mjs` | Templates: parse / validate a template folder, sources (built-in, plugins, mine), merge by id, `applyTemplate`, `templatePrompt`. See [13](13-templates.md). |
 | `thumbs.mjs` | Dashboard pictures: the whole canvas (`compositionHtml`: every screen as an iframe at its saved place, scaled to fit) painted in a hidden window by `main.mjs`, cached in `.studio/thumb.jpg` with a signature in `thumb.json`, one at a time. |
 | `main.mjs` | Entry point. App state (`app-state.json`), projects root, the static server, the session of the open project, **all IPC handlers**, the file watchers (open project; `GLOBAL_RULES.md`), window and fullscreen, drag of files, theme, glass. Handlers return `{ error }` instead of throwing (`guard`). |
 | `preload.cjs` | `window.studio`: one function per IPC channel plus event subscriptions, via `contextBridge`. |

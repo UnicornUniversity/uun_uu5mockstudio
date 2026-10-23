@@ -25,6 +25,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("New Project…", "project:new", { accelerator: "CmdOrCtrl+N" }),
       openProject,
       item("Switch Project…", "project:switcher", { accelerator: "CmdOrCtrl+O" }),
+      item("Templates…", "templates:open"),
       item("Dashboard", "project:close", { accelerator: "Shift+CmdOrCtrl+D", enabled: has }),
       item("Close Project", "project:close", { accelerator: "Shift+CmdOrCtrl+W", enabled: has }),
       sep,

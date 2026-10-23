@@ -13,6 +13,7 @@
 | `propsPanel.js` | The inspector side panel: breadcrumb, controls per prop kind (`kindOf`), lists, JSON editor window, text and icon fields, **Show component tree**. |
 | `actionListEditor.js`, `actionGrammar.js` | The window that edits a list of actions, and the grammar of an action (fields built from the documentation of `Uu5Elements.Button`). |
 | `textField.js`, `iconField.js`, `iconPicker.js` | LSI-aware text field with a language switch; the icon field; the catalog dialog (uuGDS, uuBml, states). |
+| `templatesDialog.js` | The Templates dialog: the sources with their counts, Open folder for my templates, the list of templates. |
 | `dashboard.js` | The start view (`#dash`): prompt, idea chips, project cards with thumbnails; pure helpers `ago`, `projectNameFrom`. |
 | `libraryPicker.js` | The dialog and, as the **Components** tab of the panel (`showInline` / `leaveInline`, the `#libview` node moves between the dialog and `#libpane`) "Components from the libraries": search, filter by library, description and a props table (long defaults clipped, click to expand). |
 | `memory.js`, `rulesPanel.js`, `rulesDoc.js`, `projectDoc.js`, `descPanel.js` | Rules, notes and descriptions: the dialogs and the pure Markdown helpers (`parseRules`, `editItem`, `getScreenText`, …). Sections of the rules dialog can be rolled up; counts for **This project** and **All projects**. |

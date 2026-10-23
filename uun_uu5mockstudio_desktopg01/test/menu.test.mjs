@@ -28,7 +28,7 @@ test("File keeps the life cycle of a project and what leaves the app, and sends 
   assert.deepEqual(sent, ["project:new", "project:close", "project:switcher"]);
   const labels = file.map((i) => i.label).filter(Boolean);
   for (const moved of ["Rename Project…", "Delete Project…", "Business Rules…", "Project Description…", "New Chat", "Chat History"]) assert.ok(!labels.includes(moved), `${moved} must not be in File`);
-  assert.ok(labels.length <= 8, "File stays short: " + labels.join(", "));
+  assert.ok(labels.length <= 9, "File stays short: " + labels.join(", "));
 });
 
 test("Project holds description, rules, git, location and deletion", () => {

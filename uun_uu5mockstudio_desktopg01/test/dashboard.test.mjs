@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, writeFile, utimes, stat } from "node:fs/promises";
-import { ago, newProjectName } from "../src/renderer/dashboard.js";
+import { ago, newProjectName, projectNameFromTitle } from "../src/renderer/dashboard.js";
 import { createThumbs, framesOf } from "../src/main/thumbs.mjs";
 import { createProjects } from "../src/main/projects.mjs";
 import { tmp } from "./helpers.mjs";
@@ -51,4 +51,11 @@ test("project names: the first screen names the project", async () => {
   assert.equal(projectNameFromScreen("thesis-assignment-form.html"), "Thesis assignment form");
   assert.equal(projectNameFromScreen("thesis-assignment-form.html", ["Thesis assignment form"]), "Thesis assignment form 2");
   assert.equal(projectNameFromScreen(".html"), null);
+});
+
+test("an application project is named after the application in the title of its first route", () => {
+  assert.equal(projectNameFromTitle("My theses – Thesis Supervision"), "Thesis Supervision");
+  assert.equal(projectNameFromTitle("Home - uu Thesis Hub | Admin"), "Admin");
+  assert.equal(projectNameFromTitle("Thesis Supervision"), null);
+  assert.equal(projectNameFromTitle("A – B", ["B"]), "B 2");
 });
