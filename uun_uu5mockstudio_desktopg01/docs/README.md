@@ -10,7 +10,7 @@ uu5Mock Studio is a desktop app for designing uu5 / uuGDS user interfaces with a
 | How a version is built and published | [RELEASING.md](RELEASING.md) (Czech) and [dev/10-build-and-release.md](dev/10-build-and-release.md) |
 | How the demo video is recorded | [DEMO.md](DEMO.md) |
 
-The documentation describes the app as of version 0.5.2. The text is in English; the app itself is in English too.
+The documentation describes the app as of version 0.5.3. The text is in English; the app itself is in English too.
 
 ## Conventions
 

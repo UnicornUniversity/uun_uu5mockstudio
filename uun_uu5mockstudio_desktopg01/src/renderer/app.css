@@ -872,5 +872,5 @@ body[data-noproject] #ptabs{display:none}
 #ecotip p{margin:6px 0 0}#ecotip i{display:block;margin-top:8px;color:var(--mute);font-style:normal}
 #ecotip .eon,#ecotip .eoff{display:inline-block;min-width:30px;margin-right:4px;padding:0 5px;border-radius:6px;font-size:11px;font-weight:600;text-align:center}
 #ecotip .eon{background:color-mix(in srgb,#3aa655 18%,transparent);color:#2f8f49}#ecotip .eoff{background:var(--bg);color:var(--mute)}
-#form .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
-#form .row #modesw{justify-self:start}#form .row #ecosw{justify-self:center}#form .row #model{justify-self:end;margin:0}
+#form .row{display:flex;justify-content:flex-start;align-items:center;gap:2px}
+#form .row #model{margin-left:auto}

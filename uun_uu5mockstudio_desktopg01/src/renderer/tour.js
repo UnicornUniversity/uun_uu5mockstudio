@@ -27,6 +27,15 @@ const CARDS = [
       <circle cx="314" cy="134" r="12" class="t-card"/><circle cx="342" cy="134" r="12" class="t-card"/>`),
   },
   {
+    title: "Keep requests small and cheap",
+    text: "The line under each answer shows how big the conversation has grown (context) and what the request cost in tokens. When it gets large, a bar suggests a new conversation: Claude then reads less every time. Eco (the leaf under the message box) makes the agent think less, change only what you asked for and answer briefly: switch it on for quick tweaks, off for a new screen.",
+    art: S(`${frame(14, 14, 412, 92)}${line(30, 32, 250)}${line(30, 48, 190, "t-line s")}${line(30, 64, 120, "t-line s")}
+      <text x="410" y="96" text-anchor="end" class="t-text">context 142k</text>
+      ${frame(14, 118, 412, 58)}<rect x="30" y="136" width="200" height="10" rx="5" class="t-fill"/><rect x="30" y="136" width="150" height="10" rx="5" class="t-accent"/>
+      <text x="30" y="166" class="t-text">A new conversation is cheaper</text>
+      <rect x="318" y="132" width="92" height="28" rx="14" class="t-accent"/><text x="364" y="151" text-anchor="middle" class="t-btn">Eco</text>`),
+  },
+  {
     title: "A canvas for all screens",
     text: "Zoom and pan (⌥ + two-finger scroll moves the canvas while you work inside a screen), choose a device size, arrange the screens with one click, or present one. Pin sticky notes to a screen: they stay with it, right on the canvas.",
     art: S(`${frame(14, 30, 120, 130)}${line(26, 46, 60)}${line(26, 62, 90, "t-line s")}${line(26, 78, 80, "t-line s")}
