@@ -867,7 +867,7 @@ body[data-noproject] #ptabs{display:none}
 #ctxwarn[hidden]{display:none}.cw-row{display:flex;align-items:center;gap:6px;margin-top:6px}.cw-row #cw-new{padding:5px 12px;border-radius:9px;background:var(--fg);color:var(--panel);border-color:var(--fg);font-weight:600}.cw-row #cw-x{margin-left:auto;border-color:transparent;background:none;color:var(--mute);padding:3px 8px}
 #chat[data-tab="components"] #ctxwarn{display:none}
 #ecosw{position:relative;display:inline-flex}
-#ecotip{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);z-index:30;width:min(290px,80vw);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:12.5px;line-height:1.45;text-align:left;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s .15s,visibility 0s .27s}
+#ecotip{position:absolute;left:0;bottom:calc(100% + 8px);z-index:30;width:min(290px,80vw);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:12.5px;line-height:1.45;text-align:left;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s .15s,visibility 0s .27s}
 #ecosw:hover #ecotip,#ecobtn:focus-visible+#ecotip{opacity:1;visibility:visible;transition-delay:.15s,.15s}
 #ecotip p{margin:6px 0 0}#ecotip i{display:block;margin-top:8px;color:var(--mute);font-style:normal}
 #ecotip .eon,#ecotip .eoff{display:inline-block;min-width:30px;margin-right:4px;padding:0 5px;border-radius:6px;font-size:11px;font-weight:600;text-align:center}
