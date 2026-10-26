@@ -3,9 +3,10 @@ const $ = (id) => document.getElementById(id);
 /**
  * "Components from the libraries": a dialog to find a component of Uu5Elements, Uu5Forms, Plus4U5Elements, … in the documentation of the
  * uu5-development plugin and add it to the message as @Name. Click selects one, Shift / Cmd / Ctrl + click several, a double click adds at once.
+ * In the side panel an item can also be dragged onto a screen of the canvas (`onDragStart(name, pointerEvent)`).
  * `api` = window.studio (docsSearch, docsLibraries, docsDescribe). Resolves the names of the chosen components or null.
  */
-export function createLibraryPicker({ api, onAdd }) {
+export function createLibraryPicker({ api, onAdd, onDragStart }) {
   const box = $("libbox"), list = $("lb-list"), detail = $("lb-detail"), search = $("lb-search"), lib = $("lb-lib"), note = $("lb-note"), add = $("lb-add");
   const view = $("libview"), card = view.parentElement;
   let inline = false, inlineHost = null, backTo = null, resolve = null, chosen = new Set(), last = null, results = [], seq = 0, libsLoaded = false;
@@ -56,6 +57,7 @@ export function createLibraryPicker({ api, onAdd }) {
         paint(); refreshButtons(); showDetail(c.name);
       };
       b.ondblclick = () => done([c.name]);
+      if (inline) b.onpointerdown = (e) => onDragStart?.(c.name, e); // in the side panel an item can be dragged onto a screen (catalogDrag.js)
       return b;
     }));
     refreshButtons();

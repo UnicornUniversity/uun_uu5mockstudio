@@ -27,8 +27,9 @@ import { bundlePath, canSelfUpdate, downloadTo, digestHex, unpackAndCheck, start
 import { captureScreen, formatFromPath, IMAGE_FORMATS } from "./capture.mjs";
 import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
-import { tagHtml, structureOf, structureOutline, moveElements, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
+import { tagHtml, structureOf, structureOutline, moveElements, insertElement, removeElements, duplicateElements, editText, changeItems, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
+import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
 import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes, screenMemoryInfo, forgetScreen } from "./rules.mjs";
@@ -170,7 +171,47 @@ app.whenReady().then(async () => {
     const p = screenPath(file), html = fs.readFileSync(p, "utf8");
     const r = moveElements(html, Array.isArray(ops) ? ops : []);
     if (r.applied.length && r.html !== html) save(p, html, r.html, "Rearranged components");
-    return { applied: r.applied, failed: r.failed, structure: structureOf(r.html, String(file).replace(/\.html$/, "")) };
+    return { applied: r.applied, failed: r.failed, moved: r.moved, structure: structureOf(r.html, String(file).replace(/\.html$/, "")) };
+  }));
+  // a new component put into the screen (dropped from the catalogue): `target` = the ordinal of the element it goes next to / into. The JSX comes from
+  // componentSnippets.mjs (`snippet` only when the caller has its own). What cannot be done in the file is answered with `needsAgent` and a reason:
+  // there is no JSX for the component, the place does not allow it, or it needs a library the page does not import (it would not render at all).
+  ipcMain.handle("jsx:insert", guard((_e, { file, target, position, snippet, name }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8");
+    const built = snippet ? { snippet, source: "given" } : snippetFor(String(name), docs);
+    if (!built) return { needsAgent: true, reason: `there is no ready-made code for ${name}` };
+    const r = insertElement(html, { target, position, snippet: built.snippet, name, imports: CORE_IMPORTS });
+    if (r.error) return { needsAgent: true, reason: r.error };
+    if (r.missingImport) return { needsAgent: true, reason: `${r.missingImport} is not imported in this screen` };
+    save(p, html, r.html, `Added ${name ?? "a component"}`);
+    return { ordinal: r.ordinal, source: built.source, ...(r.addedImport ? { addedImport: r.addedImport } : {}), structure: structureOf(r.html, String(file).replace(/\.html$/, "")) };
+  }));
+  // components taken out of a screen (Delete in the inspector, the button of the panel): the ones the file lets go are removed, the others are reported
+  ipcMain.handle("jsx:delete", guard((_e, { file, ordinals }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8");
+    const r = removeElements(html, Array.isArray(ordinals) ? ordinals : []);
+    if (r.applied.length && r.html !== html) save(p, html, r.html, r.applied.length === 1 ? "Removed a component" : "Removed components");
+    return { applied: r.applied, failed: r.failed };
+  }));
+  // copies of components, each right after its original
+  ipcMain.handle("jsx:duplicate", guard((_e, { file, ordinals }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8");
+    const r = duplicateElements(html, Array.isArray(ordinals) ? ordinals : []);
+    if (r.copies.length && r.html !== html) save(p, html, r.html, r.copies.length === 1 ? "Duplicated a component" : "Duplicated components");
+    return { copies: r.copies, failed: r.failed };
+  }));
+  // the text of a component changed on the screen (double click in the Edit mode): found in the file by what it said
+  ipcMain.handle("jsx:editText", guard((_e, { file, ordinal, old, value }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8"), out = editText(html, ordinal, String(old ?? ""), String(value ?? ""));
+    if (out !== html) save(p, html, out, "Change of a text");
+    return { ok: true };
+  }));
+  // several items of a list prop at once (one undo step): remove / duplicate the items `indexes`, or add one (`props`, at the place `at`)
+  ipcMain.handle("jsx:items", guard((_e, { file, ordinal, prop, op, indexes, props, at }) => {
+    const p = screenPath(file), html = fs.readFileSync(p, "utf8");
+    const { html: out, ...result } = changeItems(html, ordinal, String(prop), op, { indexes: Array.isArray(indexes) ? indexes : [], props: Array.isArray(props) ? props : [], at });
+    if (out !== html) save(p, html, out, op === "remove" ? "Removed items" : op === "duplicate" ? "Duplicated items" : "Added an item");
+    return result;
   }));
   ipcMain.handle("jsx:list", guard((_e, { file, ordinals, prop }) => describeList(fs.readFileSync(screenPath(file), "utf8"), ordinals[0], String(prop))));
   ipcMain.handle("jsx:item", guard((_e, { file, ordinals, prop, op }) => {

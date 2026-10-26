@@ -74,7 +74,7 @@ export function toLiteral(v, pad = "") {
  * components it is nested in, the props written in the file as editable controls, and the other props it supports.
  * Editing writes to the HTML file through `api`.
  */
-export function createPropsPanel({ api, onUse, onStructure }) {
+export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicate, onAddItem }) {
   let pick = null, info = null, ordinals = [], level = 0, useSub = false;
   const root = $("insp-comp");
 
@@ -298,6 +298,10 @@ export function createPropsPanel({ api, onUse, onStructure }) {
     if (pick.sub) add(`${short(pick.sub.name) || "item"} · ${pick.sub.prop}[${pick.sub.index + 1}]`, `Item ${pick.sub.index + 1} of ${pick.sub.prop}`, level === 0 && useSub, () => selectLevel(0, true));
     $("insp-name").textContent = info.element.name;
     $("insp-struct").hidden = !onStructure || Boolean(info.element.item);
+    const isItem = Boolean(info.element.item);
+    $("insp-delete").hidden = !onDelete; $("insp-delete").textContent = isItem ? "Delete item" : "Delete component";
+    $("insp-duplicate").hidden = !onDuplicate; $("insp-duplicate").textContent = isItem ? "Duplicate item" : "Duplicate component";
+    $("insp-additem").hidden = !onAddItem || !isItem;
     const subLine = info.element.item ? `Item ${info.element.item.index + 1} of ${info.element.item.prop} in ${names[0]}` : "";
     $("insp-text").textContent = subLine || (level === 0 && pick.text ? `“${pick.text}”` : "");
     const d = info.doc;
@@ -335,6 +339,11 @@ export function createPropsPanel({ api, onUse, onStructure }) {
     setProp(name, defaultFor(docProp(name), palettes()));
   };
   $("insp-struct").onclick = () => pick && info && !info.element.item && onStructure?.({ file: pick.file, ordinal: ordinals[0], name: info.element.name });
+  // the target of the buttons: the shown component, or the shown item of a list prop (its list is the sub)
+  const targetOf = () => ({ file: pick.file, ordinal: ordinals[0], name: info.element.name, sub: info.element.item ? { prop: info.element.item.prop, index: info.element.item.index } : null, ownerName: pick.fullNames?.[0] ?? info.chain?.[0]?.name ?? null });
+  $("insp-duplicate").onclick = () => pick && info && onDuplicate?.(targetOf());
+  $("insp-delete").onclick = () => pick && info && onDelete?.(targetOf());
+  $("insp-additem").onclick = () => pick && info && info.element.item && onAddItem?.(targetOf());
   $("insp-use").onclick = () => pick && info && onUse({ ...pick, chain: info.chain, element: info.element, sub: info.element.item ? pick.sub : null });
 
   return {

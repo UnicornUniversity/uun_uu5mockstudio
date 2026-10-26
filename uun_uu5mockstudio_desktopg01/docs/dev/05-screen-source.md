@@ -51,6 +51,10 @@ Each attribute is parsed into `{ name, type, value, code, … }`:
 
 Text is cut and pasted with indentation adjusted, a self-closing target is opened (`<Block />` → `<Block>…</Block>`). Moves that fail are returned with a **reason**; the renderer sends them to the agent. The result `{ html, applied, failed }` is written by `jsx:moves`.
 
+### Inserting
+
+`insertElement(html, { target, position, snippet, name })` puts a new element (one JSX element as text) before / after / inside the element `target`. It shares the placement (`placement()`: indentation, own line or not, opening a self-closing target) with the move and refuses the same cases (a plain child, not inside a component of the file). Returns `{ html, ordinal, addedImport?, missingImport? }` (`ordinal` = the new element in the new file; `missingImport` = the root name the snippet uses that no import or top-level declaration of the file provides; when `op.imports` = `{ Root: "module" }` has that root, the import is added after the last import and `addedImport` says so) or `{ error }`. `jsx:insert` builds the snippet (`componentSnippets.mjs`, see [06](06-inspector.md)), writes through `save()` (an undo step "Added X") and returns `{ ordinal, source, addedImport?, structure }` or `{ needsAgent, reason }` (nothing written).
+
 ## Undo / redo
 
 `screenHistory.mjs` keeps, per file path, a stack of `{ before, after, label }`. `main.mjs` records a step in `save(path, before, after, label)` for every edit it makes (`jsx:set`, `jsx:remove`, `jsx:setBranch`, `jsx:item`, `jsx:setText`, `jsx:moves`). `screen:undo` / `screen:redo` take a file, or, when it has no step, **the latest step of the project** (`latest(way, inside)`). A step is applied only if the file is exactly as that step left it; otherwise the stacks of the file are dropped (the agent or an editor changed it). Limit: 50 steps per file. Changes by the agent are not recorded.

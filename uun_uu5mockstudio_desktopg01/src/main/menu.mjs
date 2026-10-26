@@ -114,7 +114,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Arrange Screens", "view:arrange", { enabled: has }),
       { label: "Device for All Screens", enabled: has, submenu: [["Desktop", "desktop"], ["Laptop", "laptop"], ["Tablet", "tablet"], ["Mobile", "mobile"]].map(([l, d]) => item(l, "view:device:" + d)) },
       sep,
-      item("Element Inspector", "view:inspector", { enabled: has }),
+      item("Edit Components", "view:inspector", { enabled: has }),
       sep,
       { label: "Appearance", submenu: [
         item("Automatic", "view:theme:auto"), item("Light", "view:theme:light"), item("Dark", "view:theme:dark"),

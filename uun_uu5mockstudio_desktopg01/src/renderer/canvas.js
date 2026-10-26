@@ -325,6 +325,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     setCamera: (c, animate) => { if (c) { cam = { ...c }; applyCam(animate); } },
     camera: () => ({ ...cam }),
     zoomPercent: () => Math.round(cam.z * 100),
+    /** The Edit mode (not the picking for the chat): the frames say so. */
+    setEditing: (v) => { for (const f of frames.values()) f.el.classList.toggle("editing", v); },
     setInspecting: (v) => { inspecting = v; updateShields(); for (const f of frames.values()) { try { f.view.send("studio-pan-wheel", "alt"); } catch { /* the page is not ready: dom-ready sends it */ } } },
     /** Auto arrange: flow the screens left to right, wrapping into rows, with no overlaps. Keeps the current reading order. */
     arrange: () => {

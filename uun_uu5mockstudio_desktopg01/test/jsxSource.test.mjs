@@ -482,7 +482,7 @@ const X = () => <ActionGroup itemList={[
   assert.throws(() => describeItem(html, ord, "itemList", 0, 1), /has 2 items but 1 are rendered/, "when the spread is empty the file cannot tell which item is which");
 });
 
-import { moveElements } from "../src/main/jsxSource.mjs";
+import { moveElements, insertElement, removeElements, duplicateElements, editText, changeItems } from "../src/main/jsxSource.mjs";
 test("moving JSX elements in the file: before, after, inside, and what is refused", () => {
   const page = (body) => `<script type="text/babel">
 import { Block, Text, Button, Box } from "uu5g05-elements";
@@ -535,6 +535,227 @@ ${body}
   const sc = page(`      <Block />\n      <Text>A</Text>`), se = parseElements(sc);
   r = moveElements(sc, [{ ordinal: se.find((e) => e.name === "Text" && e.start > sc.indexOf("function Page")).ordinal, target: se.find((e) => e.name === "Block").ordinal, position: "inside" }]);
   assert.match(r.html, /<Block>\n        <Text>A<\/Text>\n      <\/Block>/);
+});
+
+test("inserting a new JSX element: before, after, inside, the new ordinal, and what is refused", () => {
+  const page = (body) => `<script type="text/babel">
+import { Block, Text, Button, Box } from "uu5g05-elements";
+const Other = () => <Text>other</Text>;
+function Page({ list, ok }) {
+  return (
+    <Box>
+${body}
+    </Box>
+  );
+}
+</script>`;
+  const html = page(`      <Text>A</Text>
+      <Block header="H">
+        <Button>X</Button>
+      </Block>
+      <Text>C</Text>`);
+  const els = parseElements(html), at = (h, o) => h.slice(parseElements(h)[o].start);
+  const inPage = (e) => e.start > html.indexOf("function Page");
+  const tA = els.find((e) => e.name === "Text" && inPage(e)).ordinal, block = els.find((e) => e.name === "Block").ordinal;
+  const snippet = `<Button colorScheme="blue">New</Button>`;
+
+  let r = insertElement(html, { target: tA, position: "before", snippet });
+  assert.ok(!r.error, r.error); assert.match(r.html, /<Box>\n      <Button colorScheme="blue">New<\/Button>\n      <Text>A<\/Text>/);
+  assert.ok(!r.html.includes("data-mv"), "the temporary attributes are gone");
+  assert.ok(at(r.html, r.ordinal).startsWith(snippet), "the ordinal finds the new element");
+  r = insertElement(html, { target: tA, position: "after", snippet });
+  assert.match(r.html, /<Text>A<\/Text>\n      <Button colorScheme="blue">New<\/Button>\n      <Block/); assert.ok(at(r.html, r.ordinal).startsWith(snippet), "the ordinal finds the new element");
+  r = insertElement(html, { target: block, position: "inside", snippet });
+  assert.match(r.html, /<Button>X<\/Button>\n        <Button colorScheme="blue">New<\/Button>\n      <\/Block>/); assert.ok(at(r.html, r.ordinal).startsWith(snippet), "the ordinal finds the new element");
+  // a multi-line snippet is indented with the place
+  r = insertElement(html, { target: block, position: "before", snippet: `<Block>\n  <Text>N</Text>\n</Block>` });
+  assert.match(r.html, /\n      <Block>\n        <Text>N<\/Text>\n      <\/Block>\n      <Block header="H">/);
+  // a self-closing target gets it inside
+  const sc = page(`      <Block />\n      <Text>A</Text>`), se = parseElements(sc);
+  r = insertElement(sc, { target: se.find((e) => e.name === "Block").ordinal, position: "inside", snippet: "<Text>N</Text>" });
+  assert.match(r.html, /<Block>\n        <Text>N<\/Text>\n      <\/Block>/); assert.ok(at(r.html, r.ordinal).startsWith("<Text>N</Text>"), "the ordinal finds the new element");
+  // refused: inside a component of the file, next to an element in a condition, bad snippets, unknown target
+  const other = els.find((e) => e.name === "Text" && !inPage(e)).ordinal, otherRoot = els.find((e) => e.name === "Box").ordinal;
+  r = insertElement(page(`      <Other />`), { target: parseElements(page(`      <Other />`)).find((e) => e.name === "Other").ordinal, position: "inside", snippet });
+  assert.match(r.error, /component of this file/);
+  const cond = page(`      <Text>A</Text>\n      {ok && <Text>B</Text>}`), ce = parseElements(cond).filter((e) => e.name === "Text" && e.start > cond.indexOf("function Page"));
+  assert.match(insertElement(cond, { target: ce[1].ordinal, position: "before", snippet }).error, /plain child/);
+  assert.match(insertElement(html, { target: tA, position: "before", snippet: "<Text>" }).error, /not valid JSX/);
+  assert.match(insertElement(html, { target: tA, position: "before", snippet: "text only" }).error, /not valid JSX|one JSX element/);
+  assert.match(insertElement(html, { target: tA, position: "before", snippet: "<A /><B />" }).error, /not valid JSX|one JSX element/);
+  assert.match(insertElement(html, { target: 999, position: "before", snippet }).error, /not a JSX element/);
+  assert.match(insertElement(html, { target: tA, position: "sideways", snippet }).error, /not set/);
+  void other; void otherRoot;
+  // the file is not changed by a refused insert, and a component that the file does not import is reported
+  assert.equal(insertElement(html, { target: tA, position: "before", snippet: "<Uu5Elements.Tabs />" }).missingImport, "Uu5Elements");
+  assert.equal(insertElement(html, { target: tA, position: "before", snippet }).missingImport, undefined);
+});
+
+test("removing JSX elements: a line of its own goes whole, a nested one goes with its parent, what is in a condition or a list stays", () => {
+  const page = (body) => `<script type="text/babel">
+import { Block, Text, Button, Box } from "uu5g05-elements";
+function Page({ list, ok }) {
+  return (
+    <Box>
+${body}
+    </Box>
+  );
+}
+</script>`;
+  const html = page(`      <Text>A</Text>
+      <Block header="H">
+        <Button>X</Button>
+      </Block>
+      <Text>C</Text>`);
+  const els = parseElements(html), id = (n, i = 0) => els.filter((e) => e.name === n)[i].ordinal;
+  let r = removeElements(html, [id("Text", 0)]);
+  assert.deepEqual(r.applied, [id("Text", 0)]); assert.equal(r.failed.length, 0); assert.ok(!r.html.includes("data-mv"));
+  assert.match(r.html, /<Box>\n      <Block header="H">/); assert.ok(!r.html.includes("<Text>A</Text>"));
+  r = removeElements(html, [id("Block")]);
+  assert.ok(!r.html.includes("<Button") && !r.html.includes("<Block")); assert.match(r.html, /<Box>\n      <Text>A<\/Text>\n      <Text>C<\/Text>\n    <\/Box>/);
+  // an element and the one inside it: both are reported as removed, the file is valid
+  r = removeElements(html, [id("Button"), id("Block")]);
+  assert.deepEqual(r.applied.sort(), [id("Block"), id("Button")].sort()); assert.equal(r.failed.length, 0);
+  r = removeElements(html, [id("Block"), id("Button")]);
+  assert.equal(r.failed.length, 0); assert.ok(!r.html.includes("<Button"));
+  // the last child leaves an empty parent
+  const one = page("      <Text>A</Text>");
+  r = removeElements(one, [parseElements(one).find((e) => e.name === "Text").ordinal]);
+  assert.match(r.html, /<Box>\n    <\/Box>/);
+  // refused: in a condition, the root of a component, an ordinal that is not an element; the others are still done
+  const cond = page(`      <Text>A</Text>\n      {ok && <Text>B</Text>}`), ce = parseElements(cond), texts = ce.filter((e) => e.name === "Text");
+  r = removeElements(cond, [texts[1].ordinal, texts[0].ordinal]);
+  assert.deepEqual([r.applied, r.failed.map((f) => f.ordinal)], [[texts[0].ordinal], [texts[1].ordinal]]); assert.match(r.failed[0].reason, /plain child/);
+  assert.match(removeElements(cond, [ce.find((e) => e.name === "Box").ordinal]).failed[0].reason, /plain child/);
+  assert.match(removeElements(cond, [999]).failed[0].reason, /not a JSX element/);
+  assert.equal(removeElements(cond, [texts[1].ordinal]).html, cond, "nothing changed when nothing was removed");
+});
+
+test("duplicating JSX elements: the copy follows its original, the ordinals of the copies are right, what is not a plain child is refused", () => {
+  const page = (body) => `<script type="text/babel">
+import { Block, Text, Button, Box } from "uu5g05-elements";
+function Page({ list, ok }) {
+  return (
+    <Box>
+${body}
+    </Box>
+  );
+}
+</script>`;
+  const html = page(`      <Text>A</Text>
+      <Block header="H">
+        <Button>X</Button>
+      </Block>
+      <Text>C</Text>`);
+  const els = parseElements(html), id = (n, i = 0) => els.filter((e) => e.name === n)[i].ordinal;
+  let r = duplicateElements(html, [id("Block")]);
+  assert.equal(r.failed.length, 0); assert.match(r.html, /<\/Block>\n      <Block header="H">\n        <Button>X<\/Button>\n      <\/Block>\n      <Text>C/);
+  assert.equal(parseElements(r.html)[r.copies[0]].name, "Block"); assert.equal(r.copies.length, 1);
+  assert.equal(parseElements(r.html)[r.copies[0] + 1].name, "Button", "the copy has its content, the ordinal is the copy's own");
+  assert.ok(r.copies[0] > id("Block") + 1, "the copy is after the original and what is in it");
+  // two at once: both copies are found at the end
+  r = duplicateElements(html, [id("Text", 0), id("Block")]);
+  assert.equal(r.failed.length, 0); assert.equal(r.copies.length, 2);
+  const out = parseElements(r.html);
+  assert.deepEqual(r.copies.map((o) => out[o].name).sort(), ["Block", "Text"]);
+  assert.equal(out.filter((e) => e.name === "Text").length, 3); assert.equal(out.filter((e) => e.name === "Block").length, 2);
+  for (const o of r.copies) assert.ok(r.html.slice(out[o].start).startsWith(out[o].name === "Text" ? "<Text>A" : "<Block header"), "a copy is where its ordinal says");
+  // refused: in a condition, not an element; the rest is done
+  const cond = page(`      <Text>A</Text>\n      {ok && <Text>B</Text>}`), texts = parseElements(cond).filter((e) => e.name === "Text");
+  r = duplicateElements(cond, [texts[1].ordinal, texts[0].ordinal]);
+  assert.equal(r.copies.length, 1); assert.match(r.failed[0].reason, /plain child/);
+  assert.match(duplicateElements(cond, [999]).failed[0].reason, /not a JSX element/);
+  assert.equal(duplicateElements(cond, [texts[1].ordinal]).html, cond);
+});
+
+test("moveElements says where the moved elements are in the new file", () => {
+  const html = `<script type="text/babel">
+import { Text, Box } from "uu5g05-elements";
+const P = () => (
+  <Box>
+    <Text>A</Text>
+    <Text>B</Text>
+    <Text>C</Text>
+  </Box>
+);
+</script>`;
+  const els = parseElements(html), [a, , c] = els.filter((e) => e.name === "Text").map((e) => e.ordinal);
+  const r = moveElements(html, [{ ordinal: c, target: a, position: "before" }]);
+  assert.equal(r.moved.length, 1); assert.ok(r.html.slice(parseElements(r.html)[r.moved[0]].start).startsWith("<Text>C"));
+  assert.deepEqual(moveElements(html, [{ ordinal: c, target: c, position: "before" }]).moved, []);
+});
+
+test("editText finds the text by what it says: a text child, a text written elsewhere, a prop", () => {
+  const html = `<script type="text/babel">
+import { Text, Block, Button, Box } from "uu5g05-elements";
+const t = (cs, en) => (en);
+const TITLE = { cs: "Nadpis", en: "Heading" };
+function Page() {
+  return (
+    <Box>
+      <Text>Hello
+        world</Text>
+      <Text>{TITLE.en}</Text>
+      <Text>{t("Ano", "Yes")}</Text>
+      <Block header="Block title" colorScheme="blue" />
+      <Button label={{ cs: "Uložit", en: "Save" }}>Go</Button>
+      <Text>Plain & simple</Text>
+    </Box>
+  );
+}
+</script>`;
+  const els = parseElements(html), by = (n, i = 0) => els.filter((e) => e.name === n)[i].ordinal;
+  // a text child, written over several lines: whitespace is not compared, the way the text is laid out is kept
+  let out = editText(html, by("Text", 0), "Hello world", "Good morning");
+  assert.match(out, /<Text>Good morning<\/Text>/); assert.ok(!out.includes("Hello"));
+  // characters that mean something in JSX are written as a string expression
+  out = editText(html, by("Text", 3), "Plain & simple", "A < B");
+  assert.match(out, /<Text>\{"A < B"\}<\/Text>/);
+  // a text written elsewhere: it is changed there (a constant, an argument of a language function)
+  out = editText(html, by("Text", 1), "Heading", "New heading");
+  assert.match(out, /en: "New heading"/); assert.match(out, /cs: "Nadpis"/);
+  out = editText(html, by("Text", 2), "Yes", "Sure");
+  assert.match(out, /t\("Ano", "Sure"\)/);
+  // a prop of the component, a string or one language of an LSI
+  out = editText(html, by("Block"), "Block title", "Other");
+  assert.match(out, /header="Other"/); assert.match(out, /colorScheme="blue"/);
+  out = editText(html, by("Button"), "Save", "Store");
+  assert.match(out, /en: "Store"/); assert.match(out, />Go<\/Button>/);
+  out = editText(html, by("Button"), "Go", "Run");
+  assert.match(out, />Run<\/Button>/); assert.match(out, /en: "Save"/);
+  // refused: a text the element does not have, an empty text, no text
+  assert.throws(() => editText(html, by("Text", 0), "Something else", "x"), /not written out as a plain text/);
+  assert.throws(() => editText(html, by("Text", 0), "Hello world", "  "), /cannot be empty/);
+  assert.throws(() => editText(html, by("Text", 0), "", "x"), /no text/);
+  assert.throws(() => editText(html, 999, "a", "b"), /no longer exists/);
+});
+
+test("changeItems: several items of a list at once, the layout and commas are kept", () => {
+  const html = `<script type="text/babel">
+import Uu5Elements from "uu5g05-elements";
+const P = () => (
+  <Uu5Elements.ActionGroup itemList={[
+    { children: "A" },
+    { children: "B", icon: "x" },
+    { children: "C" },
+  ]} />
+);
+</script>`;
+  const g = parseElements(html).find((e) => e.name === "Uu5Elements.ActionGroup").ordinal, texts = (h) => [...h.matchAll(/children: "(\w)"/g)].map((m) => m[1]).join("");
+  let r = changeItems(html, g, "itemList", "remove", { indexes: [0, 2] });
+  assert.equal(r.removed, 2); assert.equal(texts(r.html), "B"); assert.ok(!r.html.includes(",,"));
+  r = changeItems(html, g, "itemList", "duplicate", { indexes: [0, 1] });
+  assert.deepEqual(r.copies, [1, 3]); assert.equal(texts(r.html), "AABBC");
+  assert.match(r.html, /\{ children: "B", icon: "x" \},\n    \{ children: "B", icon: "x" \},/);
+  r = changeItems(html, g, "itemList", "add", { props: [{ name: "children", type: "string", value: "N" }], at: 1 });
+  assert.equal(r.added, 1); assert.equal(texts(r.html), "ANBC");
+  r = changeItems(html, g, "itemList", "add", { props: [{ name: "children", type: "string", value: "N" }] });
+  assert.equal(r.added, 3); assert.equal(texts(r.html), "ABCN");
+  assert.equal(changeItems(html, g, "itemList", "add", { props: [], at: 99 }).added, 3, "a place after the end is the end");
+  assert.throws(() => changeItems(html, g, "itemList", "remove", { indexes: [] }), /No item/);
+  assert.throws(() => changeItems(html, g, "itemList", "remove", { indexes: [7] }), /no longer exists/);
+  assert.throws(() => changeItems(html, g, "itemList", "sort", { indexes: [0] }), /Unknown/);
+  assert.throws(() => changeItems(html, g, "nothing", "remove", { indexes: [0] }), /built dynamically/);
 });
 
 test("structure of one component: the part of the tree under an element", () => {

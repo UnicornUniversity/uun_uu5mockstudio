@@ -1,12 +1,19 @@
-const PICK = "__studio_pick__";
+const PICK = "__studio_pick__", MOVE = "__studio_move__", DELETE = "__studio_delete__", DUPLICATE = "__studio_duplicate__", TEXT = "__studio_text__", ITEM_MOVE = "__studio_itemmove__";
+
+import { FIBER } from "./pageFiber.js";
+import { DROP_CORE } from "./dropTarget.js";
+export { FIBER };
 
 // Runs inside the mockup page. Reports the clicked uu5 component through console.log (read by the <webview> console-message event).
 // The server tags every uu5 component of the mockup with `data-uu5-src="<ordinal of its JSX element in the file>"` (see jsxSource.mjs);
 // the React fiber tree is walked from the clicked DOM node to the nearest tagged component and its tagged ancestors.
+// A press on a component followed by a movement of a few pixels drags it: the place it would land is shown (DROP_CORE) and, when it is let go,
+// the move is reported through console.log as `MOVE` + JSON `{ ordinal, name, target, targetName, position }`.
 export const INJECT = `(async () => {
   if (window.__studioInspect) return;
   window.__studioInspect = { off() { delete window.__studioInspect; } };
-  const SRC = "data-uu5-src";
+  ${FIBER}
+  ${DROP_CORE}
 
   // Values the uuGds / uu5 palettes allow for props like colorScheme and borderRadius (the prop docs only say "colorScheme").
   let palettes = {};
@@ -21,17 +28,7 @@ export const INJECT = `(async () => {
     } catch {}
   })();
 
-  const fiberOf = (el) => { for (let n = el; n; n = n.parentElement) { const k = Object.keys(n).find((x) => x.startsWith("__reactFiber$")); if (k) return n[k]; } return null; };
-  const ordOf = (f) => { const v = f.memoizedProps ? f.memoizedProps[SRC] : undefined; return v === undefined || v === null ? null : Number(v); };
-  const compAt = (el) => { for (let f = fiberOf(el); f; f = f.return) { if (ordOf(f) !== null) return f; } return null; };
-  const hostNodes = (f, out = []) => { for (let c = f.child; c; c = c.sibling) { if (c.tag === 5 && c.stateNode instanceof Element) out.push(c.stateNode); else hostNodes(c, out); } return out; };
   const chainOf = (f) => { const out = []; for (; f && out.length < 8; f = f.return) { const o = ordOf(f); if (o !== null && o !== out[out.length - 1]) out.push(o); } return out; };
-  const rectOf = (f) => {
-    const rs = hostNodes(f).map((n) => n.getBoundingClientRect()).filter((r) => r.width || r.height);
-    if (!rs.length) return null;
-    const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top));
-    return { left: l, top: t, width: Math.max(...rs.map((r) => r.right)) - l, height: Math.max(...rs.map((r) => r.bottom)) - t };
-  };
   const sum = (v) => {
     if (v === null || ["string", "number", "boolean", "undefined"].includes(typeof v)) return v;
     if (typeof v === "function") return "ƒ()";
@@ -41,7 +38,6 @@ export const INJECT = `(async () => {
   // A component rendered from an object in a list prop (e.g. one button of ActionGroup.itemList) has no JSX element of its own:
   // find the fiber under the tagged component whose props carry the same values as one of the list items.
   const plainObj = (v) => v && typeof v === "object" && !Array.isArray(v) && !v.$$typeof;
-  const publicName = (f) => { const t = f.type, n = typeof t === "string" ? "" : (t && (t.displayName || t.name)) || ""; const m = String(n).match(/((?:Uu5|Plus4U5)[A-Za-z0-9]*\\.[A-Z][\\w.]*)\\)*$/); return m ? m[1] : null; };
   const subOf = (T0, clicked) => {
     // the tag is passed down through wrapper components (Block -> BlockView -> Box ...): the props that hold the list live on the outermost fiber with the same ordinal
     let T = T0; const ord = ordOf(T0);
@@ -69,7 +65,6 @@ export const INJECT = `(async () => {
     return null;
   };
   // what is under the pointer: the tagged component and, when it is an item of one of its list props, that item
-  const outermost = (T0) => { let T = T0; const ord = ordOf(T0); for (let g = T0.return; g; g = g.return) { const o = ordOf(g); if (o === null) continue; if (o === ord) T = g; else break; } return T; };
   const resolve = (el) => { const clicked = fiberOf(el); const T0 = clicked && compAt(el); if (!T0) return null; const T = outermost(T0); return { T, sub: subOf(T, clicked) }; };
   const typeProps = (f, key) => { const T = f.type || {}; return T[key] || (T.type && T.type[key]) || (T.render && T.render[key]) || null; };
 
@@ -95,19 +90,66 @@ export const INJECT = `(async () => {
   };
   const selTimer = setInterval(paintSel, 400); // the page re-renders and scrolls: keep the frames on their components
   const move = (e) => {
+    if (mv || ed) return;
     const hit = resolve(e.target), r = hit && rectOf(hit.sub ? hit.sub.fiber : hit.T);
     if (!r) { box.style.display = "none"; return; }
     Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
   };
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); };
   let levels = [], lastSub = null; // the components around the last pick, nearest first (the panel can pick one of them without a click)
-  const click = (e) => {
-    stop(e);
+  // dragging a component to another place of the screen
+  let pend = null, mv = null, afterDrag = false;
+  const tip = document.createElement("div");
+  tip.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;padding:3px 8px;border-radius:6px;background:#1d2433;color:#fff;font:600 11px system-ui,sans-serif;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)";
+  document.documentElement.appendChild(tip);
+  const endDrag = () => { pend = null; mv = null; dropClear(); tip.style.display = "none"; box.style.display = "none"; };
+  const pdown = (e) => {
+    pend = null; if (ed) return;
+    if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
     const hit = resolve(e.target); if (!hit) return;
+    pend = { x: e.clientX, y: e.clientY, ord: ordOf(hit.T), name: publicName(hit.sub ? hit.sub.fiber : hit.T), sub: hit.sub ? { prop: hit.sub.prop, index: hit.sub.index } : null }; // an item of a list prop is dragged within its list
+  };
+  // the place of an item within its own list under the pointer: before / after another item of the same list (to = its index once the dragged one is taken out)
+  const itemAt = (x, y) => {
+    const el = document.elementFromPoint(x, y), h = el && resolve(el);
+    if (!h || !h.sub || ordOf(h.T) !== mv.ord || h.sub.prop !== mv.sub.prop) return null;
+    const r = rectOf(h.sub.fiber); if (!r) return null;
+    const axis = axisOf(h.sub.fiber), zone = zoneOf(r, { x, y }, axis, false), j = h.sub.index, from = mv.sub.index;
+    return { zone, axis, r, index: j, to: j === from ? from : (zone === "before" ? j : j + 1) - (from < j ? 1 : 0) }; // onto itself: nowhere
+  };
+  const pmove = (e) => {
+    if (!pend) return;
+    if (!mv) {
+      if (e.buttons !== 1) return void (pend = null);
+      if (Math.hypot(e.clientX - pend.x, e.clientY - pend.y) < 6) return;
+      mv = { ...pend, hit: null }; box.style.display = "none";
+    }
+    e.preventDefault();
+    const nm = (n) => (n ? n.replace(/^(Uu5|Plus4U5)\\w*\\./, "") : "component");
+    if (mv.sub) { // an item: only another place of its own list counts
+      mv.item = itemAt(e.clientX, e.clientY);
+      if (mv.item && mv.item.to !== mv.sub.index) paint(mv.item.r, mv.item.zone, mv.item.axis, true); else dropClear();
+      tip.textContent = mv.item && mv.item.to !== mv.sub.index ? "Item " + (mv.sub.index + 1) + " → place " + (mv.item.to + 1) : "Move item " + (mv.sub.index + 1) + " within " + mv.sub.prop;
+    } else {
+      mv.hit = dropAt(e.clientX, e.clientY, { exclude: mv.ord });
+      const h = mv.hit;
+      tip.textContent = !h ? "Move " + nm(mv.name) : !h.ok ? "Not here" : nm(mv.name) + " → " + h.zone + " " + nm(h.name);
+    }
+    Object.assign(tip.style, { display: "block", left: Math.min(innerWidth - 220, e.clientX + 14) + "px", top: e.clientY + 14 + "px" });
+    if (e.clientY < 40) scrollBy(0, -18); else if (e.clientY > innerHeight - 40) scrollBy(0, 18);
+  };
+  const pup = () => {
+    const m = mv; endDrag(); if (!m) return;
+    afterDrag = true; setTimeout(() => { afterDrag = false; }, 0); // the click that follows the release is not a pick
+    if (m.sub) { const t = m.item; if (t && t.to !== m.sub.index) console.log("${ITEM_MOVE}" + JSON.stringify({ ordinal: m.ord, prop: m.sub.prop, from: m.sub.index, to: t.to })); return; }
+    const h = m.hit;
+    if (h && h.ok) console.log("${MOVE}" + JSON.stringify({ ordinal: m.ord, name: m.name, target: h.ordinal, targetName: h.name, position: h.zone }));
+  };
+  const doPick = (hit, additive) => {
     const f = hit.T, sub = hit.sub, shown = sub ? sub.fiber : f;
     levels = []; lastSub = sub;
     for (let g = f, last = null; g && levels.length < 8; g = g.return) { const o = ordOf(g); if (o !== null && o !== last) { levels.push(outermost(g)); last = o; } }
-    const key = keyOf(f, sub), additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    const key = keyOf(f, sub);
     if (additive) { if (sel.has(key)) sel.delete(key); else sel.set(key, shown); } else { sel.clear(); sel.set(key, shown); }
     paintSel();
     const r = rectOf(shown) || { width: 0, height: 0 }, props = {};
@@ -122,11 +164,78 @@ export const INJECT = `(async () => {
       palettes, text: (hostNodes(shown)[0]?.innerText || "").trim().slice(0, 100), w: Math.round(r.width), h: Math.round(r.height),
     }));
   };
-  const swallow = (e) => stop(e);
+  const click = (e) => {
+    if (ed && ed.el.contains(e.target)) return void e.stopPropagation(); // a click in the text being edited is not a pick, and not a click of the page
+    stop(e);
+    if (afterDrag) return;
+    const hit = resolve(e.target); if (hit) doPick(hit, e.shiftKey || e.metaKey || e.ctrlKey);
+  };
+  const swallow = (e) => { if (ed && ed.el.contains(e.target)) return; stop(e); }; // the text being edited gets its own mouse
   const events = ["mousedown", "mouseup", "submit", "pointerdown", "pointerup"];
-  const esc = (e) => { if (e.key === "Escape") console.log("__studio_esc__"); }; // the app listens for Escape, which the page swallows
-  addEventListener("keydown", esc, true);
+  // editing the text of a component in place: a double click on a text makes it editable (plain text), Enter or leaving the field hands the change over,
+  // Escape drops it. The file is changed by what the text said before (jsx:editText), not by where it is on the page.
+  let ed = null;
+  const norm = (t) => String(t).split(/\\s+/).join(" ").trim();
+  const endEdit = () => {
+    if (!ed) return null;
+    const x = ed; ed = null;
+    x.el.removeEventListener("blur", x.blur); x.el.contentEditable = x.ce; x.el.style.outline = x.outline; x.el.style.outlineOffset = x.offset;
+    getSelection().removeAllRanges();
+    return x;
+  };
+  const commitEdit = () => {
+    const x = endEdit(); if (!x) return;
+    const value = norm(x.el.textContent);
+    if (!value || value === x.old) { x.el.textContent = x.text; return; }
+    console.log("${TEXT}" + JSON.stringify({ ordinal: x.ord, old: x.old, value }));
+  };
+  const cancelEdit = () => { const x = endEdit(); if (x) x.el.textContent = x.text; };
+  const dbl = (e) => {
+    stop(e);
+    if (e.button !== 0 || ed) return;
+    const hit = resolve(e.target); if (!hit || hit.sub) return;
+    const r = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+    let node = r && r.startContainer;
+    if (node && node.nodeType === 3) { // the caret goes to the nearest text: only a double click on the text itself counts
+      const rg = document.createRange(); rg.selectNodeContents(node); const b = rg.getBoundingClientRect();
+      if (e.clientX < b.left - 4 || e.clientX > b.right + 4 || e.clientY < b.top - 4 || e.clientY > b.bottom + 4) node = null;
+    }
+    if ((!node || node.nodeType !== 3) && e.target.children && !e.target.children.length && e.target.firstChild && e.target.firstChild.nodeType === 3) node = e.target.firstChild; // beside the text, in the same box
+    if (!node || node.nodeType !== 3 || !norm(node.data)) return;
+    const el = node.parentElement;
+    if (!el || el.children.length) { tip.textContent = "This text is part of a bigger one: edit it in the panel"; Object.assign(tip.style, { display: "block", left: Math.min(innerWidth - 300, e.clientX + 14) + "px", top: e.clientY + 14 + "px" }); setTimeout(() => { tip.style.display = "none"; }, 1800); return; }
+    const text = el.textContent;
+    ed = { el, text, old: norm(text), ord: ordOf(hit.T), ce: el.contentEditable, outline: el.style.outline, offset: el.style.outlineOffset, blur: () => commitEdit() };
+    el.contentEditable = "plaintext-only"; el.style.outline = "2px solid #4f8cff"; el.style.outlineOffset = "2px";
+    el.addEventListener("blur", ed.blur); box.style.display = "none"; el.focus();
+    const range = document.createRange(); range.selectNodeContents(el); getSelection().removeAllRanges(); getSelection().addRange(range);
+  };
+  const edkeys = (e) => {
+    if (!ed) return;
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.stopImmediatePropagation(); commitEdit(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); cancelEdit(); }
+  };
+  // Delete / Backspace takes the marked components (and items of lists) out of the file, Cmd / Ctrl + D copies them
+  const marked = () => [...sel].map(([k, f]) => {
+    const bar = k.indexOf("|"), rest = k.slice(bar + 1), b = rest.lastIndexOf("[");
+    const sub = rest && b > 0 ? { prop: rest.slice(0, b), index: Number(rest.slice(b + 1, -1)) } : null; // an item of a list prop: key ordinal|prop[index]
+    return { ordinal: Number(k.slice(0, bar)), name: publicName(sub ? f : outermost(f)), sub };
+  });
+  const keys = (e) => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const dup = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d";
+    if (e.key !== "Delete" && e.key !== "Backspace" && !dup) return;
+    const items = marked(); if (!items.length) return;
+    e.preventDefault(); e.stopPropagation();
+    if (dup) return void console.log("${DUPLICATE}" + JSON.stringify({ items }));
+    sel.clear(); paintSel();
+    console.log("${DELETE}" + JSON.stringify({ items }));
+  };
+  const esc = (e) => { if (e.key === "Escape") { if (mv) return void endDrag(); console.log("__studio_esc__"); } }; // Escape during a drag only cancels the drag; // the app listens for Escape, which the page swallows
+  addEventListener("keydown", edkeys, true); addEventListener("keydown", esc, true); addEventListener("keydown", keys, true); // edkeys first: Enter and Escape of a text being edited stop there
+  addEventListener("dblclick", dbl, true);
   addEventListener("mousemove", move, true); addEventListener("click", click, true);
+  addEventListener("pointerdown", pdown, true); addEventListener("pointermove", pmove, true); addEventListener("pointerup", pup, true); // before the swallowing ones below
   addEventListener("scroll", paintSel, true); addEventListener("resize", paintSel);
   for (const t of events) addEventListener(t, swallow, true);
   document.documentElement.style.cursor = "crosshair";
@@ -135,25 +244,41 @@ export const INJECT = `(async () => {
   document.documentElement.appendChild(cursorCss);
   window.__studioInspect = {
     drop(key) { sel.delete(key); paintSel(); }, clear() { sel.clear(); paintSel(); },
+    /* Marks the component with this ordinal as if it was clicked (after it was added, moved or copied). */
+    pickItem(ord, prop, index, additive) {
+      for (const el of document.querySelectorAll("body *")) {
+        const f = compAt(el); if (!f || ordOf(f) !== ord) continue;
+        const h = resolve(el); if (h && h.sub && h.sub.prop === prop && h.sub.index === index) { doPick(h, Boolean(additive)); return true; }
+      }
+      return false;
+    },
+    pickOrdinal(ord, additive) {
+      for (const el of document.querySelectorAll("body *")) { const f = compAt(el); if (f && ordOf(f) === ord) { doPick({ T: outermost(f), sub: null }, Boolean(additive)); return true; } }
+      return false;
+    },
     /* The frame goes to the component i levels above the last pick (or to the picked item of a list). */
     markLevel(i, item) { const fib = item && lastSub ? lastSub.fiber : levels[i]; if (!fib) return; sel.clear(); sel.set(keyOf(levels[i] ?? levels[0], item ? lastSub : null), fib); paintSel(); },
     off() {
-      removeEventListener("keydown", esc, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
+      removeEventListener("keydown", edkeys, true); removeEventListener("dblclick", dbl, true); cancelEdit(); removeEventListener("keydown", esc, true); removeEventListener("keydown", keys, true); removeEventListener("mousemove", move, true); removeEventListener("click", click, true);
       removeEventListener("scroll", paintSel, true); removeEventListener("resize", paintSel); clearInterval(selTimer);
       for (const t of events) removeEventListener(t, swallow, true);
-      box.remove(); for (const m of marks) m.remove(); cursorCss.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
+      removeEventListener("pointerdown", pdown, true); removeEventListener("pointermove", pmove, true); removeEventListener("pointerup", pup, true);
+      box.remove(); tip.remove(); dropMark.remove(); for (const m of marks) m.remove(); cursorCss.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
     },
   };
 })()`;
 const OFF = `window.__studioInspect && window.__studioInspect.off()`;
 
-export function createInspector({ onPick, onEscape }) {
+export function createInspector({ onPick, onEscape, onMove, onDelete, onDuplicate, onText, onItemMove }) {
   let on = false;
   const run = (view, code) => { try { return view.executeJavaScript(code).catch(() => {}); } catch { /* webview not ready */ } };
   return {
     get on() { return on; },
     set(v, views) { on = v; for (const view of views) run(view, v ? INJECT : OFF); },
     injectIfOn: (view) => on && run(view, INJECT),
+    /** Marks the component with this ordinal in the page of `view` (the page must have the inspector in it). */
+    pickItem: (view, ordinal, prop, index, additive) => run(view, `window.__studioInspect && window.__studioInspect.pickItem(${Number(ordinal)}, ${JSON.stringify(String(prop))}, ${Number(index)}, ${additive ? "true" : "false"})`),
+    pickOrdinal: (view, ordinal, additive) => run(view, `window.__studioInspect && window.__studioInspect.pickOrdinal(${Number(ordinal)}, ${additive ? "true" : "false"})`),
     /** Takes the frame of one marked component off the page of `view` / takes all frames off the pages of `views`. */
     drop: (view, key) => run(view, `window.__studioInspect && window.__studioInspect.drop(${JSON.stringify(key)})`),
     markLevel: (view, i, item) => run(view, `window.__studioInspect && window.__studioInspect.markLevel(${Number(i)}, ${item ? "true" : "false"})`),
@@ -161,6 +286,11 @@ export function createInspector({ onPick, onEscape }) {
     /** Call from each webview's console-message event. Returns true when the message was an inspector pick. */
     handleConsole(file, message) {
       if (message === "__studio_esc__") { onEscape?.(); return true; }
+      if (message.startsWith(ITEM_MOVE)) { try { onItemMove?.({ file, ...JSON.parse(message.slice(ITEM_MOVE.length)) }); } catch {} return true; }
+      if (message.startsWith(TEXT)) { try { onText?.({ file, ...JSON.parse(message.slice(TEXT.length)) }); } catch {} return true; }
+      if (message.startsWith(DUPLICATE)) { try { onDuplicate?.({ file, ...JSON.parse(message.slice(DUPLICATE.length)) }); } catch {} return true; }
+      if (message.startsWith(DELETE)) { try { onDelete?.({ file, ...JSON.parse(message.slice(DELETE.length)) }); } catch {} return true; }
+      if (message.startsWith(MOVE)) { try { onMove?.({ file, ...JSON.parse(message.slice(MOVE.length)) }); } catch {} return true; }
       if (!message.startsWith(PICK)) return false;
       try { onPick({ file, ...JSON.parse(message.slice(PICK.length)) }); } catch {}
       return true;

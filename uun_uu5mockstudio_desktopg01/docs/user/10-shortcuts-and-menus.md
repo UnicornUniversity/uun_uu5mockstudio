@@ -33,5 +33,5 @@
 - **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, **Show Component Tree…**, Undo / Redo Screen Change, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. The same entries are in the context menu (right click) of a screen.
 - **Chat**: New Chat, Chat History…, Floating / Docked Chat.
 - **Edit**: Undo, Redo (typing or the last change of the screen), Cut, Copy, Paste, Select All.
-- **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Element Inspector, **Appearance** (theme, Glass Effect), **Offline Use**.
+- **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Edit Components, **Appearance** (theme, Glass Effect), **Offline Use**.
 - **Help**: Welcome Tour…, Claude Code & Plugins…, Check for Plugin Updates…, Check for Updates….

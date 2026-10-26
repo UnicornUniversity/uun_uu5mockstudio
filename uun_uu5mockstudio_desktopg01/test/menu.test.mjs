@@ -97,7 +97,7 @@ test("Edit menu keeps the standard text editing roles", () => {
 test("View exposes canvas zoom, inspector and theme; developer tools only in dev", () => {
   const view = (isDev) => find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", isDev }), "View").submenu;
   assert.equal(find(view(false), "Show All Screens").accelerator, "CmdOrCtrl+0");
-  assert.ok(find(view(false), "Element Inspector")); assert.ok(!find(view(false), "Fullscreen Preview of Selected Screen"), "fullscreen preview moved to Screen");
+  assert.ok(find(view(false), "Edit Components")); assert.ok(!find(view(false), "Fullscreen Preview of Selected Screen"), "fullscreen preview moved to Screen");
   assert.deepEqual(find(view(false), "Appearance").submenu.map((i) => i.label).filter(Boolean), ["Automatic", "Light", "Dark", "Glass Effect"]);
   assert.ok(!view(false).some((i) => i.role === "toggleDevTools"));
   assert.ok(view(true).some((i) => i.role === "toggleDevTools"));

@@ -9,6 +9,8 @@ import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createLibraryPicker } from "./libraryPicker.js";
+import { createCatalogDrag } from "./catalogDrag.js";
+import { listKind, newAction } from "./actionGrammar.js";
 import { attachFreeze } from "./freeze.js";
 import { usageOf, usageDelta, usageLabel, usageTitle, contextOf, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
@@ -364,7 +366,124 @@ const persistLayout = () => {
   const p = project, layout = { frames: canvas.layout(), camera: canvas.camera() };
   clearTimeout(saveLayoutTimer); saveLayoutTimer = setTimeout(() => window.studio.saveLayout(p, layout), 500);
 };
-const inspector = createInspector({ onPick: showPick, onEscape: () => setInspect(false) });
+/** What the file cannot do by itself (a move into a condition, a list, another component) is given to the agent with both places named. */
+async function askAgentToMove({ file, name, ordinal, target, position, reason }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const info = async (o) => (await window.studio.jsxInspect(file, [o]).catch(() => null))?.element;
+  const [from, to] = await Promise.all([info(ordinal), info(target)]);
+  const desc = (e, fallback) => (e ? `${e.name} (in the JSX: ${e.snippet})` : fallback);
+  const message = `In ${file}, move the component ${desc(from, name ?? "the dragged one")} ${position} the component ${desc(to, "the target")}. The user dragged it there on the screen (the app could not do it itself: ${reason}). Keep its props and content, make it work in the new place and change nothing else.`;
+  push({ kind: "user", text: `Move ${name ?? "the component"} ${position} ${to?.name ?? "the other component"} in ${file}.` });
+  setBusy(true); sentModel = $("model").value; planPending = false;
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+}
+// a component dragged to another place of its screen while the inspector is on (inspector.js): moved in the file like a move in the structure dialog
+async function moveInScreen({ file, ordinal, target, position, name, targetName }) {
+  const label = (n) => (n ? n.replace(/^(Uu5|Plus4U5)\w*\./, "") : "the component");
+  const r = await window.studio.jsxMoves(file, [{ ordinal, target, position, name, targetName }]).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) return toast(r.error, { err: true });
+  if (r.failed?.length) return toast(`${label(name)} was not moved: ${r.failed[0].reason}.`, { err: true, action: { label: "Ask the agent", run: () => askAgentToMove({ file, name, targetName, ordinal, target, position, reason: r.failed[0].reason }) } });
+  markAfterReload(file, r.moved);
+  toast(`${label(name)} moved ${position === "inside" ? "inside" : position} ${label(targetName)}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+}
+// after a component was added, moved or copied the page is rendered again: the new place of it is marked as soon as the inspector is in the new page
+let pendingPick = null;
+const markAfterReload = (file, ordinals) => { if (inspector.on && !chatPick && ordinals?.length) pendingPick = { file, ordinals, until: Date.now() + 10000 }; };
+const takePending = (file) => { const p = pendingPick; if (!p || Date.now() > p.until) return (pendingPick = null); if (p.file !== file) return null; pendingPick = null; return p.ordinals; };
+/** The marked components and list items by screen: [{ file, items: [{ ordinal, name, sub: { prop, index } | null }] }] (`ordinal` = the component, for an item the one whose list it is). */
+function markedByFile() {
+  const by = new Map();
+  for (const m of marked) {
+    if (!Number.isInteger(m.chain?.[0])) continue;
+    if (!by.has(m.file)) by.set(m.file, []);
+    by.get(m.file).push({ ordinal: m.chain[0], name: null, sub: m.sub ? { prop: m.sub.prop, index: m.sub.index } : null });
+  }
+  return [...by].map(([file, items]) => ({ file, items }));
+}
+/** The items of lists in `items` as one change per list: [{ ordinal, prop, indexes }] (the other items are the components). */
+function listGroups(items) {
+  const by = new Map();
+  for (const i of items.filter((x) => x.sub)) { const k = `${i.ordinal}|${i.sub.prop}`; if (!by.has(k)) by.set(k, { ordinal: i.ordinal, prop: i.sub.prop, indexes: [] }); by.get(k).indexes.push(i.sub.index); }
+  return [...by.values()];
+}
+async function duplicateInScreen({ file, items }) {
+  const comps = items.filter((i) => !i.sub), copies = [], problems = [];
+  if (comps.length) {
+    const r = await window.studio.jsxDuplicate(file, comps.map((i) => i.ordinal)).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) problems.push(r.error); else { copies.push(...r.copies); problems.push(...(r.failed ?? []).map((f) => f.reason)); }
+  }
+  for (const g of listGroups(items)) {
+    const r = await window.studio.jsxItems(file, g.ordinal, g.prop, "duplicate", g.indexes).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) problems.push(r.error); else copies.push(...r.copies.map((index) => ({ ordinal: g.ordinal, prop: g.prop, index })));
+  }
+  if (copies.length) markAfterReload(file, copies);
+  if (problems.length) return toast(`${copies.length ? `${copies.length} copied, but ` : ""}${problems[0]}`, { err: true });
+  toast(`${copies.length === 1 ? "Copy" : `${copies.length} copies`} made in ${file.replace(/\.html$/, "")}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+}
+/** An item dragged to another place of its list in the page. */
+async function moveItemInScreen({ file, ordinal, prop, from, to }) {
+  const r = await window.studio.jsxItem(file, [ordinal], prop, { type: "move", from, to }).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) return toast(`The item was not moved: ${r.error}`, { err: true });
+  markAfterReload(file, [{ ordinal, prop, index: to }]);
+  toast(`Item ${from + 1} of ${prop} moved to place ${to + 1}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+}
+/** A new item after `after` of the list `prop`: a ready action in a list of actions, a copy of the item in any other list of objects. */
+async function addItemInScreen({ file, ordinal, prop, after, ownerName }) {
+  const action = listKind(prop, ownerName) === "action";
+  const r = await (action ? window.studio.jsxItems(file, ordinal, prop, "add", undefined, newAction(), after + 1) : window.studio.jsxItems(file, ordinal, prop, "duplicate", [after])).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) return toast(`The item was not added: ${r.error}`, { err: true });
+  markAfterReload(file, [{ ordinal, prop, index: action ? r.added : r.copies[0] }]);
+  toast(`Item added to ${prop}${action ? "" : " (a copy of the item)"}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+}
+/** A text changed in place on the screen (double click in the Edit mode): the file is changed where the text was written; what it cannot do goes to the agent. */
+async function editTextInScreen({ file, ordinal, old, value }) {
+  const r = await window.studio.jsxEditText(file, ordinal, old, value).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) {
+    canvas.reload(file); // the page shows the new text, the file does not have it
+    return toast(r.error, { err: true, action: { label: "Ask the agent", run: () => askAgentToEditText({ file, ordinal, old, value, reason: r.error }) } });
+  }
+  markAfterReload(file, [ordinal]);
+  toast(`Text changed in ${file.replace(/\.html$/, "")}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+}
+async function askAgentToEditText({ file, ordinal, old, value, reason }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
+  push({ kind: "user", text: `Change the text “${old}” to “${value}” in ${file}.` });
+  setBusy(true); sentModel = $("model").value; planPending = false;
+  window.studio.send(`In ${file}, the component ${e ? `${e.name} (in the JSX: ${e.snippet})` : "the user edited"} shows the text “${old}”. The user changed it on the screen to “${value}” (the app could not do it itself: ${reason}). Change it where it comes from, in every language that has it if it is an LSI, and change nothing else.`, sentModel || undefined, { plan: false, economy });
+}
+/** Escape in the edit mode: first the marks go, then the mode. */
+function escapeEdit() {
+  if (chatPick || !marked.length) return setInspect(false);
+  inspector.clearIn(canvas.all().map((f) => f.view)); resetMarked(); propsPanel.clear();
+}
+/** Components and list items taken out of the screen's file (Delete in the Edit mode, "Delete" of the panel). What the file does not let go can be given to the agent. */
+async function deleteInScreen({ file, items }) {
+  const label = (n) => (n ? n.replace(/^(Uu5|Plus4U5)\w*\./, "") : "component");
+  const comps = items.filter((i) => !i.sub), nameOf = new Map(comps.map((i) => [i.ordinal, i.name]));
+  let done = 0, firstBad = null;
+  if (comps.length) {
+    const r = await window.studio.jsxDelete(file, comps.map((i) => i.ordinal)).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) return toast(r.error, { err: true });
+    done += r.applied.length;
+    if (r.failed?.length) firstBad = { name: nameOf.get(r.failed[0].ordinal), ordinal: r.failed[0].ordinal, reason: r.failed[0].reason };
+  }
+  for (const g of listGroups(items)) {
+    const r = await window.studio.jsxItems(file, g.ordinal, g.prop, "remove", g.indexes).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) firstBad ??= { name: `item of ${g.prop}`, ordinal: g.ordinal, reason: r.error }; else done += r.removed;
+  }
+  const what = done === 1 && items.length === 1 ? (items[0].sub ? "the item" : label(items[0].name)) : `${done} components or items`;
+  if (done && !firstBad) return toast(`Removed ${what} from ${file.replace(/\.html$/, "")}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+  if (firstBad) toast(`${done ? `Removed ${what}, but ` : ""}${label(firstBad.name)} was not removed: ${firstBad.reason}${/\.$/.test(firstBad.reason) ? "" : "."}`, { err: true, action: { label: "Ask the agent", run: () => askAgentToDelete({ file, name: firstBad.name, ordinal: firstBad.ordinal, reason: firstBad.reason }) } });
+}
+async function askAgentToDelete({ file, name, ordinal, reason }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
+  push({ kind: "user", text: `Remove ${name ?? "the component"} from ${file}.` });
+  setBusy(true); sentModel = $("model").value; planPending = false;
+  window.studio.send(`In ${file}, remove the component ${e ? `${e.name} (in the JSX: ${e.snippet})` : name ?? "the user marked"} from the screen. The user deleted it on the screen (the app could not do it itself: ${reason}). Remove it cleanly, together with code that only it used, and change nothing else.`, sentModel || undefined, { plan: false, economy });
+}
+const inspector = createInspector({ onPick: showPick, onEscape: () => escapeEdit(), onMove: moveInScreen, onDelete: deleteInScreen, onDuplicate: duplicateInScreen, onText: editTextInScreen, onItemMove: moveItemInScreen });
 const canvas = createCanvas({
   root: $("canvas"), world: $("world"), preloadUrl: () => webviewPreload, urlFor: (f) => `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(f)}`,
   onReady: (file, id) => window.studio.registerView(file, id),
@@ -387,7 +506,7 @@ const canvas = createCanvas({
   },
   onSelect: () => { renderTabs(); updateSelbar(); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
-  onPageReady: (f) => { inspector.injectIfOn(f.view); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
+  onPageReady: (f) => { const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
 function syncFrames(screens) {
   for (const f of screens) if (!canvas.get(f)) {
@@ -453,17 +572,23 @@ addEventListener("keydown", (e) => {
   else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); canvas.zoomBy(1.25); }
   else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); canvas.zoomBy(0.8); }
   else if (e.key === "i" && !e.metaKey && !e.ctrlKey) setInspect(!inspector.on);
+  else if (inspector.on && !chatPick && marked.length && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); for (const g of markedByFile()) deleteInScreen(g); }
+  else if (inspector.on && !chatPick && marked.length && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); for (const g of markedByFile()) duplicateInScreen(g); }
   else if ((e.key === "Delete" || e.key === "Backspace") && canvas.selected() && !inspector.on) { e.preventDefault(); deleteScreen(canvas.selected()); }
-  else if (e.key === "Escape") { if (inspector.on) setInspect(false); else canvas.select(null); }
+  else if (e.key === "Escape") { if (inspector.on) escapeEdit(); else canvas.select(null); }
 });
 
 // ---------- inspector ----------
 // chat mode: the picker works without the side panel; every click adds the component to the message being written
 let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick session added (a plain click replaces them)
+let editTab = null; // the panel tab the user had before the Edit mode opened the Components tab
 function setInspect(v, { chat = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
-  inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v);
+  inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v); canvas.setEditing(v && !chatPick);
   $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
+  // the Edit mode puts the catalogue next to the screens (a component is dragged from it); leaving the mode gives the tab back
+  if (v && !chatPick) { if (!editTab) editTab = { before: panelTab }; setPanelTab("components", { focus: false }); }
+  else if (editTab) { const t = editTab.before; editTab = null; if (panelTab === "components") setPanelTab(t, { focus: false }); }
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
@@ -481,6 +606,9 @@ const propsPanel = createPropsPanel({
   api: { markLevel: (file, i, item) => { const v = viewOfFile(file); if (v) inspector.markLevel(v, i, item); }, editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
   onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
+  onDelete: (p) => deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
+  onDuplicate: (p) => duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
+  onAddItem: (p) => addItemInScreen({ file: p.file, ordinal: p.ordinal, prop: p.sub.prop, after: p.sub.index, ownerName: p.ownerName }),
 });
 let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
 const structureDialog = createStructureDialog({ api: {
@@ -780,7 +908,32 @@ function insertMention(name) {
   else { const sep = t.value && !/\s$/.test(t.value.slice(0, t.selectionStart)) ? " " : ""; t.setRangeText(sep + "@" + name + " ", t.selectionStart, t.selectionEnd, "end"); }
   $("mentions").hidden = true; mentionIdx = 0; t.focus();
 }
-const libraryPicker = createLibraryPicker({ api: window.studio, onAdd: (names) => { setPanelTab("agent"); for (const n of names) insertMention(n); } });
+// a component of the catalogue let go over a screen is added to the JSX of that screen at the place the page showed. The file takes it when the
+// app has code for it (jsx:insert); otherwise the toast offers to give the drop to the agent, with the documentation of the component.
+const ZONE_TEXT = { before: "before", after: "after", inside: "inside" };
+async function askAgentToAdd({ file, name, ordinal, zone, reason }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  const target = await window.studio.jsxInspect(file, [ordinal]).catch(() => null);
+  const where = target?.element ? `${ZONE_TEXT[zone]} the component ${target.element.name} (in the JSX: ${target.element.snippet})` : `${ZONE_TEXT[zone]} a component`;
+  const libBlock = (await window.studio.docsDescribe([name]).catch(() => null))?.text ?? "";
+  const message = [`In ${file}, add the library component ${name} ${where}. It was dropped there from the catalogue, so put it exactly at that place in the JSX and give it sensible props and content (the app could not do it itself: ${reason}). Change nothing else.`, libBlock].filter(Boolean).join("\n\n");
+  push({ kind: "user", text: `Add ${name} ${ZONE_TEXT[zone]} ${target?.element?.name ?? "a component"} in ${file}.` });
+  setBusy(true); sentModel = $("model").value; planPending = false;
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+}
+const catalogDrag = createCatalogDrag({
+  canvas,
+  onDrop: async (drop) => {
+    const { file, name, ordinal, zone } = drop;
+    const r = await window.studio.jsxInsert(file, ordinal, zone, undefined, name).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (r?.error) return toast(`${name} was not added: ${r.error}`, { err: true });
+    if (r?.needsAgent) return toast(`${name} was not added: ${r.reason}.`, { err: true, action: { label: "Ask the agent", run: () => askAgentToAdd({ ...drop, reason: r.reason }) } });
+    markAfterReload(file, [r.ordinal]);
+    toast(`${name} added ${ZONE_TEXT[zone]} the component in ${file.replace(/\.html$/, "")}${r.addedImport ? ` (${r.addedImport} imported)` : ""}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
+  },
+  onCancel: (overScreen) => { if (overScreen) toast("That place cannot take a component.", { err: true }); },
+});
+const libraryPicker = createLibraryPicker({ api: window.studio, onAdd: (names) => { setPanelTab("agent"); for (const n of names) insertMention(n); }, onDragStart: (name, e) => catalogDrag.start(name, e) });
 // ---------- panel tabs: Agent | Components ----------
 const TAB_KEY = "uu5studio.panelTab";
 let panelTab = "agent";
@@ -907,7 +1060,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Hide inspector" : "Show inspector", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
     ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));

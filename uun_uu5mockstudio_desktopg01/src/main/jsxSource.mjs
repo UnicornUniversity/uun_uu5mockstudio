@@ -275,6 +275,17 @@ function findListArray(ex, decls, depth = 0) {
   }
 }
 
+const collapse = (s) => String(s).replace(/\s+/g, " ").trim();
+/** The texts an element shows as its children: `<Text>Hello</Text>` (a JSX text) and `{TITLE}` / `{t("Ano", "Yes")}` (a text written somewhere). */
+function childTextsOf(el, script, cx) {
+  const out = [];
+  for (const c of el?.children ?? []) {
+    if (c.type === "JSXText") { const text = collapse(c.value); if (text) out.push({ kind: "jsx", text, start: script.start + c.start, end: script.start + c.end }); }
+    else if (c.type === "JSXExpressionContainer") { const t = textOf(c.expression, cx); if (t) out.push({ kind: "expr", via: t.via, langs: t.langs }); }
+  }
+  return out;
+}
+
 /** All JSX elements of the file in document order, with their attributes and source ranges (offsets into `html`). */
 export function parseElements(html) {
   const elements = [];
@@ -293,7 +304,8 @@ export function parseElements(html) {
     }
     const declList = collectDecls(ast), cx = { decls: declList, abs: (o) => script.start + o, langFns: langFunctions(declList) };
     const found = [];
-    walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); });
+    const elOf = new Map();
+    walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); else if (n.type === "JSXElement") elOf.set(n.openingElement, n); });
     found.sort((a, b) => a.start - b.start);
     for (const n of found) {
       const name = jsxName(n.name), root = name.split(/[.:]/)[0];
@@ -319,7 +331,7 @@ export function parseElements(html) {
       elements.push({
         ordinal: elements.length, name, uu5: /^[A-Z]/.test(root) && imported.has(root),
         start: abs(n.start), end: abs(n.end), nameEnd: abs(n.name.end), selfClosing: Boolean(n.selfClosing), attrs,
-        snippet: script.code.slice(n.start, n.end),
+        snippet: script.code.slice(n.start, n.end), childTexts: childTextsOf(elOf.get(n), script, cx),
       });
     }
   }
@@ -600,6 +612,25 @@ export function replaceItem(html, ordinal, prop, index, text) {
   return out;
 }
 
+/**
+ * Several items of a list prop in one change: `op` = "remove" / "duplicate" with `indexes`, or "add" with `props` ([{ name, type, value }]) at the place `at`.
+ * -> { html, removed } | { html, copies: [the indexes of the copies in the new list] } | { html, added: the index of the new item }. Throws like the single operations.
+ */
+export function changeItems(html, ordinal, prop, op, { indexes = [], props = [], at } = {}) {
+  const idx = [...new Set(indexes.filter(Number.isInteger))].sort((a, b) => a - b);
+  if (op === "remove" || op === "duplicate") {
+    if (!idx.length) throw new Error("No item is chosen.");
+    let out = html;
+    for (const i of [...idx].reverse()) out = op === "remove" ? removeItem(out, ordinal, prop, i) : duplicateItem(out, ordinal, prop, i); // from the end: the indexes before are not moved
+    return op === "remove" ? { html: out, removed: idx.length } : { html: out, copies: idx.map((i, k) => i + 1 + k) };
+  }
+  if (op === "add") {
+    const count = listOf(html, ordinal, prop).items.length, place = Number.isInteger(at) ? Math.max(0, Math.min(at, count)) : count;
+    return { html: addItem(html, ordinal, prop, props, place), added: place };
+  }
+  throw new Error("Unknown operation.");
+}
+
 /** Moves the item `from` to the place `to` (the other items shift); everything between the items (commas, comments, line breaks) stays where it is. */
 export function moveItem(html, ordinal, prop, from, to) {
   const { items } = listOf(html, ordinal, prop);
@@ -623,6 +654,36 @@ export function setText(html, ordinal, scope, langIdx, value) {
   const t = target?.langs?.[langIdx];
   if (!t) throw new Error("That text is not written out as a literal in the file, so it cannot be edited here.");
   const out = html.slice(0, t.start) + literalSource({ type: "string", value: String(value) }, html.slice(t.start, t.end)) + html.slice(t.end);
+  assertValid(out);
+  return out;
+}
+
+/**
+ * Changes a text that an element shows, found by what it says: `oldText` is what the page shows (the user double-clicked it), `value` the new text.
+ * The places searched, in this order: a text child (`<Text>Hello</Text>`), a text child written elsewhere (`{TITLE}`, `{t("Ano", "Yes")}`: the text of
+ * the language that says `oldText` is changed where it is written), a text prop (`header="Title"`, an LSI prop). Whitespace is not compared.
+ * Throws when the element has no such text written out as a literal (it is computed, or part of a bigger text). -> the new file.
+ */
+export function editText(html, ordinal, oldText, value) {
+  const e = element(html, ordinal), old = collapse(oldText), val = collapse(value);
+  if (!old) throw new Error("There is no text to change.");
+  if (!val) throw new Error("A text cannot be empty here (delete the component or the prop instead).");
+  const literal = (t) => literalSource({ type: "string", value: val }, html.slice(t.start, t.end));
+  const swap = (t) => html.slice(0, t.start) + literal(t) + html.slice(t.end);
+  let out = null;
+  const jsx = e.childTexts.find((c) => c.kind === "jsx" && c.text === old);
+  if (jsx) {
+    const raw = html.slice(jsx.start, jsx.end), lead = /^\s*/.exec(raw)[0], trail = /\s*$/.exec(raw)[0];
+    out = html.slice(0, jsx.start) + lead + (/[{}<>&]/.test(val) ? `{${JSON.stringify(val)}}` : val) + trail + html.slice(jsx.end); // characters that mean something in JSX are written as a string expression
+  }
+  if (!out) for (const c of e.childTexts) { const t = c.kind === "expr" && c.langs.find((l) => collapse(l.value) === old); if (t) { out = swap(t); break; } }
+  if (!out) for (const a of e.attrs) {
+    if (a.spread) continue;
+    if (a.type === "string" && collapse(a.value) === old) { out = setProp(html, ordinal, a.name, { type: "string", value: val }); break; }
+    const t = a.resolved?.langs?.find((l) => collapse(l.value) === old);
+    if (t) { out = swap(t); break; }
+  }
+  if (!out) throw new Error(`The text “${clip(old, 40)}” is not written out as a plain text of this component in the file (it may be computed, or part of a bigger text).`);
   assertValid(out);
   return out;
 }
@@ -899,6 +960,27 @@ const lineOf = (html, start, end) => {
 const shift = (text, from, to) => text.split("\n").map((l, i) => (i === 0 ? l : to + (l.startsWith(from) ? l.slice(from.length) : l.replace(/^[ \t]+/, "")))).join("\n");
 
 /**
+ * The edit that puts `code` (an element written without indentation) before / after / inside the element `T` (from `jsxLayout`).
+ * -> { edit: { start, end, text }, off: where the code begins inside `edit.text` }.
+ */
+function placement(html, T, position, code) {
+  const t = lineOf(html, T.start, T.end);
+  const own = (at, indent) => ({ edit: { start: at, end: at, text: `${indent}${shift(code, "", indent)}\n` }, off: indent.length });
+  const bare = (at) => ({ edit: { start: at, end: at, text: code }, off: 0 });
+  if (position === "before") return t.own ? own(t.ls, t.indent) : bare(T.start);
+  if (position === "after") {
+    if (!t.own) return bare(T.end);
+    return t.nl < 0 ? { edit: { start: t.le, end: t.le, text: `\n${t.indent}${shift(code, "", t.indent)}` }, off: 1 + t.indent.length } : own(t.nl + 1, t.indent);
+  }
+  if (T.selfClosing) {
+    const open = html.slice(T.start, T.end - 2).replace(/\s+$/, ""), indent = t.indent;
+    return { edit: { start: T.start, end: T.end, text: `${open}>\n${indent}  ${shift(code, "", `${indent}  `)}\n${indent}</${T.name}>` }, off: open.length + 2 + indent.length + 2 };
+  }
+  const c = lineOf(html, T.closeStart, T.closeStart + `</${T.name}>`.length);
+  return c.own ? own(c.ls, `${c.indent}  `) : bare(T.closeStart);
+}
+
+/**
  * Moves the JSX element `op.id` (its ordinal in the file as it was) before / after / inside the element `op.target`.
  * Only the safe case is done: both are plain JSX children in the same function (a condition, a list, a prop, the root of a component
  * and a move into another component are not). -> { html } or { error: why }.
@@ -915,19 +997,9 @@ function moveElement(html, op) {
   if (op.position === "inside") { if (T.isLocal) return { error: `${T.name} is a component of this file: what is put inside it is shown only when it renders its children` }; }
   else if (!T.viaChild) return { error: `the new place next to ${T.name} is not a plain child in the JSX` };
 
-  const e = lineOf(html, E.start, E.end), t = lineOf(html, T.start, T.end);
+  const e = lineOf(html, E.start, E.end);
   const code = shift(html.slice(E.start, E.end), e.indent, "");
-  const edits = [{ start: e.own ? e.ls : E.start, end: e.own ? (e.nl < 0 ? e.le : e.nl + 1) : E.end, text: "" }];
-  const own = (at, indent) => ({ start: at, end: at, text: `${indent}${shift(code, "", indent)}\n` });
-  if (op.position === "before") edits.push(t.own ? own(t.ls, t.indent) : { start: T.start, end: T.start, text: code });
-  else if (op.position === "after") edits.push(t.own ? (t.nl < 0 ? { start: t.le, end: t.le, text: `\n${t.indent}${shift(code, "", t.indent)}` } : own(t.nl + 1, t.indent)) : { start: T.end, end: T.end, text: code });
-  else if (T.selfClosing) {
-    const open = html.slice(T.start, T.end - 2).replace(/\s+$/, ""), indent = t.indent;
-    edits.push({ start: T.start, end: T.end, text: `${open}>\n${indent}  ${shift(code, "", `${indent}  `)}\n${indent}</${T.name}>` });
-  } else {
-    const c = lineOf(html, T.closeStart, T.closeStart + `</${T.name}>`.length);
-    edits.push(c.own ? own(c.ls, `${c.indent}  `) : { start: T.closeStart, end: T.closeStart, text: code });
-  }
+  const edits = [{ start: e.own ? e.ls : E.start, end: e.own ? (e.nl < 0 ? e.le : e.nl + 1) : E.end, text: "" }, placement(html, T, op.position, code).edit];
   const sorted = edits.sort((a, b) => b.start - a.start);
   for (let i = 1; i < sorted.length; i++) if (sorted[i].end > sorted[i - 1].start) return { error: `${nm} cannot be moved there (the places overlap)` };
   let out = html;
@@ -938,7 +1010,7 @@ function moveElement(html, op) {
 
 /**
  * Moves of the rearranged structure, in the order they were made: `ops` = [{ ordinal, target, position: "before" | "after" | "inside", name?, targetName? }]
- * (ordinals as the file had them before the first move). -> { html, applied: [index], failed: [{ index, reason }] }.
+ * (ordinals as the file had them before the first move). -> { html, applied: [index], failed: [{ index, reason }], moved: [the ordinals of the moved elements in the new file] }.
  */
 export function moveElements(html, ops) {
   let cur = tagMv(html);
@@ -948,5 +1020,108 @@ export function moveElements(html, ops) {
     const r = moveElement(cur, { id: op.ordinal, target: op.target, position: op.position, name: op.name });
     if (r.error) failed.push({ index: i, reason: r.error }); else { cur = r.html; applied.push(i); }
   });
+  // where the moved elements are in the new file (the temporary attribute still tells which is which): to mark them again after the page is rendered
+  const at = new Map(parseElements(cur).map((e) => [Number(e.attrs.find((a) => a.name === MV)?.value), e.ordinal]));
+  const moved = applied.map((i) => at.get(ops[i].ordinal)).filter(Number.isInteger);
+  return { html: stripMv(cur), applied, failed, moved };
+}
+
+/** The names that the babel scripts of the file import or declare at the top level. */
+function boundNames(html) {
+  const names = new Set();
+  for (const script of babelScripts(html)) {
+    let ast;
+    try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { continue; }
+    for (const st of ast.program.body) {
+      if (st.type === "ImportDeclaration") for (const sp of st.specifiers) names.add(sp.local.name);
+      const d = st.type === "ExportNamedDeclaration" || st.type === "ExportDefaultDeclaration" ? st.declaration : st;
+      if (d?.type === "FunctionDeclaration" && d.id) names.add(d.id.name);
+      else if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier") names.add(v.id.name);
+    }
+  }
+  return names;
+}
+
+/** `import Root from "source";` after the last import of the first babel script that has imports (same indentation). null when the file has no import to follow. */
+function addImport(html, root, source) {
+  for (const script of babelScripts(html)) {
+    let ast;
+    try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { continue; }
+    const imports = ast.program.body.filter((st) => st.type === "ImportDeclaration");
+    if (!imports.length) continue;
+    const lastImport = imports.at(-1), at = script.start + lastImport.end, ls = html.lastIndexOf("\n", script.start + lastImport.start - 1) + 1;
+    const indent = /^[ \t]*/.exec(html.slice(ls, script.start + lastImport.start))[0];
+    return html.slice(0, at) + `\n${indent}import ${root} from "${source}";` + html.slice(at);
+  }
+  return null;
+}
+
+/**
+ * Puts a new JSX element (`op.snippet`, one element written as JSX) before / after / inside the element `op.target` (its ordinal in the file).
+ * Same safe cases as the move: a plain JSX child of a function, or the inside of an element that is not a component written in the file.
+ * -> { html, ordinal: the ordinal of the new element in the new file, addedImport?: the name whose import was added (`op.imports`), missingImport?: the name the snippet uses that the file does not import }, or { error: why }.
+ */
+export function insertElement(html, op) {
+  const nm = op.name ?? "the component", snippet = String(op.snippet ?? "").trim();
+  let root;
+  try { root = parseExpression(snippet, { plugins: ["jsx"] }); } catch (err) { return { error: `the code of ${nm} is not valid JSX (${String(err.message).slice(0, 80)})` }; }
+  if (root.type !== "JSXElement") return { error: `the code of ${nm} must be one JSX element` };
+  if (!Number.isInteger(op.target) || !["before", "after", "inside"].includes(op.position)) return { error: "the place for the new component is not set" };
+  const tagged = tagMv(html), T = jsxLayout(tagged).find((x) => x.id === op.target);
+  if (!T) return { error: "the place for the new component is not a JSX element written in the file" };
+  if (op.position === "inside") { if (T.isLocal) return { error: `${T.name} is a component of this file: what is put inside it is shown only when it renders its children` }; }
+  else if (!T.viaChild) return { error: `the place next to ${T.name} is not a plain child in the JSX (it is in a condition, a list, a prop, or it is the root of a component)` };
+
+  const { edit, off } = placement(tagged, T, op.position, snippet);
+  const codeAt = edit.start + off, ordinal = parseElements(tagged).filter((e) => e.start < codeAt).length;
+  const out = stripMv(tagged.slice(0, edit.start) + edit.text + tagged.slice(edit.end));
+  try { assertValid(out); } catch (err) { return { error: `the new code would not be valid (${String(err.message).slice(0, 80)})` }; }
+  const used = jsxName(root.openingElement.name).split(/[.:]/)[0];
+  if (!/^[A-Z]/.test(used) || boundNames(out).has(used)) return { html: out, ordinal };
+  // `op.imports` = { Root: "module" } of the libraries that may be imported without more dependencies: the import is added to the file
+  const withImport = op.imports?.[used] ? addImport(out, used, op.imports[used]) : null;
+  if (withImport) { try { assertValid(withImport); return { html: withImport, ordinal, addedImport: used }; } catch { /* reported as missing */ } }
+  return { html: out, ordinal, missingImport: used };
+}
+
+/**
+ * Removes JSX elements of the file (`ordinals` as the file has them now), the way the move takes one out: the whole line when the element is alone on it.
+ * Only plain JSX children are removed (not one in a condition, a list or a prop, and not the root of a component: the rest of the code would need a decision).
+ * An element inside one that is removed too goes with it. -> { html, applied: [ordinal], failed: [{ ordinal, reason }] }.
+ */
+export function removeElements(html, ordinals) {
+  let cur = tagMv(html);
+  const applied = [], failed = [];
+  for (const id of ordinals) {
+    if (!Number.isInteger(id)) { failed.push({ ordinal: id, reason: "it is not a JSX element written in the file" }); continue; }
+    const E = jsxLayout(cur).find((x) => x.id === id);
+    if (!E) { if (parseElements(html)[id]) applied.push(id); else failed.push({ ordinal: id, reason: "it is not a JSX element written in the file" }); continue; } // gone with an element that was removed before it
+    if (!E.viaChild) { failed.push({ ordinal: id, reason: `${E.name} is not a plain child in the JSX (it is in a condition, a list, a prop, or it is the root of a component)` }); continue; }
+    const e = lineOf(cur, E.start, E.end);
+    const out = e.own ? cur.slice(0, e.ls) + cur.slice(e.nl < 0 ? e.le : e.nl + 1) : cur.slice(0, E.start) + cur.slice(E.end);
+    try { assertValid(stripMv(out)); } catch (err) { failed.push({ ordinal: id, reason: `the file would not be valid without ${E.name} (${String(err.message).slice(0, 80)})` }); continue; }
+    cur = out; applied.push(id);
+  }
   return { html: stripMv(cur), applied, failed };
+}
+
+/**
+ * Copies of JSX elements, each put right after its original (the same safe cases as the insert: a plain child of a function).
+ * `ordinals` as the file has them now. -> { html, copies: [the ordinals of the copies in the new file], failed: [{ ordinal, reason }] }.
+ */
+export function duplicateElements(html, ordinals) {
+  const ids = [...new Set((ordinals ?? []).filter(Number.isInteger))].sort((a, b) => b - a); // from the end of the file: an insert does not move the ordinals before it
+  let cur = html;
+  const failed = [], copies = [];
+  for (const id of ids) {
+    const tagged = tagMv(cur), E = jsxLayout(tagged).find((x) => x.id === id);
+    if (!E) { failed.push({ ordinal: id, reason: "it is not a JSX element written in the file" }); continue; }
+    const snippet = shift(stripMv(tagged.slice(E.start, E.end)), lineOf(tagged, E.start, E.end).indent, "");
+    const before = parseElements(cur).length, r = insertElement(cur, { target: id, position: "after", snippet, name: E.name });
+    if (r.error) { failed.push({ ordinal: id, reason: r.error }); continue; }
+    const size = parseElements(r.html).length - before;
+    for (let i = 0; i < copies.length; i++) if (copies[i] >= r.ordinal) copies[i] += size; // the copies of later elements move down by what was inserted before them
+    copies.push(r.ordinal); cur = r.html;
+  }
+  return { html: cur, copies, failed };
 }
