@@ -75,3 +75,12 @@ test("updateState serializes concurrent writers (no lost updates)", async () => 
   const s = await readState(dir);
   assert.equal(Object.keys(s).length, 25);
 });
+
+test("each provider keeps its own session of a conversation", async () => {
+  const chats = await import("../src/main/chats.mjs");
+  const st = chats.normalize({}), id = st.currentChatId;
+  chats.setSession(st, id, "c1");
+  chats.setSession(st, id, "x1", "codex");
+  assert.equal(chats.current(st).sessionId, "c1");
+  assert.equal(chats.current(st).codexSessionId, "x1");
+});

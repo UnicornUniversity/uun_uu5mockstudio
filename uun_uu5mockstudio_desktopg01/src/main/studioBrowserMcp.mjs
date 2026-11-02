@@ -131,5 +131,5 @@ export function createStudioBrowser({ baseUrl, onNavigated, readStructure }) {
   ];
 
   const viewOf = (file) => { const id = views.get(norm(file)); const wc = id ? webContents.fromId(id) : undefined; return wc && !wc.isDestroyed() ? wc : undefined; };
-  return { server: createSdkMcpServer({ name: "studio-browser", version: "0.3.0", tools }), register, unregister, viewOf, baseUrl };
+  return { server: createSdkMcpServer({ name: "studio-browser", version: "0.3.0", tools }), tools, register, unregister, viewOf, baseUrl };
 }

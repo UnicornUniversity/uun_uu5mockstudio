@@ -11,9 +11,14 @@ import path from "node:path";
 const WIKI = path.join("skills", "uu5-knowledge", "references", "wiki", "05-component-taxonomy-library-selection");
 const TYPE_WORDS = new Set(["string", "bool", "number", "object", "func", "node", "lsi", "icon", "unit", "array", "any", "ref", "element", "colorScheme", "borderRadius"]);
 
-export function findWikiRoot({ pluginsFile = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json") } = {}) {
+/**
+ * The wiki of the `uu5-development` plugin: where Claude Code installed it, else in a marketplace synchronised by the uuAiMarketplace extension
+ * (`marketplaceDirs`, default the uu5 one; not looked at when a `pluginsFile` is named), so that it also works for users of Codex alone.
+ */
+export function findWikiRoot({ pluginsFile, marketplaceDirs } = {}) {
+  const mps = marketplaceDirs ?? (pluginsFile ? [] : [path.join(os.homedir(), ".skilled-plus4u-mcp", "marketplaces", "uu-technical-products-mp")]);
   try {
-    const reg = JSON.parse(fs.readFileSync(pluginsFile, "utf8")).plugins ?? {};
+    const reg = JSON.parse(fs.readFileSync(pluginsFile ?? path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8")).plugins ?? {};
     for (const [key, installs] of Object.entries(reg)) {
       if (!/^uu5-development@/.test(key)) continue;
       for (const inst of [...installs].reverse()) {
@@ -22,6 +27,7 @@ export function findWikiRoot({ pluginsFile = path.join(os.homedir(), ".claude", 
       }
     }
   } catch { /* no Claude Code plugins installed */ }
+  for (const mp of mps) { const dir = path.join(mp, "plugins", "uu5-development", WIKI); if (fs.existsSync(dir)) return dir; }
   return null;
 }
 
@@ -84,8 +90,7 @@ export function parseDoc(md) {
 export function createDocs(wikiRoot = findWikiRoot()) {
   let index = null, summaries = null;
   const cache = new Map();
-  const libOf = new Map(); // component name -> the wiki folder (library) it is documented in
-  function load() {
+    function load() {
     if (index) return index;
     index = new Map();
     if (!wikiRoot) return index;
@@ -94,7 +99,7 @@ export function createDocs(wikiRoot = findWikiRoot()) {
         if (!dir.isDirectory()) continue;
         try {
           const map = JSON.parse(fs.readFileSync(path.join(wikiRoot, dir.name, "_index.json"), "utf8"));
-          for (const [name, file] of Object.entries(map)) { index.set(name, path.join(wikiRoot, dir.name, file)); libOf.set(name, dir.name); }
+          for (const [name, file] of Object.entries(map)) { index.set(name, path.join(wikiRoot, dir.name, file)) }
         } catch { /* folder without an index */ }
       }
     } catch { /* unreadable wiki */ }
@@ -108,11 +113,11 @@ export function createDocs(wikiRoot = findWikiRoot()) {
     cache.set(name, doc);
     return doc;
   };
-  /** Every documented component: [{ name, library, description }], sorted by name (read once, then cached). */
+  /** Every documented component: [{ name, library, description }]; the library is the namespace the component is imported under (Uu5Elements, Plus4U5App …), not the wiki folder, sorted by name (read once, then cached). */
   function list() {
     if (summaries) return summaries;
     load();
-    summaries = [...index.keys()].sort((a, b) => a.localeCompare(b)).map((name) => ({ name, library: libOf.get(name), description: get(name)?.description ?? "" }));
+    summaries = [...index.keys()].sort((a, b) => a.localeCompare(b)).map((name) => ({ name, library: name.split(".")[0], description: get(name)?.description ?? "" }));
     return summaries;
   }
   return {

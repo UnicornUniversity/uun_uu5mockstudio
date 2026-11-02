@@ -12,7 +12,7 @@ import { createLibraryPicker } from "./libraryPicker.js";
 import { createCatalogDrag } from "./catalogDrag.js";
 import { listKind, newAction } from "./actionGrammar.js";
 import { attachFreeze } from "./freeze.js";
-import { usageOf, usageDelta, usageLabel, usageTitle, contextOf, CONTEXT_WARN, formatTokens } from "./usage.js";
+import { usageDelta, usageLabel, usageTitle, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
 import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
@@ -38,7 +38,7 @@ log.addEventListener("click", (e) => {
 // ---------- chat rendering ----------
 const TOOL_LABELS = {
   Skill: (i) => `Skill ${i.skill ?? ""}`, Read: (i) => `Reading ${base(i.file_path)}`, Write: (i) => `Writing ${base(i.file_path)}`,
-  Edit: (i) => `Editing ${base(i.file_path)}`, MultiEdit: (i) => `Editing ${base(i.file_path)}`, Glob: () => "Searching files", Grep: () => "Searching file contents",
+  Shell: (i) => `Running ${String(i.command ?? "").replace(/^\/bin\/(?:zsh|bash|sh) -lc /, "").slice(0, 70)}`, Edit: (i) => `Editing ${base(i.file_path)}`, MultiEdit: (i) => `Editing ${base(i.file_path)}`, Glob: () => "Searching files", Grep: () => "Searching file contents",
 "mcp__studio-browser__browser_open": (i) => `Preview: opening ${i.file ?? ""}`,
   "mcp__studio-browser__browser_reload": () => "Preview: reload and check", "mcp__studio-browser__browser_console": () => "Preview: reading console",
   "mcp__studio-browser__browser_snapshot": () => "Preview: snapshot", "mcp__studio-browser__browser_screenshot": () => "Preview: screenshot",
@@ -94,10 +94,34 @@ const DEFAULT_MODEL_KEY = "uu5studio.defaultModel";
 const prettyModel = (id) => { const m = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(id ?? ""); return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id; };
 function showDefaultModel(id) {
   const opt = $("model").querySelector('option[value=""]');
+  if (!opt) return; // no Claude among the usable providers
   opt.textContent = id ? `Default (${prettyModel(id)})` : "Default";
   $("model").title = id ? `Default = the model from your Claude Code: ${id}. Pick another one to override it for the next requests.` : "Default = the model configured in your Claude Code.";
 }
 try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
+/**
+ * The model list is built from what is usable on this computer (main/agents.mjs): per provider (Claude, Codex) that is installed and signed in,
+ * its own models. Both selects (message field, start screen) get the same list; the choice is remembered.
+ */
+const MODEL_KEY = "uu5studio.model";
+function renderModels(agents) {
+  let saved = ""; try { saved = localStorage.getItem(MODEL_KEY) ?? ""; } catch { /* not remembered */ }
+  for (const sel of [$("model"), $("dash-model")]) {
+    const keep = sel.dataset.ready ? sel.value : saved;
+    sel.replaceChildren();
+    if (!agents.length) { sel.append(Object.assign(document.createElement("option"), { value: "", textContent: "No AI available", disabled: true })); sel.title = "Neither Claude Code nor Codex is installed and signed in."; continue; }
+    for (const a of agents) {
+      const box = agents.length > 1 ? sel.appendChild(Object.assign(document.createElement("optgroup"), { label: a.label })) : sel;
+      for (const m of a.models) box.append(Object.assign(document.createElement("option"), { value: m.id, textContent: m.label, title: m.description }));
+    }
+    sel.dataset.ready = "1";
+    sel.value = keep; if (sel.value !== keep) sel.selectedIndex = 0;
+    sel.title = `Model for this request: ${agents.map((a) => a.label).join(" and ")}.`;
+    sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch { /* not remembered */ } if (sel.id === "model") $("dash-model").value = sel.value; else $("model").value = sel.value; };
+  }
+  try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
+}
+const refreshAgents = (refresh) => window.studio.agents(refresh).then(renderModels).catch(() => {});
 let sentModel = "";
 // ---------- Economy: less thinking and the smallest change that does what was asked (a cheaper request)
 const ECO_KEY = "uu5studio.economy";
@@ -244,7 +268,7 @@ function learnDefaultModel(id) {
 
 // ---------- "Claude is working" indicator ----------
 const WORK = {
-  Skill: "Loading rules and templates…", Read: "Reading files…", Glob: "Searching files…", Grep: "Searching file contents…",
+  Shell: "Running a command…", Skill: "Loading rules and templates…", Read: "Reading files…", Glob: "Searching files…", Grep: "Searching file contents…",
   Write: "Writing the mockup…", Edit: "Editing the mockup…", MultiEdit: "Editing the mockup…",
   "mcp__studio-browser__browser_open": "Opening the preview…", "mcp__studio-browser__browser_reload": "Verifying the render…",
   "mcp__studio-browser__browser_console": "Reading the console…", "mcp__studio-browser__browser_snapshot": "Checking the content…", "mcp__studio-browser__browser_screenshot": "Taking a screenshot…",
@@ -313,52 +337,50 @@ $("cw-new").onclick = async () => {
 };
 
 /** The tokens of this request: the counters of the result are cumulative over the conversation, so the previous result is subtracted. */
-function pushUsage(m) {
-  const cum = usageOf(m); if (!cum) return;
-  const prevE = [...entries].reverse().find((e) => e.kind === "usage");
+function pushUsage(cum) {
+  if (!cum) return;
+  if (cum.perRequest) { push({ kind: "usage", ...cum, cum, ctx: undefined }); persist(); return; } // the counters are of this request alone
+  const prevE = [...entries].reverse().find((e) => e.kind === "usage" && !e.perRequest); // a provider that counts per request has no counter to subtract
   const prev = prevE ? (prevE.cum ?? { in: prevE.in, out: prevE.out, cacheRead: prevE.cacheRead, cacheWrite: prevE.cacheWrite, models: prevE.models }) : null; // an entry of an older version holds the counters themselves
   const ctx = ctxNow || undefined;
   if (!prev && entries.filter((e) => e.kind === "user").length > 1) push({ kind: "usage", ...cum, cum, sofar: true, ctx }); // earlier requests were not measured: only the total is known
   else { const d = usageDelta(cum, prev); if (d) push({ kind: "usage", ...d, cum, ctx }); }
   persist(); updateCtxWarn();
 }
-const onClaudeEvent = (m) => {
-  if (m.type === "system" && m.subtype === "init") learnDefaultModel(m.model);
-  if (m.type === "stream_event" && m.event?.type === "content_block_start") {
-    const b = m.event.content_block;
-    if (b?.type === "tool_use") setWork(WORK[b.name] ?? "Working…");
-    else if (b?.type === "thinking") setWork("Thinking…");
-    else if (b?.type === "text") setWork("Writing the answer…");
-  } else if (m.type === "stream_event" && m.event?.delta?.type === "text_delta") {
+/** The events of the provider behind the agent (Claude, Codex…), see src/main/providers/events.mjs. */
+const onAgentEvent = (m) => {
+  if (m.type === "init") learnDefaultModel(m.model);
+  else if (m.type === "status") setWork(m.kind === "tool" ? (WORK[m.tool] ?? "Working…") : m.kind === "thinking" ? "Thinking…" : "Writing the answer…");
+  else if (m.type === "text_delta") {
     setWork("Writing the answer…");
     let e = last(); if (e?.kind !== "ai" || e.done) e = push({ kind: "ai", text: "" });
-    e.text += m.event.delta.text; if (planPending) e.planning = true; paint(e);
-  } else if (m.type === "assistant") {
-    ctxNow = contextOf(m) || ctxNow;
+    e.text += m.text; if (planPending) e.planning = true; paint(e);
+  } else if (m.type === "turn") {
+    ctxNow = m.ctx || ctxNow;
     const e = last(); if (e?.kind === "ai") e.done = true;
-    for (const b of m.message.content) if (b.type === "tool_use") {
+    for (const b of m.tools) {
       let g = last(); if (g?.kind !== "steps") g = push({ kind: "steps", steps: [] });
       g.steps.push({ id: b.id, label: labelOf(b), status: "run" }); paint(g);
       setWork(WORK[b.name] ?? labelOf(b));
       const wf = toolFile(b); if (wf) setWorkFile(wf);
     }
-  } else if (m.type === "user" && Array.isArray(m.message?.content)) {
-    for (const b of m.message.content) if (b.type === "tool_result") for (const g of entries) if (g.kind === "steps") {
-      const s = g.steps.find((x) => x.id === b.tool_use_id); if (s) { s.status = b.is_error ? "bad" : "ok"; paint(g); persist(); }
+  } else if (m.type === "tool_result") {
+    for (const g of entries) if (g.kind === "steps") {
+      const s = g.steps.find((x) => x.id === m.id); if (s) { s.status = m.isError ? "bad" : "ok"; paint(g); persist(); }
     }
     setWork("Thinking…");
   } else if (m.type === "result") {
-    finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.is_error) convertPlan(); } persist();
-    if (m.is_error) push({ kind: "err", text: `Error: ${m.result ?? m.subtype}` });
-    pushUsage(m); // below the answer, and below the card of a plan
+    finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.isError) convertPlan(); } persist();
+    if (m.isError) push({ kind: "err", text: `Error: ${m.text}` });
+    pushUsage(m.usage); // below the answer, and below the card of a plan
   } else if (m.type === "stopped") {
     planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
     planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }
 };
-window.studio.onEvent(onClaudeEvent);
-window.__feed = onClaudeEvent; // lets automated checks play messages of the agent without running it
+window.studio.onEvent(onAgentEvent);
+window.__feed = onAgentEvent; // lets automated checks play events of the agent without running it
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
 let saveLayoutTimer, savedLayout = {}, rules = null, desc = null;
@@ -1213,6 +1235,7 @@ const aboutRows = () => {
   return [
     ["Application shell", `Electron${v(rt.electron)} (Chromium${v(rt.chrome)}, Node.js${v(rt.node)})`],
     ["AI backend", `Claude Code installed on this computer, driven through the Claude Agent SDK${v(d["@anthropic-ai/claude-agent-sdk"])}`],
+    ["Other AI backend", "Codex (OpenAI) installed on this computer, run as `codex exec`; pick it in the model list. It reads everywhere your user can, but writes only into the project folder (sandbox)."],
     ["Mockup UI", "uu5 / uuGDS (uu5g05 libraries, loaded from the Plus4U CDN and cached locally)"],
     ["Component reference", "uu5-development and uugds Claude Code plugins (read from your local installation)"],
     ["JSX source editing", `Babel parser${v(d["@babel/parser"])}`],
@@ -1298,7 +1321,7 @@ function updateNoProject() {
   if (none) document.body.dataset.noproject = "1"; else delete document.body.dataset.noproject;
   $("prompt").disabled = none; $("send").disabled = none || !ready || busy;
   $("prompt").placeholder = none ? "Open or create a project first…" : "Describe the screen you want to design…";
-  if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("repostrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
+  if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("descstrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
 }
 /** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
 const templatesDialog = createTemplatesDialog({ api: window.studio });
@@ -1457,7 +1480,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "app:about": return openAbout();
       case "app:tour": return tour.open();
       case "claude:setup": return setup.open();
-      case "plugins:check": return setup.checkUpdates(true);
+      case "codex:plugins": return setup.openCodex();
       case "update:check": return checkAppUpdates();
       case "cdn:offline": return cdnActions.offline();
       case "cdn:warmup": return cdnActions.warmup();
@@ -1484,7 +1507,7 @@ setup = createSetup({
     if (ready) $("model").title = `Claude Code ${st.version} · ${st.email ?? ""}`;
   },
 });
-const checkClaude = (refresh) => setup.check(refresh);
+const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgents(refresh); return st; }); // the usable providers and their models follow the setup
 // ---------- attached screenshots ----------
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]

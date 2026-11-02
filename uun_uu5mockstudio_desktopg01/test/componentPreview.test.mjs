@@ -33,3 +33,10 @@ test("the Alert has no preview (it shows nothing on its own), the list layouts h
   assert.equal(previewSnippet("Uu5Elements.Alert", docs), null);
   for (const n of ["Uu5Elements.ListLayout", "Uu5Elements.CollapsibleBox", "Uu5Elements.RichIconGroup", "Uu5Elements.ListItem"]) assert.ok(previewable(n, docs), n);
 });
+
+test("a component of another library gets its dependency and import into the page", () => {
+  const html = previewPage("Uu5Charts.PieChart", docs);
+  assert.match(html, /uu5DemoDependencies = \{"uu5chartsg01":"3\.x"\}/);
+  assert.match(html, /from "uu5chartsg01"/);
+  assert.equal(previewSnippet("Plus4U5App.Spa", docs), null);
+});

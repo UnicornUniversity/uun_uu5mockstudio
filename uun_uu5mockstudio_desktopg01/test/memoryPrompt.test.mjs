@@ -48,3 +48,7 @@ test("the Economy mode adds a short rule and the screenshot for the agent is sma
   assert.equal(shrinkScreenshot(fake(2880)).toString(), "j72"); assert.equal(asked, SCREENSHOT_WIDTH);
   assert.equal(shrinkScreenshot(fake(700)).toString(), "full72", "a small one is not scaled");
 });
+
+test("the agent is told to write components with their namespace, without aliases", () => {
+  assert.match(studioPrompt({ cwd: "/p", urlBase: "http://x" }), /Do not alias or destructure a library/);
+});

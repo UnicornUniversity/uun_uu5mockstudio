@@ -7,7 +7,7 @@ const STATE_MARK = { ok: "✓", disabled: "⚠", outdated: "⚠", missing: "✕"
  * and any time from the Help menu to see the state. Plugin updates are only ever offered (strip under the chat header), never applied silently.
  */
 export function createSetup({ api, toast, isBusy, onStatus }) {
-  let status = null, manual = false, working = false, poll = null, logLines = [];
+  let status = null, manual = false, working = false, poll = null, logLines = [], mode = "claude"; // the same dialog shows the state of Claude Code or of Codex
   const box = $("setup");
   const clearPoll = () => { clearInterval(poll); poll = null; };
 
@@ -59,12 +59,67 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
     status = await api.claudeStatus(refresh);
     onStatus?.(status);
     const needs = status.state !== "ready";
+    if (needs) mode = "claude"; // Claude Code is missing: its wizard takes over
+    else if (mode === "codex") return status; // the dialog of Codex stays as it is
     manual = show && !needs ? true : manual && !needs ? manual : false;
     if (show) manual = true;
     box.hidden = !needs && !manual;
     if (!box.hidden) await render();
     if (!needs) { manual = manual && !box.hidden; }
     return status;
+  }
+
+  // ----- Codex: the same dialog with its own content (installed, signed in, plugins), opened from Help > Codex & Plugins
+  let codexState = null;
+  async function renderCodex() {
+    const r = codexState; if (!r) return;
+    const st = r.status, plugins = r.plugins ?? [], bad = plugins.some((p) => p.state !== "ok");
+    const list = [
+      { key: "codex", title: "Codex", ok: st.installed, detail: st.installed ? (st.version ? `Version ${st.version}` : "Installed on this computer") : "Not found on this computer" },
+      { key: "login", title: "Sign in", ok: st.loggedIn, detail: st.loggedIn ? (st.text || "Signed in") : st.installed ? "Not signed in" : "After Codex is installed" },
+      { key: "plugins", title: "Plugins", ok: !bad && st.installed && st.loggedIn, detail: st.loggedIn ? (bad ? "Plugins are missing or outdated" : "uu5 plugins are installed") : "After signing in" },
+    ];
+    const active = list.find((x) => !x.ok)?.key ?? null;
+    $("setup-steps").replaceChildren(...list.map((x) => el("li", { className: x.ok ? "done" : x.key === active ? "active" : "" },
+      el("span", { className: "st", textContent: x.ok ? "✓" : x.key === active ? "●" : "○" }), el("div", {}, el("b", { textContent: x.title }), el("span", { className: "sd", textContent: x.detail })))));
+    const pl = $("setup-plugins"); pl.hidden = !plugins.length || !st.installed || !st.loggedIn;
+    pl.replaceChildren(...plugins.map((p) => el("li", { className: p.state }, el("span", { className: "pm", textContent: STATE_MARK[p.state] ?? "?" }), p.name,
+      el("small", { textContent: `${p.kind} · ${p.installed ?? "not installed"}${p.state === "outdated" ? ` → ${p.available}` : ""}` }))));
+    for (const id of ["setup-code", "setup-copy", "setup-link", "setup-more", "setup-cancel", "setup-log"]) $(id).hidden = true;
+    $("setup-close").hidden = false; $("setup-recheck").disabled = working;
+    $("setup-updates").hidden = Boolean(active); $("setup-updates").disabled = working; // like Claude Code: a check that only looks, the answer comes as a message
+    const action = $("setup-action"), missing = plugins.some((p) => p.state === "missing");
+    action.hidden = !(st.installed && st.loggedIn && bad); action.disabled = working;
+    action.textContent = working ? "Installing…" : missing ? "Install plugins" : "Update plugins";
+    $("setup-title").textContent = !st.installed ? "Codex is not installed" : !st.loggedIn ? "Sign in to Codex" : bad ? "Codex plugins are needed" : "Codex is ready";
+    $("setup-text").textContent = !st.installed ? "uu5Mock Studio can also work through Codex (OpenAI) installed on this computer, with your own sign-in. Install the Codex CLI or the ChatGPT app, then check again."
+      : !st.loggedIn ? "Sign in by running `codex login` in a terminal (or in the ChatGPT app), then check again. uu5Mock Studio never sees your password."
+      : bad ? "The mockups are built with the uu5-mockup, uugds and uu5-development plugins. They are installed into Codex from the marketplace that the uuAiMarketplace extension keeps in sync; Codex does not update them by itself."
+      : `Codex${st.version ? ` ${st.version}` : ""} · ${st.text || "signed in"}. All plugins are installed.`;
+  }
+  async function loadCodex() {
+    codexState = await api.codexPluginsState().catch((e) => ({ status: { installed: false, loggedIn: false, text: String(e?.message ?? e) }, plugins: [] }));
+    await renderCodex();
+  }
+  async function openCodex() {
+    mode = "codex"; manual = true; working = false; logLines = []; say("");
+    box.hidden = false;
+    await loadCodex();
+  }
+  /** "Check for plugin updates": only looks (the marketplace folder against what Codex has) and says what it found. */
+  async function checkCodexUpdates() {
+    await loadCodex();
+    const ps = codexState.plugins ?? [], outdated = ps.filter((p) => p.state === "outdated").length;
+    toast(outdated ? `${outdated} plugin update${outdated > 1 ? "s" : ""} available.` : ps.some((p) => p.state === "missing") ? "Some plugins are not installed yet." : "Plugins are up to date.");
+  }
+  async function runCodexPlugins() {
+    working = true; say("Installing into Codex…"); await renderCodex();
+    const r = await api.codexPluginsCheck().catch((e) => ({ error: String(e?.message ?? e) }));
+    working = false; say("");
+    if (r?.error) say(r.error, true);
+    else if (r.failed?.length) say(`${r.failed[0].id.split("@")[0]}: ${r.failed[0].message}`, true);
+    else toast("Plugins updated. Codex uses them from your next message.");
+    await loadCodex();
   }
 
   // ----- actions
@@ -93,16 +148,17 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
   }
 
   $("setup-action").onclick = async () => {
+    if (mode === "codex") return working ? undefined : runCodexPlugins();
     if (!status || working) return;
     const act = steps(status).find((s) => !s.ok)?.key ?? "plugins";
     if (act === "claude") await runInstall(); else if (act === "login") await runLogin(); else await runPlugins();
   };
   $("setup-cancel").onclick = async () => { await api.claudeCancel("install"); await api.claudeCancel("login"); clearPoll(); say("Cancelled."); };
-  $("setup-recheck").onclick = () => check(true, { show: manual });
-  $("setup-close").onclick = () => { manual = false; box.hidden = true; };
+  $("setup-recheck").onclick = () => (mode === "codex" ? openCodex() : check(true, { show: manual }));
+  $("setup-close").onclick = () => { manual = false; box.hidden = true; mode = "claude"; };
   $("setup-link").onclick = (e) => api.openExternal(e.currentTarget.dataset.href);
   $("setup-copy").onclick = async () => { try { await navigator.clipboard.writeText($("setup-copy").dataset.text ?? ""); toast("Command copied."); } catch { toast("Could not copy.", { err: true }); } };
-  $("setup-updates").onclick = () => checkUpdates(true, { fromWizard: true });
+  $("setup-updates").onclick = () => (mode === "codex" ? (working ? undefined : checkCodexUpdates()) : checkUpdates(true, { fromWizard: true }));
   box.addEventListener("keydown", (e) => { if (e.key === "Escape" && manual) { e.stopPropagation(); $("setup-close").click(); } });
   api.onClaudeProgress((p) => {
     if (p.kind === "install" && p.line) { logLines.push(p.line); paintLog(); }
@@ -135,5 +191,5 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
   };
   $("us-later").onclick = async () => { await api.pluginsLater(updates); updates = []; paintStrip(); };
 
-  return { check, checkUpdates, open: () => check(true, { show: true }), paintStrip, ready: () => status?.state === "ready" };
+  return { check, checkUpdates, open: () => { mode = "claude"; return check(true, { show: true }); }, openCodex, paintStrip, ready: () => status?.state === "ready" };
 }

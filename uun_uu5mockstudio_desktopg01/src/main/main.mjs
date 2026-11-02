@@ -5,8 +5,14 @@ import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { startMockServer } from "./mockServer.mjs";
 import { previewPage, previewable, PREVIEW_PREFIX } from "./componentPreview.mjs";
+import { createPreviewCheck } from "./previewCheck.mjs";
 import { ClaudeService } from "./claudeService.mjs";
+import { CodexService, resetCodexPlugins } from "./codexService.mjs";
+import { codexStatus, codexVersion, findCodex } from "./codexEnv.mjs";
+import { ensureCodexPlugins, codexPluginVersions, codexPluginStates } from "./codexPlugins.mjs";
+import { listAgents } from "./agents.mjs";
 import { createStudioBrowser } from "./studioBrowserMcp.mjs";
+import { startBrowserMcpHttp } from "./studioBrowserHttp.mjs";
 import { createScreenHistory } from "./screenHistory.mjs";
 import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude } from "./claudeEnv.mjs";
 import { shouldCheck } from "./pluginUpdates.mjs";
@@ -86,10 +92,11 @@ app.whenReady().then(async () => {
   let glass = process.platform === "darwin" && Boolean(loadApp().glass);
   const glassOn = () => glass && !nativeTheme.prefersReducedTransparency;
   function toggleGlass() { glass = !glass; saveApp({ glass }); projects.list().then(rebuildMenu); emit("glass:set", glassOn()); return glassOn(); }
+  let usableAgents = null; // ids of the AI providers the user can use (claude, codex), once known: the menu shows only what applies
   let repoLinked = false; // does the open project have a linked repository? (enables the Git items of the Project menu)
   function rebuildMenu(list) {
     Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate({
-      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged,
+      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged, agents: usableAgents,
       send: (action) => {
         if (action === "project:reveal" && current) shell.openPath(dir());
         else if (action === "folder:projects-open") projectsFolder("open");
@@ -115,6 +122,20 @@ app.whenReady().then(async () => {
   }
   // ----- component inspector: read / edit the props of a JSX element in the screen's HTML file
   const docs = createDocs();
+  // the previews of the catalogue: each page is tried once in a hidden window; only those that render are offered
+  const previewCheck = createPreviewCheck({ docs, file: path.join(app.getPath("userData"), "preview-check.json"), probe: async (name) => {
+    const w = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: { backgroundThrottling: false } });
+    try {
+      await w.loadURL(`http://127.0.0.1:${port}${PREVIEW_PREFIX}${encodeURIComponent(name)}.html`);
+      for (let t = 0; t < 30; t++) { // the libraries come from the CDN: up to 15 s
+        await new Promise((r) => setTimeout(r, 500));
+        const r = await w.webContents.executeJavaScript(`(() => { const u = document.getElementById("uu5"); return { note: !!(u && u.querySelector("[data-pv-note]")), err: !!window.__pvErr, size: u && u.firstElementChild ? u.getBoundingClientRect().height : 0, text: u ? u.innerText.trim().length : 0 }; })()`);
+        if (r.note || r.err) return "fail";
+        if (r.size > 24 && r.text > 0) return "ok";
+      }
+      return "fail";
+    } catch { return "fail"; } finally { w.destroy(); }
+  } });
   const screenPath = (file) => { const f = path.basename(String(file)); if (!f.endsWith(".html")) throw new Error("Not a screen."); return path.join(dir(), f); };
   /** `sub` = {prop, index, count, name}: an object item of an array prop (e.g. one button of ActionGroup.itemList) instead of the JSX element itself. */
   const inspectInfo = (html, ordinals, sub) => {
@@ -125,8 +146,8 @@ app.whenReady().then(async () => {
   };
   // library components of the plugin documentation (Uu5Elements, Uu5Forms, Plus4U5Elements, …): found and picked in the chat
   ipcMain.handle("docs:search", (_e, query, library) => ({ available: docs.available(), results: docs.search(query, { library: String(library ?? ""), limit: 60 }) }));
-  ipcMain.handle("docs:libraries", () => ({ available: docs.available(), libraries: docs.libraries() }));
-  ipcMain.handle("docs:detail", (_e, name) => { const doc = typeof name === "string" ? docs.get(name) : null; return doc ? { name, library: docs.list().find((c) => c.name === name)?.library ?? "", file: docs.file(name), preview: previewable(name, docs), ...doc } : null; });
+  ipcMain.handle("docs:libraries", () => { previewCheck.run(); return { available: docs.available(), libraries: docs.libraries() }; });
+  ipcMain.handle("docs:detail", (_e, name) => { const doc = typeof name === "string" ? docs.get(name) : null; return doc ? { name, library: docs.list().find((c) => c.name === name)?.library ?? "", file: docs.file(name), preview: previewable(name, docs) && previewCheck.status(name) !== "fail", ...doc } : null; });
   // the documentation page of a component opens in the browser; only pages of the uuApp portal (where the wiki links lead) are ever opened
   ipcMain.handle("docs:open", (_e, url) => (typeof url === "string" && /^https:\/\/uuapp\.plus4u\.net\//.test(url) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only documentation pages on uuapp.plus4u.net can be opened." }));
   ipcMain.handle("docs:describe", (_e, names) => ({ names: (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && docs.has(n)), text: describeComponents(docs, (Array.isArray(names) ? names : []).filter((n) => typeof n === "string")) }));
@@ -240,8 +261,12 @@ app.whenReady().then(async () => {
     readStructure: (file) => { const f = path.basename(String(file)); const t = structureOf(fs.readFileSync(screenPath(f), "utf8"), f.replace(/\.html$/, "")); return t ? structureOutline(t) : null; },
   });
 
+  // The same preview tools over HTTP for Codex (Claude gets them in-process). Started on first use; without it Codex just works without the preview tools.
+  let browserHttp;
+  const browserMcpUrl = () => (browserHttp ??= startBrowserMcpHttp(browser.tools).catch(() => null)).then((h) => h?.url ?? "");
+
   // ----- per-project runtime: Claude session and file watcher follow the open project
-  let claude, watcher, watchTimer;
+  let claude, codex, watcher, watchTimer; // the two AI providers of the open project (claude, codex); each continues its own session of a conversation
   let currentChatId = null; // the open conversation of the open project
   const loadChats = (projectDir) => updateState(projectDir, (st) => chats.normalize(st)); // persists the normalized shape so ids stay stable
   // The folder the agent reads the linked repository from: the repository itself, or a read-only snapshot of the branch picked in the app.
@@ -252,6 +277,14 @@ app.whenReady().then(async () => {
     if (r.viewDir && fs.existsSync(r.viewDir)) return r.viewDir;
     return snapshotBranch({ repoDir: r.path, branch: r.view, baseDir: VIEWS_DIR }).catch(() => r.path); // the branch is gone: fall back to the checkout
   };
+  /** The events of one provider to the window: only while its project and conversation are still the open ones; the session id it reports is kept with the conversation. */
+  const eventSink = (getSvc, provider, name, projectDir) => (m) => {
+    const svc = getSvc();
+    if (name !== current) return; // late events of a project that is no longer open
+    if (svc.runChat && svc.runChat !== currentChatId) return; // late events of a conversation that is no longer open
+    if (m.sessionId && svc.runChat) updateState(projectDir, (s) => chats.setSession(chats.normalize(s), svc.runChat, m.sessionId, provider)).catch(() => {});
+    emit("claude:event", m);
+  };
   const newClaude = async () => {
     const name = current, projectDir = dir();
     const st = await loadChats(projectDir);
@@ -260,15 +293,23 @@ app.whenReady().then(async () => {
       repoDir: await repoReadDir(st), repoLabel: st.repo?.view ? `snapshot of branch ${st.repo.view}` : "",
       cwd: projectDir, urlBase: `http://127.0.0.1:${port}/${encodeURIComponent(name)}`, browserMcp: browser.server, globalRoot: root, docs,
       sessionId: chats.current(st).sessionId ?? undefined,
-      onEvent: (m) => {
-        if (name !== current) return; // late events of a project that is no longer open
-        if (svc.runChat && svc.runChat !== currentChatId) return; // late events of a conversation that is no longer open
-        if (m.session_id && svc.runChat) updateState(projectDir, (s) => chats.setSession(chats.normalize(s), svc.runChat, m.session_id)).catch(() => {});
-        emit("claude:event", m);
-      },
+      onEvent: eventSink(() => svc, "claude", name, projectDir),
     });
     return svc;
   };
+  const newCodex = async () => {
+    const name = current, projectDir = dir();
+    const st = await loadChats(projectDir);
+    const svc = new CodexService({
+      repoDir: await repoReadDir(st), repoLabel: st.repo?.view ? `snapshot of branch ${st.repo.view}` : "",
+      cwd: projectDir, urlBase: `http://127.0.0.1:${port}/${encodeURIComponent(name)}`, globalRoot: root, docs, mcpUrl: await browserMcpUrl(),
+      sessionId: chats.current(st).codexSessionId ?? undefined,
+      onEvent: eventSink(() => svc, "codex", name, projectDir),
+    });
+    return svc;
+  };
+  const stopAgents = () => { claude?.stop(); codex?.stop(); };
+  const resumeAgents = (st) => { const c = chats.current(st); claude?.setSession(c.sessionId); codex?.setSession(c.codexSessionId); };
   // Project memory: BUSINESS_RULES.md and <screen>.notes.md. `lastRules` is the version the user has already seen, so that a change made
   // by the agent (or by hand outside the app) is reported once with what was added, while our own saves are silent.
   let lastRules = "";
@@ -307,16 +348,16 @@ app.whenReady().then(async () => {
   };
   /** Close the open project: back to the start screen, nothing runs for it any more. */
   const closeProject = async () => {
-    claude?.stop(); watcher?.close(); clearTimeout(watchTimer);
-    claude = null; current = null; currentChatId = null; saveApp({ lastProject: null });
+    stopAgents(); watcher?.close(); clearTimeout(watchTimer);
+    claude = null; codex = null; current = null; currentChatId = null; saveApp({ lastProject: null });
     return payload();
   };
   /** Switch the whole workspace (chat, canvas, Claude session, watcher) to another project. */
   const openProject = async (name) => {
-    claude?.stop(); watcher?.close(); clearTimeout(watchTimer);
+    stopAgents(); watcher?.close(); clearTimeout(watchTimer);
     current = name; saveApp({ lastProject: name });
     fs.mkdirSync(dir(), { recursive: true });
-    await migrateDescriptions(dir()).catch(() => {}); claude = await newClaude(); lastRules = await readRules(dir()); startWatch();
+    await migrateDescriptions(dir()).catch(() => {}); claude = await newClaude(); codex = await newCodex(); lastRules = await readRules(dir()); startWatch();
     return payload();
   };
   rebuildMenu(await projects.list());
@@ -382,13 +423,13 @@ app.whenReady().then(async () => {
   ipcMain.handle("projects:rename", guard(async (_e, from, to) => {
     const wasCurrent = from === current;
     if (!wasCurrent) { await projects.rename(from, to); return payload(); }
-    claude?.stop(); watcher?.close();
+    stopAgents(); watcher?.close();
     try { return await openProject(await projects.rename(from, to)); }
     catch (e) { await openProject(from); throw e; }
   }));
   ipcMain.handle("projects:delete", guard(async (_e, name) => {
     if (name !== current) { await projects.remove(name); return payload(); }
-    claude?.stop(); watcher?.close();
+    stopAgents(); watcher?.close();
     await projects.remove(name);
     return openProject(await projects.ensure());
   }));
@@ -403,27 +444,52 @@ app.whenReady().then(async () => {
   ipcMain.handle("chat:save", (_e, project, chatId, entries) => project === current && updateState(dir(), (s) => chats.saveEntries(chats.normalize(s), chatId, entries)).then(() => true));
   ipcMain.handle("chat:list", guard(async () => chats.list(await loadChats(dir()))));
   ipcMain.handle("chat:new", guard(async () => {
-    claude.stop();
+    stopAgents();
     let created = false;
     const st = await mutateChats((s) => { created = chats.newChat(s).created; });
-    claude.setSession(chats.current(st).sessionId);
+    resumeAgents(st);
     return { created, ...chatView(st) };
   }));
   ipcMain.handle("chat:switch", guard(async (_e, id) => {
-    claude.stop();
+    stopAgents();
     const st = await mutateChats((s) => chats.switchChat(s, id));
-    claude.setSession(chats.current(st).sessionId);
+    resumeAgents(st);
     return chatView(st);
   }));
   ipcMain.handle("chat:delete", guard(async (_e, id) => {
-    if (id === currentChatId) claude.stop();
+    if (id === currentChatId) stopAgents();
     const st = await mutateChats((s) => chats.deleteChat(s, id));
-    claude.setSession(chats.current(st).sessionId);
+    resumeAgents(st);
     return chatView(st);
   }));
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
-  ipcMain.handle("chat:send", guard((_e, { prompt, model, plan, economy }) => { if (!claude) throw new Error("No project is open."); claude.runChat = currentChatId; return claude.send(prompt, model, { plan: Boolean(plan), economy: Boolean(economy) }); }));
-  ipcMain.handle("chat:stop", () => claude?.stop());
+  // The model select picks the provider too: "codex" or "codex:<model>" runs Codex, everything else Claude.
+  ipcMain.handle("chat:send", guard((_e, { prompt, model, plan, economy }) => {
+    const viaCodex = typeof model === "string" && /^codex(:|$)/.test(model), svc = viaCodex ? codex : claude;
+    if (!svc) throw new Error("No project is open.");
+    svc.runChat = currentChatId;
+    return svc.send(prompt, viaCodex ? model.slice(6) || undefined : model, { plan: Boolean(plan), economy: Boolean(economy) });
+  }));
+  ipcMain.handle("chat:stop", () => stopAgents());
+  ipcMain.handle("codex:status", (_e, refresh) => codexStatus({ refresh }));
+  // Help > Codex & Plugins: what the dialog shows (Codex installed and signed in, the state of each plugin).
+  ipcMain.handle("codex:pluginsState", guard(async () => { const status = await codexStatus({ refresh: true }); return { status: { ...status, version: status.installed ? await codexVersion() : null }, plugins: codexPluginStates() }; }));
+  // Help > Check for Plugin Updates: Codex keeps the copy it installed, so the plugins of the marketplace are installed again when it has newer ones.
+  ipcMain.handle("codex:pluginsCheck", guard(async () => {
+    const bin = await findCodex({ refresh: true });
+    if (!bin) return { error: "Codex was not found." };
+    const before = codexPluginVersions();
+    const r = await ensureCodexPlugins({ bin });
+    resetCodexPlugins(); // the run of the app has seen the plugins now
+    return { ...r, before, after: codexPluginVersions() };
+  }));
+  // The providers usable now and their models (the model list of the message field); the menu follows.
+  ipcMain.handle("agents:list", guard(async (_e, refresh) => {
+    const list = await listAgents({ refresh: Boolean(refresh) });
+    const ids = list.map((a) => a.provider);
+    if (JSON.stringify(ids) !== JSON.stringify(usableAgents)) { usableAgents = ids; projects.list().then(rebuildMenu).catch(() => {}); }
+    return list;
+  }));
   ipcMain.handle("claude:status", (_e, refresh) => getStatus({ refresh }));
   // ----- first run: Claude Code, sign-in, plugins (progress goes to the renderer as claude:progress)
   configureClaude({ userDataDir: app.getPath("userData") });
@@ -560,7 +626,7 @@ app.whenReady().then(async () => {
   }));
 
   // ----- project memory: a linked git repository (read-only for the agent), business rules, notes of a screen
-  const applyRepo = async (readDir, label) => { if (claude) { claude.repoDir = readDir; claude.repoLabel = label; } };
+  const applyRepo = async (readDir, label) => { for (const svc of [claude, codex]) if (svc) { svc.repoDir = readDir; svc.repoLabel = label; } };
   ipcMain.handle("repo:link", guard(async () => {
     // STUDIO_PICK_REPO: scripted runs (demo recording, tests) name the folder instead of using the native dialog
     const r = process.env.STUDIO_PICK_REPO ? { canceled: false, filePaths: [process.env.STUDIO_PICK_REPO] } : await dialog.showOpenDialog(win, { title: "Choose the folder of the git repository", properties: ["openDirectory"], buttonLabel: "Link repository" });

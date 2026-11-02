@@ -801,3 +801,26 @@ const P = ({ can }) => {
   const list = describeList(html, ccs[0].ordinal, "getActionList");
   assert.equal(list.items.length, 2);
 });
+
+const aliased = (decl, jsx) => `<!doctype html><html><body><div id="uu5"></div>
+<script type="text/babel">
+  import { Utils } from "uu5g05";
+  import Uu5Elements from "uu5g05-elements";
+  ${decl}
+  function Page() { return ${jsx}; }
+  Utils.Dom.render(<Page/>, document.getElementById("uu5"));
+</script></body></html>`;
+
+test("a library bound to a constant of the file (const E = Uu5Elements) is still tagged, under its real name", () => {
+  const html = aliased("const E = Uu5Elements;", `<E.Block header="h"><E.Text>x</E.Text></E.Block>`);
+  const els = parseElements(html).filter((e) => e.uu5);
+  assert.deepEqual(els.map((e) => e.name), ["Uu5Elements.Block", "Uu5Elements.Text"]);
+  assert.equal((tagHtml(html).match(new RegExp(SRC_ATTR, "g")) ?? []).length, 2);
+});
+
+test("destructured components, nested aliases and member paths are followed; unrelated constants are not", () => {
+  const d = aliased("const { Block, Text: T } = Uu5Elements; const E = Uu5Elements; const G = E.Grid; const x = Other;", `<Block><T>x</T><G><span/></G></Block>`);
+  assert.deepEqual(parseElements(d).filter((e) => e.uu5).map((e) => e.name), ["Uu5Elements.Block", "Uu5Elements.Text", "Uu5Elements.Grid"]);
+  const n = aliased("const Fake = Other;", `<Fake/>`);
+  assert.deepEqual(parseElements(n).filter((e) => e.uu5), []);
+});

@@ -92,13 +92,13 @@ async function fakeWiki() {
 
 test("list, libraries and search over the wiki", async () => {
   const d = createDocs(await fakeWiki());
-  assert.deepEqual(d.libraries(), [{ library: "uu5-elements", count: 3 }, { library: "uu5-forms", count: 2 }]);
+  assert.deepEqual(d.libraries(), [{ library: "Uu5Elements", count: 3 }, { library: "Uu5Forms", count: 2 }]);
   assert.equal(d.list().length, 5);
   assert.equal(d.list().find((c) => c.name === "Uu5Elements.Block").description, "Block with a header.");
   // a prefix of the name first, then a part of it, then the description
   assert.deepEqual(d.search("button").map((c) => c.name), ["Uu5Elements.Button", "Uu5Elements.ButtonGroup", "Uu5Forms.SubmitButton", "Uu5Forms.Text"]);
   assert.deepEqual(d.search("Uu5Elements.But").map((c) => c.name), ["Uu5Elements.Button", "Uu5Elements.ButtonGroup"]);
-  assert.deepEqual(d.search("button", { library: "uu5-forms" }).map((c) => c.name), ["Uu5Forms.SubmitButton", "Uu5Forms.Text"]);
+  assert.deepEqual(d.search("button", { library: "Uu5Forms" }).map((c) => c.name), ["Uu5Forms.SubmitButton", "Uu5Forms.Text"]);
   assert.deepEqual(d.search("", { limit: 2 }).map((c) => c.name), ["Uu5Elements.Block", "Uu5Elements.Button"]);
   assert.deepEqual(d.search("zzz"), []);
   assert.equal(createDocs(null).available(), false);

@@ -829,13 +829,14 @@ body[data-noproject] #ptabs{display:none}
 .dcw:hover .dc-del,.dc-del:focus-visible{opacity:1}.dc-del:hover{color:#fff;background:#e5484d;border-color:#e5484d}
 #dash-grid.list .dc-del{top:50%;transform:translateY(-50%);right:14px}
 
-/* app and plugin updates: one place, in the chat panel of a project and under the header of the dashboard */
+/* app and plugin updates: one place: under the top bar of a project and under the header of the dashboard */
 #updates{display:contents}
-#dash #updates{display:flex;flex-direction:column;gap:8px;padding:0 24px}
-#dash #updates:not(:has(> :not([hidden]))){display:none}
-#dash #updatestrip,#dash #appupdate{width:auto;border:1px solid var(--line);border-radius:12px;padding:8px 8px 8px 14px;font-size:13px}
-#dash #appupdate{border-color:color-mix(in srgb,var(--acc) 40%,var(--line))}
-#dash #updatestrip button,#dash #appupdate button{padding:4px 12px;font-size:13px;border-radius:8px}
+#dash #updates,main #updates{display:flex;flex-direction:column;gap:8px;padding:0 24px}
+main #updates{padding:10px 16px 0}
+#dash #updates:not(:has(> :not([hidden]))),main #updates:not(:has(> :not([hidden]))){display:none}
+:is(#dash,main) #updatestrip,:is(#dash,main) #appupdate{width:auto;border:1px solid var(--line);border-radius:12px;padding:8px 8px 8px 14px;font-size:13px}
+:is(#dash,main) #appupdate{border-color:color-mix(in srgb,var(--acc) 40%,var(--line))}
+:is(#dash,main) #updatestrip button,:is(#dash,main) #appupdate button{padding:4px 12px;font-size:13px;border-radius:8px}
 
 /* Templates dialog */
 #tplbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:49}#tplbox[hidden]{display:none}

@@ -50,8 +50,9 @@ export function saveEntries(state, chatId, entries) {
   return state;
 }
 
-export function setSession(state, chatId, sessionId) {
-  const c = find(state, chatId); if (c) c.sessionId = sessionId;
+/** Every provider continues its own session of a conversation: `sessionId` is Claude's, `codexSessionId` Codex's. */
+export function setSession(state, chatId, sessionId, provider = "claude") {
+  const c = find(state, chatId); if (c) c[provider === "codex" ? "codexSessionId" : "sessionId"] = sessionId;
   return state;
 }
 

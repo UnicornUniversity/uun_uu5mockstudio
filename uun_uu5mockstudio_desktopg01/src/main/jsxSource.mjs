@@ -286,16 +286,44 @@ function childTextsOf(el, script, cx) {
   return out;
 }
 
+/** `E`, `E.Block` of an identifier or a chain of plain member accesses; null for anything else. */
+function dotted(n) {
+  if (n?.type === "Identifier") return n.name;
+  if (n?.type === "MemberExpression" && !n.computed && n.property.type === "Identifier") { const o = dotted(n.object); return o && `${o}.${n.property.name}`; }
+  return null;
+}
+
+/**
+ * The names a file binds to the uu5 libraries: Map local name -> what it stands for. An import binds itself (`Uu5Elements` -> `Uu5Elements`);
+ * a constant of the file that names a library does too (`const E = Uu5Elements;` -> `E` stands for `Uu5Elements`, and
+ * `const { Block, Text } = Uu5Elements;` -> `Block` stands for `Uu5Elements.Block`). Models like to write this: `<E.Block>` is still a uu5 component.
+ */
+export function uu5Bindings(ast) {
+  const m = new Map();
+  for (const s of ast.program.body) if (s.type === "ImportDeclaration" && UU5_SOURCE.test(s.source.value)) for (const sp of s.specifiers) m.set(sp.local.name, sp.local.name);
+  for (let pass = 0; pass < 3; pass++) for (const st of ast.program.body) { // a few passes: a constant may name an earlier one
+    const d = st.type === "ExportNamedDeclaration" ? st.declaration : st;
+    if (d?.type !== "VariableDeclaration") continue;
+    for (const v of d.declarations) {
+      const src = dotted(v.init); if (!src) continue;
+      const root = src.split(".")[0], base = m.get(root); if (base == null) continue;
+      const full = base + src.slice(root.length);
+      if (v.id.type === "Identifier") m.set(v.id.name, full);
+      else if (v.id.type === "ObjectPattern") for (const p of v.id.properties) if (p.type === "ObjectProperty" && p.key.type === "Identifier" && p.value.type === "Identifier") m.set(p.value.name, `${full}.${p.key.name}`);
+    }
+  }
+  return m;
+}
+/** The name of an element with its library alias resolved: `E.Block` -> `Uu5Elements.Block`. */
+const canonName = (bindings, name) => { const root = name.split(/[.:]/)[0], b = bindings.get(root); return b && b !== root ? b + name.slice(root.length) : name; };
+
 /** All JSX elements of the file in document order, with their attributes and source ranges (offsets into `html`). */
 export function parseElements(html) {
   const elements = [];
   for (const script of babelScripts(html)) {
     let ast;
     try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { continue; }
-    const imported = new Set();
-    for (const s of ast.program.body) {
-      if (s.type === "ImportDeclaration" && UU5_SOURCE.test(s.source.value)) for (const sp of s.specifiers) imported.add(sp.local.name);
-    }
+    const imported = uu5Bindings(ast);
     // top-level `const NAME = <expr>` declarations: a prop written as `itemList={NAME}` is resolved to this value
     const decls = new Map();
     for (const st of ast.program.body) {
@@ -329,7 +357,7 @@ export function parseElements(html) {
         return { ...attr, type: "code", value: script.code.slice(a.value.start, a.value.end) };
       });
       elements.push({
-        ordinal: elements.length, name, uu5: /^[A-Z]/.test(root) && imported.has(root),
+        ordinal: elements.length, name: canonName(imported, name), uu5: /^[A-Z]/.test(root) && imported.has(root),
         start: abs(n.start), end: abs(n.end), nameEnd: abs(n.name.end), selfClosing: Boolean(n.selfClosing), attrs,
         snippet: script.code.slice(n.start, n.end), childTexts: childTextsOf(elOf.get(n), script, cx),
       });
@@ -776,8 +804,7 @@ export function structureOf(html, name = "", { ordinal: only = null } = {}) {
   for (const script of babelScripts(html)) {
     let ast;
     try { ast = parse(script.code, { sourceType: "module", plugins: ["jsx"], errorRecovery: true, allowReturnOutsideFunction: true }); } catch { continue; }
-    const imported = new Set(), found = [];
-    for (const s of ast.program.body) if (s.type === "ImportDeclaration" && UU5_SOURCE.test(s.source.value)) for (const sp of s.specifiers) imported.add(sp.local.name);
+    const imported = uu5Bindings(ast), found = [];
     walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); });
     found.sort((a, b) => a.start - b.start);
     const ords = new Map(found.map((n) => [n.start, ordinal++]));
@@ -863,7 +890,7 @@ export function structureOf(html, name = "", { ordinal: only = null } = {}) {
     if (transparent) return kids;
     if (++count > MAX_STRUCT_NODES) return [];
     const local = defs.get(name);
-    const node = { name, kind: sc.imported.has(name.split(".")[0]) ? "library" : "existing", ordinal: sc.ords.get(open.start) };
+    const node = { name: canonName(sc.imported, name), kind: sc.imported.has(name.split(".")[0]) ? "library" : "existing", ordinal: sc.ords.get(open.start) };
     if (disabled) node.disabled = disabled;
     if (local && !stack.includes(name) && stack.length < MAX_STRUCT_DEPTH && !kids.length) {
       stack.push(name);

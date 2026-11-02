@@ -6,6 +6,7 @@ import { describeComponents } from "./uu5Docs.mjs";
 import path from "node:path";
 import fs from "node:fs";
 import { templatePrompt } from "./templates.mjs";
+import { claudeEvents } from "./providers/events.mjs";
 
 const RULES_LIMIT = 12000;
 
@@ -86,6 +87,7 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
     "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot, browser_click (all take the mockup file name), and screen_structure (the component structure of a screen, read from its file).",
     "The app shows every .html file of the project as a separate frame on a canvas next to the others, so several screens can coexist: use one file per screen. The user picks device sizes (desktop/tablet/mobile) per frame, so layouts must be responsive.",
     "Verification loop: after you have finished a batch of changes (not after every edit) call browser_open/browser_reload once; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge before use.",
+    "Write every component with the namespace it is imported under (`<Uu5Elements.Block>`, `<Uu5Elements.Text>`). Do not alias or destructure a library (no `const E = Uu5Elements`, no `const { Block } = Uu5Elements`) and do not squeeze the JSX into a few long lines: the component editor of the app (select, edit props, drag) is built on those names and on a readable file.",
     "Look before you change: when you are asked to change a screen that already exists, read its file first (a big file in parts with offset and limit, or use screen_structure for its component tree) and base your edit on that. Use browser_snapshot (visible text) and browser_console to see the page. Take a browser_screenshot only when the question is visual (layout, colours, spacing) and the text cannot answer it, and then one at the end, not one per step. What is not visible at first (a dialog, a form, a tab, a menu) you open with browser_click (by its visible text); browser_click never changes files and browser_reload resets the page.",
     ECONOMY,
     "The user may attach screenshots to a message: they are image files under .studio/attachments in the project folder and their paths are listed in the message. Open them with the Read tool before acting and base your work on what they show. Never copy, edit or delete them.",
@@ -95,7 +97,19 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
   ].join("\n");
 }
 
+/** What every provider tells the agent besides the user's message: the app, the project memory (read fresh: a new chat has no session to remember it), the template, Plan and Economy. */
+export async function agentInstructions(svc, { plan = false, economy = false } = {}) {
+  const rules = await readRules(svc.cwd), globalRules = svc.globalRoot ? await readGlobalRules(svc.globalRoot) : "", globalFile = svc.globalRoot ? path.join(svc.globalRoot, GLOBAL_FILE) : "";
+  const templateMeta = await fs.promises.readFile(path.join(svc.cwd, ".studio", "template", "template.json"), "utf8").then(JSON.parse).catch(() => null); // a project started from a template
+  const memory = memoryPrompt({ cwd: svc.cwd, repoDir: svc.repoDir, repoLabel: svc.repoLabel, rules, description: await readProject(svc.cwd), globalRules, globalFile, componentsBlock: componentsInRules(svc.docs, `${globalRules}\n${rules}`) });
+  const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
+  return { instructions, globalFile };
+}
+
+/** The provider "claude": the Claude Agent SDK driving the user's Claude Code. `onEvent` gets the events of providers/events.mjs. */
 export class ClaudeService {
+  static id = "claude";
+  static label = "Claude";
   /** `repoDir`: the git repository linked to the project (read-only), or null. It can be changed while the service lives. */
   constructor({ cwd, urlBase, browserMcp, onEvent, sessionId, repoDir = null, repoLabel = "", globalRoot = null, docs = null }) {
     Object.assign(this, { cwd, urlBase, browserMcp, onEvent, sessionId, repoDir, repoLabel, globalRoot, docs, abort: undefined });
@@ -104,9 +118,7 @@ export class ClaudeService {
   async send(prompt, model, { plan = false, economy = false } = {}) {
     this.abort = new AbortController();
     const repoDir = this.repoDir;
-    const rules = await readRules(this.cwd), globalRules = this.globalRoot ? await readGlobalRules(this.globalRoot) : "", globalFile = this.globalRoot ? path.join(this.globalRoot, GLOBAL_FILE) : "";
-    const templateMeta = await fs.promises.readFile(path.join(this.cwd, ".studio", "template", "template.json"), "utf8").then(JSON.parse).catch(() => null); // a project started from a template
-    const memory = memoryPrompt({ cwd: this.cwd, repoDir, repoLabel: this.repoLabel, rules, description: await readProject(this.cwd), globalRules, globalFile, componentsBlock: componentsInRules(this.docs, `${globalRules}\n${rules}`) }); // read fresh: a new chat has no session to remember it
+    const { instructions, globalFile } = await agentInstructions(this, { plan, economy });
     const q = query({
       prompt,
       options: {
@@ -129,14 +141,14 @@ export class ClaudeService {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: studioPrompt({ cwd: this.cwd, urlBase: this.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : ""),
+          append: instructions,
         },
       },
     });
     try {
       for await (const m of q) {
         if (m.session_id) this.sessionId = m.session_id;
-        this.onEvent(m);
+        for (const ev of claudeEvents(m)) this.onEvent(ev);
       }
     } catch (e) {
       this.onEvent(this.abort.signal.aborted ? { type: "stopped" } : { type: "app_error", message: String(e?.message ?? e) });

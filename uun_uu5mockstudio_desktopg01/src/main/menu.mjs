@@ -3,7 +3,11 @@
  * Custom items only send an action id to the renderer, which owns the dialogs and UI state; Edit/Window items are
  * standard roles (text editing shortcuts in the chat field depend on them).
  */
-export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, send = () => {} }) {
+export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, agents = null, send = () => {} }) {
+  // `agents`: the ids of the AI providers that are usable (null = not known yet). The Claude Code setup makes no sense for someone who works with Codex only;
+  // with no provider usable at all they stay, because that is where Claude Code is set up.
+  const claudeItems = !agents || !agents.length || agents.includes("claude");
+  const codexItems = Boolean(agents?.includes("codex"));
   const mac = platform === "darwin";
   const has = Boolean(current);
   const act = (id) => () => send(id);
@@ -131,12 +135,12 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
   };
 
   const windowMenu = { label: "Window", submenu: [{ role: "minimize" }, ...(mac ? [{ role: "zoom" }, sep, { role: "front" }] : [{ role: "close" }])] };
-  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, item("Claude Code & Plugins…", "claude:setup"), item("Check for Plugin Updates…", "plugins:check"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
+  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
 
   const appMenu = {
     label: appName,
     submenu: [
-      item(`About ${appName}`, "app:about"), item("Check for Updates…", "update:check"), item("Claude Code & Plugins…", "claude:setup"), sep,
+      item(`About ${appName}`, "app:about"), item("Check for Updates…", "update:check"), ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), sep,
       { role: "services" }, sep, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, sep, { role: "quit" },
     ],
   };
