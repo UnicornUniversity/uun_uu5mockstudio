@@ -21,6 +21,7 @@ import { createStructureDialog } from "./structureDialog.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
+import { flashCode } from "./flashComponent.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -701,11 +702,19 @@ const chipKey = (p) => `${p.file}#${(p.chain ?? []).map((c) => (typeof c === "nu
 function renderChips() {
   const box = $("chips"); box.hidden = !chips.length; box.replaceChildren();
   chips.forEach((c, i) => {
-    const t = Object.assign(document.createElement("span"), { textContent: `📍 #${c.ref} ${describePick(c)}`, title: describePick(c) });
-    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: () => { removeRef(c); dropMark(c); pickedKeys.delete(chipKey(c)); chips.splice(i, 1); renderChips(); } });
-    const chip = Object.assign(document.createElement("div"), { className: "chip" });
+    const t = Object.assign(document.createElement("span"), { textContent: `📍 #${c.ref} ${describePick(c)}`, title: `${describePick(c)}: click to show it in the screen` });
+    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: (e) => { e.stopPropagation(); removeRef(c); dropMark(c); pickedKeys.delete(chipKey(c)); chips.splice(i, 1); renderChips(); } });
+    const chip = Object.assign(document.createElement("div"), { className: "chip showable", onclick: () => showChip(c) });
     chip.append(t, x); box.append(chip);
   });
+}
+/** A click on a chip: the screen of the component comes into view and the component is framed for a moment. */
+async function showChip(c) {
+  const f = c.file && canvas.get(c.file), ord = c.chain?.[0]; if (!f) return;
+  canvas.focus(c.file);
+  await new Promise((r) => setTimeout(r, 450)); // the screen is moved into view first
+  const ok = await f.view.executeJavaScript(flashCode(typeof ord === "object" ? ord.ordinal : ord)).catch(() => false);
+  if (!ok) toast("That component is not on the screen any more.");
 }
 function addChip(p, { quiet = false } = {}) {
   if (chips.some((c) => chipKey(c) === chipKey(p))) { if (!quiet) toast("That component is already in the message."); return false; }
@@ -714,30 +723,25 @@ function addChip(p, { quiet = false } = {}) {
 }
 function clearChips() { chips = []; chipSeq = 0; pickedKeys.clear(); renderChips(); }
 
-// A component picked for the message is linked in the text where the cursor is, as `[#1 Box “Přehled…”]`, so that the text can say
-// "change this one [#1 …] and in that one [#2 …] too"; the chips above the field list them, the agent is told what #1, #2 are.
+// A component picked for the message is linked in the text where the cursor is, as `[#1]`, so that the text can say
+// "change this one [#1] and in that one [#2] too"; the chips above the field name them (a click shows the component), the agent is told what #1, #2 are.
 let chipSeq = 0;
-const refLabel = (p) => {
-  const name = p.sub ? `item ${p.sub.index + 1} of ${p.sub.prop}` : String(p.element?.name || p.chain?.[0]?.name || "component").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "");
-  const what = p.text ? ` “${p.text.length > 26 ? `${p.text.slice(0, 25)}…` : p.text}”` : "";
-  return `${name}${what}`.replace(/\]/g, ")");
-};
 function insertRef(p) {
   const t = $("prompt"), pre = t.value.slice(0, t.selectionStart), sep = pre && !/\s$/.test(pre) ? " " : "";
-  t.setRangeText(`${sep}[#${p.ref} ${refLabel(p)}] `, t.selectionStart, t.selectionEnd, "end");
+  t.setRangeText(`${sep}[#${p.ref}] `, t.selectionStart, t.selectionEnd, "end");
 }
 /** The frame the inspector keeps on the page around a component that was linked in the message. */
 function dropMark(c) { const v = c.file ? viewOfFile(c.file) : null; if (v && c.key) inspector.drop(v, c.key); }
-/** A link [#n …] that was deleted from the text takes its chip and its frame on the page with it. */
+/** A link [#n] that was deleted from the text takes its chip and its frame on the page with it. */
 function syncChipsWithText() {
   if (!chips.length) return;
-  const text = $("prompt").value, keep = chips.filter((c) => new RegExp(`\\[#${c.ref} [^\\]]*\\]`).test(text));
+  const text = $("prompt").value, keep = chips.filter((c) => new RegExp(`\\[#${c.ref}\\]`).test(text));
   if (keep.length === chips.length) return;
   for (const c of chips) if (!keep.includes(c)) { dropMark(c); pickedKeys.delete(chipKey(c)); }
   chips = keep; renderChips();
 }
 $("prompt").addEventListener("input", syncChipsWithText);
-function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new RegExp(`\\s?\\[#${p.ref} [^\\]]*\\]`), ""); }
+function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new RegExp(`\\s?\\[#${p.ref}\\]`), ""); }
 
 // ---------- project menu: export + offline CDN cache ----------
 let toastTimer;
@@ -861,7 +865,7 @@ function mentionedComponents(text) {
 }
 function highlightMentions(text) {
   const known = new Set(screenNames());
-  return esc(text).replace(/\[#(\d+) ([^\]]*)\]/g, (all, n, label) => `<span class="mention comp" title="A component marked in the message">#${n} ${label}</span>`).replace(/(^|\s)@([^\s@]+)/g, (all, pre, name) => {
+  return esc(text).replace(/\[#(\d+)(?: ([^\]]*))?\]/g, (all, n, label) => `<span class="mention comp" title="A component marked in the message">#${n}${label ? ` ${label}` : ""}</span>`).replace(/(^|\s)@([^\s@]+)/g, (all, pre, name) => {
     if (name.startsWith("repo/")) { const base = trimPunct(name); return `${pre}<span class="mention repo" title="File of the linked repository">@${esc(base)}</span>${esc(name.slice(base.length))}`; }
     const base = trimPunct(name);
     if (!known.has(base) && /^[A-Z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/.test(base)) return `${pre}<span class="mention lib" title="Component of a library (documentation of the uu5-development plugin)">@${esc(base)}</span>${esc(name.slice(base.length))}`;
@@ -933,7 +937,7 @@ const catalogDrag = createCatalogDrag({
   },
   onCancel: (overScreen) => { if (overScreen) toast("That place cannot take a component.", { err: true }); },
 });
-const libraryPicker = createLibraryPicker({ api: window.studio, onAdd: (names) => { setPanelTab("agent"); for (const n of names) insertMention(n); }, onDragStart: (name, e) => catalogDrag.start(name, e) });
+const libraryPicker = createLibraryPicker({ api: window.studio, previewUrl: (name) => `http://127.0.0.1:${port}/__preview/${encodeURIComponent(name)}.html`, onAdd: (names) => { setPanelTab("agent"); for (const n of names) insertMention(n); }, onDragStart: (name, e) => catalogDrag.start(name, e) });
 // ---------- panel tabs: Agent | Components ----------
 const TAB_KEY = "uu5studio.panelTab";
 let panelTab = "agent";

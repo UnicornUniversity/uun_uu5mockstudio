@@ -4,12 +4,13 @@ const $ = (id) => document.getElementById(id);
  * "Components from the libraries": a dialog to find a component of Uu5Elements, Uu5Forms, Plus4U5Elements, … in the documentation of the
  * uu5-development plugin and add it to the message as @Name. Click selects one, Shift / Cmd / Ctrl + click several, a double click adds at once.
  * In the side panel an item can also be dragged onto a screen of the canvas (`onDragStart(name, pointerEvent)`).
+ * With `previewUrl(name)` the detail shows the component rendered live in a small webview (when the main process says `preview`).
  * `api` = window.studio (docsSearch, docsLibraries, docsDescribe). Resolves the names of the chosen components or null.
  */
-export function createLibraryPicker({ api, onAdd, onDragStart }) {
+export function createLibraryPicker({ api, onAdd, onDragStart, previewUrl }) {
   const box = $("libbox"), list = $("lb-list"), detail = $("lb-detail"), search = $("lb-search"), lib = $("lb-lib"), note = $("lb-note"), add = $("lb-add");
   const view = $("libview"), card = view.parentElement;
-  let inline = false, inlineHost = null, backTo = null, resolve = null, chosen = new Set(), last = null, results = [], seq = 0, libsLoaded = false;
+  let inline = false, inlineHost = null, backTo = null, resolve = null, chosen = new Set(), last = null, results = [], seq = 0, libsLoaded = false, previewTimer = null;
 
   function done(value) { if (inline) { if (value?.length) onAdd?.(value); chosen = new Set(); paint(); return; } box.hidden = true; const r = resolve; resolve = null; r?.(value); if (backTo) { const h = backTo; backTo = null; this_.showInline(h); } }
   const refreshButtons = () => { add.disabled = !chosen.size; add.textContent = chosen.size > 1 ? `Add ${chosen.size} to message` : "Add to message"; };
@@ -17,6 +18,16 @@ export function createLibraryPicker({ api, onAdd, onDragStart }) {
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
   /** Text with `code` spans from the documentation as nodes (no HTML is ever interpreted). */
   const rich = (tag, cls, text) => { const n = el(tag, cls); String(text).split("`").forEach((part, i) => { if (!part) return; n.append(i % 2 ? el("code", "ic", part) : part); }); return n; };
+  /** The component as it looks on a screen: its snippet rendered by the runtime of the mockups, in a webview of its own. */
+  function previewBox(name) {
+    const wrap = el("div", "ld-preview"), note = el("span", "ld-pnote", "Loading the preview…"), v = document.createElement("webview");
+    v.addEventListener("did-finish-load", () => { note.hidden = true; });
+    v.addEventListener("did-fail-load", (e) => { if (e.isMainFrame && e.errorCode !== -3) note.textContent = "The preview could not be loaded."; });
+    wrap.title = "Preview of the component with its default content";
+    wrap.append(v, note);
+    clearTimeout(previewTimer); previewTimer = setTimeout(() => { v.src = previewUrl(name); }, 150); // moving through the list does not load every page on the way
+    return wrap;
+  }
   /** The documentation of one component: name, library, description, then a table of its props (type or allowed values, default, what it does). */
   async function showDetail(name) {
     last = name; detail.replaceChildren(el("p", "mute", "…"));
@@ -29,6 +40,7 @@ export function createLibraryPicker({ api, onAdd, onDragStart }) {
     const docsLink = () => { const a = el("a", "ld-link", "Open the documentation ↗"); a.href = "#"; a.title = d.url; a.onclick = (e) => { e.preventDefault(); open(); }; return a; };
     if (d.url) head.append(docsLink());
     const nodes = [head, rich("p", "ld-desc", d.description || "No description.")];
+    if (d.preview && previewUrl) nodes.push(previewBox(d.name));
     const use = el("div", "ld-use"); use.append("In a message: ", el("code", "", `@${d.name}`));
     nodes.push(use);
     if (d.props.length) {

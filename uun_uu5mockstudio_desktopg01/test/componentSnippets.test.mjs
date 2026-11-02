@@ -43,7 +43,8 @@ test("the import of a core library is added after the last import; another libra
 test("generateSnippet: neutral values for required props, a text child when the component takes one, nothing when it needs data it cannot invent", () => {
   assert.equal(generateSnippet("Lib.A", doc(["| `a` | `string` | no | | x |"])), "<Lib.A />");
   assert.equal(generateSnippet("Lib.Pagination", doc(["| `index` | `number` | yes | | x |", "| `count` | `number` | yes | | x |", "| `onChange` | `func` | yes | | x |"])), '<Lib.Pagination index={0} count={0} onChange={() => {}} />');
-  assert.equal(generateSnippet("Lib.F", doc(["| `name` | `string` | yes | | x |", "| `itemList` | `object[]` | yes | | x |"])), '<Lib.F name="f" itemList={[]} />');
+  assert.equal(generateSnippet("Lib.F", doc(["| `name` | `string` | yes | | x |", "| `itemList` | `object[]` | yes | | x |"])), '<Lib.F name="f" itemList={[{ children: "First" }, { children: "Second" }]} />');
+  assert.equal(generateSnippet("Uu5Forms.Radios", doc(["| `itemList` | `object[]` | yes | | x |", "| `label` | `lsi \\| node` | no | | x |"])), '<Uu5Forms.Radios itemList={[{ value: "a", children: "Option A" }, { value: "b", children: "Option B" }]} label="Radios" />');
   assert.equal(generateSnippet("Lib.FormDate", doc(["| `name` | `string` | yes | | x |"])), '<Lib.FormDate name="date" />');
   assert.equal(generateSnippet("Lib.S", doc(["| `size` | `xs\\|s\\|m` | yes | `s` | x |"])), '<Lib.S size="s" />');
   assert.equal(generateSnippet("Lib.T", doc(["| `children` | `string \\| node` | no | | x |"])), "<Lib.T>T</Lib.T>");

@@ -33,6 +33,29 @@ export const CURATED = {
   [`${F}.FormSelect`]: `<${F}.FormSelect name="select" label="Select" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
   [`${F}.SubmitButton`]: `<${F}.SubmitButton>Save</${F}.SubmitButton>`,
   [`${F}.CancelButton`]: `<${F}.CancelButton>Cancel</${F}.CancelButton>`,
+  [`${E}.Alert`]: `<${E}.Alert header="Alert" message="Message of the alert" priority="info" durationMs={3600000} onClose={() => {}} />`,
+  [`${E}.Breadcrumbs`]: `<${E}.Breadcrumbs itemList={[\n  { children: "Home" },\n  { children: "Section" },\n  { children: "Page" },\n]} />`,
+  [`${E}.ButtonGroup`]: `<${E}.ButtonGroup itemList={[\n  { children: "One" },\n  { children: "Two" },\n  { children: "Three" },\n]} />`,
+  [`${E}.Carousel`]: `<${E}.Carousel>\n  <${E}.Box><${E}.Text>Slide 1</${E}.Text></${E}.Box>\n  <${E}.Box><${E}.Text>Slide 2</${E}.Text></${E}.Box>\n</${E}.Carousel>`,
+  [`${E}.Dropdown`]: `<${E}.Dropdown label="Dropdown" itemList={[\n  { children: "First" },\n  { children: "Second" },\n]} />`,
+  [`${E}.Grid`]: `<${E}.Grid templateColumns={{ xs: "1fr 1fr" }}>\n  <${E}.Box><${E}.Text>First</${E}.Text></${E}.Box>\n  <${E}.Box><${E}.Text>Second</${E}.Text></${E}.Box>\n</${E}.Grid>`,
+  [`${E}.Header`]: `<${E}.Header title="Header" />`,
+  [`${E}.HighlightedBox`]: `<${E}.HighlightedBox>Highlighted content</${E}.HighlightedBox>`,
+  [`${E}.InfoGroup`]: `<${E}.InfoGroup itemList={[\n  { icon: "uugds-account", title: "Title", subtitle: "Subtitle" },\n  { icon: "uugds-calendar", title: "Title", subtitle: "Subtitle" },\n]} />`,
+  [`${E}.Menu`]: `<${E}.Menu itemList={[\n  { children: "First", icon: "uugds-home" },\n  { children: "Second", icon: "uugds-settings" },\n]} />`,
+  [`${E}.ScrollableBox`]: `<${E}.ScrollableBox height={100}>\n  <${E}.Text>First line of a long content</${E}.Text>\n  <${E}.Text>Second line of a long content</${E}.Text>\n  <${E}.Text>Third line of a long content</${E}.Text>\n  <${E}.Text>Fourth line of a long content</${E}.Text>\n  <${E}.Text>Fifth line of a long content</${E}.Text>\n  <${E}.Text>Sixth line of a long content</${E}.Text>\n</${E}.ScrollableBox>`,
+  [`${E}.SideDetailLayout`]: `<${E}.SideDetailLayout\n  detail={({ onClose }) => (\n    <${E}.Box>\n      <${E}.Text>Detail</${E}.Text>\n      <${E}.Button onClick={onClose}>Close</${E}.Button>\n    </${E}.Box>\n  )}\n>\n  {({ onDetailOpen }) => <${E}.Button onClick={() => onDetailOpen({})}>Open detail</${E}.Button>}\n</${E}.SideDetailLayout>`,
+  [`${E}.CollapsibleBox`]: `<${E}.CollapsibleBox collapsed={false}>\n  <${E}.Text>Content that can be collapsed</${E}.Text>\n</${E}.CollapsibleBox>`,
+  [`${E}.ListLayout`]: `<${E}.ListLayout itemList={[\n  { label: "Name", children: "Value" },\n  { label: "Another name", children: "Another value" },\n]} />`,
+  [`${E}.RichIconGroup`]: `<${E}.RichIconGroup itemList={[\n  { icon: "uugds-account" },\n  { icon: "uugds-info" },\n  { icon: "uugds-home" },\n]} />`,
+  [`${E}.ListItem`]: `<${E}.ListItem icon="uugds-home">List item</${E}.ListItem>`,
+  [`${E}.Number`]: `<${E}.Number value={1234.5} />`,
+  [`${E}.Pagination`]: `<${E}.Pagination index={0} count={5} onChange={() => {}} />`,
+  [`${E}.Progress`]: `<${E}.Progress value={60} />`,
+  [`${E}.RichIcon`]: `<${E}.RichIcon icon="uugds-info" text="Rich icon" />`,
+  [`${F}.FormCheckboxes`]: `<${F}.FormCheckboxes name="checkboxes" label="Checkboxes" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
+  [`${F}.FormRadios`]: `<${F}.FormRadios name="radios" label="Radios" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
+  [`${F}.FormSwitchSelect`]: `<${F}.FormSwitchSelect name="switch" label="Switch" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
   [`${F}.Form`]: `<${F}.Form onSubmit={(e) => console.log("Submit:", e.data.value)}>\n  <${F}.FormText name="text" label="Text" />\n  <${F}.SubmitButton>Save</${F}.SubmitButton>\n</${F}.Form>`,
 };
 
@@ -42,6 +65,9 @@ const last = (name) => name.slice(name.lastIndexOf(".") + 1);
 /** A neutral JSX attribute of a required prop, or null when no honest value exists (then the component is left to the agent). */
 function requiredAttr(p, component) {
   if (p.name === "name" && /string/.test(p.type)) return `name="${last(component).replace(/^Form/, "").replace(/^./, (c) => c.toLowerCase()) || "field"}"`; // the key of a form field
+  if (p.name === "itemList" && /\[\]|array/.test(p.type)) { // a list that is empty shows nothing: two sample items
+    return component.startsWith(`${F}.`) ? `itemList={[{ value: "a", children: "Option A" }, { value: "b", children: "Option B" }]}` : `itemList={[{ children: "First" }, { children: "Second" }]}`;
+  }
   if (p.enum?.length) return `${p.name}="${p.default && p.enum.includes(p.default) ? p.default : p.enum[0]}"`;
   const types = p.type.split("|").map((t) => t.trim());
   const has = (t) => types.includes(t);
@@ -62,6 +88,10 @@ export function generateSnippet(name, doc) {
     if (a === null) return null;
     attrs.push(a);
   }
+  // something to see: a field gets a label, a block a header
+  const takesText = (n) => { const p = doc.props.find((x) => x.name === n); return p && !p.required && p.type.split("|").some((t) => ["string", "lsi", "node"].includes(t.trim())); };
+  if (/^Uu5Forms\.[A-Z]/.test(name) && takesText("label") && !attrs.some((a) => a.startsWith("label="))) attrs.push(`label="${label((last(name) === "Input" ? name.split(".").at(-2) : last(name)).replace(/^Form(?=[A-Z])/, ""))}"`);
+  else if (takesText("header") && !attrs.some((a) => a.startsWith("header="))) attrs.push(`header="${label(last(name))}"`);
   const children = doc.props.find((p) => p.name === "children"), open = `<${name}${attrs.length ? " " + attrs.join(" ") : ""}`;
   const text = children && children.type.split("|").some((t) => ["string", "lsi"].includes(t.trim()));
   return text ? `${open}>${label(last(name))}</${name}>` : `${open} />`;

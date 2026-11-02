@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { startMockServer } from "./mockServer.mjs";
+import { previewPage, previewable, PREVIEW_PREFIX } from "./componentPreview.mjs";
 import { ClaudeService } from "./claudeService.mjs";
 import { createStudioBrowser } from "./studioBrowserMcp.mjs";
 import { createScreenHistory } from "./screenHistory.mjs";
@@ -60,7 +61,7 @@ app.whenReady().then(async () => {
   const listScreens = () => fs.readdirSync(dir()).filter((f) => f.endsWith(".html"));
 
   const routes = Object.fromEntries(WARMUP_GROUPS.map((g, i) => [`/__warmup/${i}.html`, warmupPage(g)]));
-  const { port } = await startMockServer(root, { routes, transformHtml: tagHtml }); // serves every project: /<project>/<screen>.html
+  const { port } = await startMockServer(root, { routes, transformHtml: tagHtml, dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
 
   // Record/replay cache for the plus4u CDN: mockups keep rendering offline once their libraries have been loaded.
   let offline = Boolean(loadApp().offline), warming = false;
@@ -125,7 +126,7 @@ app.whenReady().then(async () => {
   // library components of the plugin documentation (Uu5Elements, Uu5Forms, Plus4U5Elements, …): found and picked in the chat
   ipcMain.handle("docs:search", (_e, query, library) => ({ available: docs.available(), results: docs.search(query, { library: String(library ?? ""), limit: 60 }) }));
   ipcMain.handle("docs:libraries", () => ({ available: docs.available(), libraries: docs.libraries() }));
-  ipcMain.handle("docs:detail", (_e, name) => { const doc = typeof name === "string" ? docs.get(name) : null; return doc ? { name, library: docs.list().find((c) => c.name === name)?.library ?? "", file: docs.file(name), ...doc } : null; });
+  ipcMain.handle("docs:detail", (_e, name) => { const doc = typeof name === "string" ? docs.get(name) : null; return doc ? { name, library: docs.list().find((c) => c.name === name)?.library ?? "", file: docs.file(name), preview: previewable(name, docs), ...doc } : null; });
   // the documentation page of a component opens in the browser; only pages of the uuApp portal (where the wiki links lead) are ever opened
   ipcMain.handle("docs:open", (_e, url) => (typeof url === "string" && /^https:\/\/uuapp\.plus4u\.net\//.test(url) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only documentation pages on uuapp.plus4u.net can be opened." }));
   ipcMain.handle("docs:describe", (_e, names) => ({ names: (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && docs.has(n)), text: describeComponents(docs, (Array.isArray(names) ? names : []).filter((n) => typeof n === "string")) }));

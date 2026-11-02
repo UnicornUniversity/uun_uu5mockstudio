@@ -5,8 +5,8 @@ import path from "node:path";
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png" };
 
 /** Static server for the project folder. `routes` maps an exact URL path to in-memory HTML (used for the CDN warm-up pages). */
-/** `transformHtml(text)` rewrites project .html files on their way to the preview (the files on disk stay as they are). */
-export function startMockServer(root, { routes = {}, transformHtml } = {}) {
+/** `dynamic(path)` answers a path with HTML made on the fly (a string) or declines it (null / undefined). `transformHtml(text)` rewrites project .html files on their way to the preview (the files on disk stay as they are). */
+export function startMockServer(root, { routes = {}, transformHtml, dynamic } = {}) {
   root = path.resolve(root);
   const server = http.createServer(async (req, res) => {
     try {
@@ -14,6 +14,11 @@ export function startMockServer(root, { routes = {}, transformHtml } = {}) {
       if (routes[rel] !== undefined) {
         res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" });
         return res.end(routes[rel]);
+      }
+      const made = dynamic?.(rel);
+      if (made) {
+        res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" });
+        return res.end(made);
       }
       const file = path.join(root, rel);
       if (file !== root && !file.startsWith(root + path.sep)) throw new Error("outside root");
