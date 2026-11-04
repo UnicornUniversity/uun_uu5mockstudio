@@ -16,7 +16,9 @@ Click a uu5 component or a plain HTML element (a tile made of a `<div>`) in the 
 - **Use in chat**: puts a link to the component into your message (see [the chat](03-chat-and-agent.md#picking-components-of-a-screen)).
 - **Show component tree**: the structure inside the component ([chapter 6](06-component-tree.md)).
 
-**Several components at once:** Shift, ⌘ or Ctrl + click marks more of them (orange frames, up to eight), and **Use N in chat** takes them all.
+**Several components at once:** Shift + click marks more of them (orange frames, up to eight), and **Use N in chat** takes them all.
+
+**One copy of a repeated component:** a tile that the screen renders for each item of a list (`CONTACTS.map(…)`) is one component in the file, so a click or Shift + click marks all its copies (the other copies get a dashed frame, a change applies to all of them). **⌘ / Ctrl + click** marks just the copy you clicked, each with its own frame; click more copies to add them. The chip in the chat names the item, e.g. `CONTACTS[0] (name: "Jan Novák")`, and the agent is told to change only those items. Such a copy cannot be deleted or copied with Delete / ⌘D: say in the chat what to do with it.
 
 ## Editing props
 

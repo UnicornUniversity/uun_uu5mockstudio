@@ -2,13 +2,16 @@ import { FIBER } from "./pageFiber.js";
 
 /**
  * Page-side script that shows where a component of the message is: it scrolls the component into view and frames it for a moment
- * (works without the inspector, e.g. for a chip of a message whose picking is over). Call `flashCode(ordinal)` for a screen.
+ * (works without the inspector, e.g. for a chip of a message whose picking is over). Call `flashCode(ordinal)` for a screen, `flashCode(ordinal, nth)` for one copy of an element rendered by `.map`.
  */
-const FLASH = `(ord) => {
+const FLASH = `(ord, nth) => {
   ${FIBER}
+  const seen = []; // the copies of an element rendered by .map, in the order of the page: \`nth\` picks one of them
   for (const el of document.querySelectorAll("body *")) {
     const f = compAt(el); if (!f || ordOf(f) !== ord) continue;
-    const T = outermost(f), host = hostNodes(T)[0]; if (!host) continue;
+    const T = outermost(f); if (seen.some((x) => x === T || x.alternate === T)) continue;
+    seen.push(T); if (nth != null && seen.length - 1 !== nth) continue;
+    const host = hostNodes(T)[0]; if (!host) continue;
     host.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
     const old = document.getElementById("__studio_flash"); if (old) old.remove();
     const m = document.createElement("div"); m.id = "__studio_flash";
@@ -25,4 +28,4 @@ const FLASH = `(ord) => {
   }
   return false;
 }`;
-export const flashCode = (ordinal) => `(${FLASH})(${Number(ordinal)})`;
+export const flashCode = (ordinal, nth = null) => `(${FLASH})(${Number(ordinal)}, ${Number.isInteger(nth) ? nth : "null"})`;

@@ -297,17 +297,53 @@ function mapCallbacks(ast, decls, code) {
     const c = n.callee;
     if (!/MemberExpression$/.test(c?.type ?? "") || c.computed || c.property?.name !== "map") return;
     const fn = n.arguments[0];
-    if (!fn || !/FunctionExpression$/.test(fn.type) || fn.params[0]?.type !== "Identifier") return;
+    if (!fn || !/FunctionExpression$/.test(fn.type)) return;
     const arr = findListArray(c.object, decls);
-    if (arr?.elements.length) out.push({ param: fn.params[0].name, start: fn.start, end: fn.end, arr, list: code.slice(c.object.start, c.object.end) });
+    // every callback counts for the copies an element is rendered in (loopOf); only an identifier parameter over an array of the file resolves `item.key` (resolveMapRef)
+    out.push({ param: fn.params[0]?.type === "Identifier" ? fn.params[0].name : null, start: fn.start, end: fn.end, arr: arr?.elements.length ? arr : null, list: code.slice(c.object.start, c.object.end) });
   });
   return out;
+}
+
+// the keys that usually tell the items of a list apart, in the order they are tried
+const LABEL_KEYS = ["name", "title", "label", "heading", "header", "caption", "text", "code", "id", "key", "value"];
+/** The text of an item value: a literal, or a localized `{ cs: "…", en: "…" }`; null for anything else. */
+function itemText(v) {
+  const lit = literalOf(v);
+  if (lit && lit.type !== "null") return lit;
+  if (v?.type === "ObjectExpression") for (const lang of ["cs", "en"]) { const l = literalOf(propOf(v, lang)); if (l?.type === "string") return l; }
+  return null;
+}
+/** What tells one item of a list from the others: `name: "Jan Novák"` (the first of LABEL_KEYS, else the first text), or the literal itself. */
+function itemLabel(it) {
+  if (!it || it.type === "SpreadElement") return null;
+  if (it.type !== "ObjectExpression") { const l = literalOf(it); return l && l.type !== "null" ? JSON.stringify(l.value) : null; }
+  const props = it.properties.filter((p) => p.type === "ObjectProperty" && !p.computed && keyOf(p) != null);
+  const pick = LABEL_KEYS.map((k) => props.find((p) => keyOf(p) === k)).find((p) => p && itemText(p.value)) ?? props.find((p) => itemText(p.value)?.type === "string");
+  return pick ? `${keyOf(pick)}: ${JSON.stringify(itemText(pick.value).value)}` : null;
+}
+/** The primitive values of an item (to find the item by the React key of a copy, `key={contact.name}`). */
+function itemValues(it) {
+  if (it?.type !== "ObjectExpression") { const l = literalOf(it); return l && l.type !== "null" ? [String(l.value)] : []; }
+  return it.properties.filter((p) => p.type === "ObjectProperty" && !p.computed).map((p) => itemText(p.value)).filter(Boolean).map((l) => String(l.value));
+}
+/**
+ * The `.map(…)` an element is written in (the innermost one): `{ list, count, items: [{ index, label, values }] }`. Such an element is one
+ * JSX element of the file but is rendered once per item; the inspector can pick one copy and this says which item of the list it is.
+ * `count` and `items` are null when the list is not an array written in the file (`rows.filter(…).map(…)`).
+ */
+function loopOf(maps, start, end, cache) {
+  const around = maps.filter((m) => m.start <= start && end <= m.end);
+  if (!around.length) return null;
+  const m = around.reduce((a, b) => (b.start > a.start ? b : a));
+  if (!cache.has(m)) cache.set(m, { list: m.list, count: m.arr ? m.arr.elements.length : null, items: m.arr ? m.arr.elements.map((it, index) => ({ index, label: itemLabel(it), values: itemValues(it) })) : null });
+  return cache.get(m);
 }
 /** `item.icon` inside `LIST.map((item) => …)`: the literal of that key in every item of LIST, `{ list, path, items: [{ index, type, value, start, end }] }`. */
 function resolveMapRef(ex, maps, abs) {
   const path = memberPath(ex);
   if (!path || path.length < 2) return null;
-  const around = maps.filter((m) => m.param === path[0] && m.start <= ex.start && ex.end <= m.end);
+  const around = maps.filter((m) => m.arr && m.param === path[0] && m.start <= ex.start && ex.end <= m.end);
   if (!around.length) return null;
   const m = around.reduce((a, b) => (b.start > a.start ? b : a)); // the innermost callback with that parameter
   const items = [];
@@ -365,7 +401,7 @@ export function parseElements(html) {
       if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && v.init && !decls.has(v.id.name)) decls.set(v.id.name, v.init);
     }
     const declList = collectDecls(ast), cx = { decls: declList, abs: (o) => script.start + o, langFns: langFunctions(declList) };
-    const maps = mapCallbacks(ast, declList, script.code);
+    const maps = mapCallbacks(ast, declList, script.code), loops = new Map();
     const found = [];
     const elOf = new Map();
     walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); else if (n.type === "JSXElement") elOf.set(n.openingElement, n); });
@@ -395,7 +431,7 @@ export function parseElements(html) {
       elements.push({
         ordinal: elements.length, name: canonName(imported, name), uu5: /^[A-Z]/.test(root) && imported.has(root),
         start: abs(n.start), end: abs(n.end), nameEnd: abs(n.name.end), selfClosing: Boolean(n.selfClosing), attrs,
-        snippet: script.code.slice(n.start, n.end), childTexts: childTextsOf(elOf.get(n), script, cx),
+        snippet: script.code.slice(n.start, n.end), childTexts: childTextsOf(elOf.get(n), script, cx), loop: loopOf(maps, n.start, n.end, loops),
       });
     }
   }
@@ -417,7 +453,7 @@ const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATT
 export function describeElement(html, ordinal) {
   const e = parseElements(html)[ordinal];
   if (!e) return null;
-  return { ordinal: e.ordinal, name: e.name, uu5: e.uu5, selfClosing: e.selfClosing, attrs: publicAttrs(e), spread: e.attrs.some((a) => a.spread), snippet: e.snippet };
+  return { ordinal: e.ordinal, name: e.name, uu5: e.uu5, selfClosing: e.selfClosing, attrs: publicAttrs(e), spread: e.attrs.some((a) => a.spread), snippet: e.snippet, ...(e.loop ? { loop: e.loop } : {}) };
 }
 
 export function elementNames(html, ordinals) {
@@ -537,7 +573,7 @@ function itemOf(html, ordinal, prop, index, count) {
 export function describeItem(html, ordinal, prop, index, count) {
   const { e, item } = itemOf(html, ordinal, prop, index, count);
   const attrs = item.props.filter((p) => !p.spread).map(({ name, type, value, code, json, branches, resolved }) => ({ name, type, value, code, json, ...(resolved ? { resolved: publicText(resolved) } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}) }));
-  return { ordinal: e.ordinal, name: null, uu5: true, selfClosing: true, attrs, spread: item.props.some((p) => p.spread), snippet: item.text, item: { prop, index } };
+  return { ordinal: e.ordinal, name: null, uu5: true, selfClosing: true, attrs, spread: item.props.some((p) => p.spread), snippet: item.text, item: { prop, index }, ...(e.loop ? { loop: e.loop } : {}) };
 }
 
 const keySource = (name) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name));

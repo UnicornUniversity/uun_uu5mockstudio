@@ -138,7 +138,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
   };
 
   const windowMenu = { label: "Window", submenu: [{ role: "minimize" }, ...(mac ? [{ role: "zoom" }, sep, { role: "front" }] : [{ role: "close" }])] };
-  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
+  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), item("uuAiChat MCP Server…", "docs:territory"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
 
   const appMenu = {
     label: appName,

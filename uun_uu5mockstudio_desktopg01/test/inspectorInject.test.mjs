@@ -79,3 +79,43 @@ test("picks that are linked in the text are numbered by their markers", () => {
   assert.match(two, /marked 2 components/); assert.match(two, /#1\) .*Uu5Elements.Box[\s\S]*#3\) .*Uu5Elements.Button/);
   assert.match(agentContext([{ ...mk(0, "Box"), ref: undefined }]), /^Context: the user selected the uu5 component/, "without markers the old wording stays");
 });
+
+test("one copy of an element rendered by .map (Cmd / Ctrl + click) is named by its item, and the agent is told to change only that item", async () => {
+  const { copyItem } = await import("../src/renderer/inspector.js");
+  const loop = { list: "CONTACTS", count: 3, items: [
+    { index: 0, label: 'name: "Jan Novák"', values: ["Jan Novák", "JN"] }, { index: 1, label: 'name: "Eva Svobodová"', values: ["Eva Svobodová"] }, { index: 2, label: 'name: "Studijní oddělení"', values: ["Studijní oddělení"] }] };
+  const base = { file: "p.html", chain: [{ name: "Uu5Elements.Box" }, { name: "Uu5Elements.Grid" }], element: { name: "Uu5Elements.Box", snippet: "<Uu5Elements.Box key={contact.name}>", loop }, copies: 3 };
+  const first = { ...base, ref: 1, inst: { index: 0, count: 3, key: "Jan Novák", nth: 0, path: [0] } };
+  const third = { ...base, ref: 2, inst: { index: 2, count: 3, key: "Studijní oddělení", nth: 2, path: [2] } };
+  assert.deepEqual(copyItem(first), { list: "CONTACTS", index: 0, label: 'name: "Jan Novák"', nth: 0, count: 3 });
+  assert.match(describePick(first), /Uu5Elements.Box — only CONTACTS\[0\] \(name: "Jan Novák"\) \(inside Uu5Elements.Grid\) in p.html/);
+  assert.match(describePick(third), /only CONTACTS\[2\] \(name: "Studijní oddělení"\)/);
+  const ctx = agentContext([first, third]);
+  assert.match(ctx, /#1\) .*ONLY ONE COPY.*`CONTACTS\.map\(…\)`.*`CONTACTS\[0\]` \(index 0, counting from 0; the item with name: "Jan Novák"\)/);
+  assert.match(ctx, /#2\) .*`CONTACTS\[2\]` \(index 2.*Studijní oddělení/);
+  assert.match(ctx, /the other copies must stay as they are/);
+  // the key is not one of the values (key={i}): the place counts when the page renders every item
+  assert.equal(copyItem({ ...base, inst: { index: 1, count: 3, key: "1", nth: 1 } }).index, 1);
+  // a filtered list: neither the key nor the count tells the item, the copy is named by its place on the page
+  const f = { ...base, element: { ...base.element, loop: { list: "ROWS.filter(Boolean)", count: null, items: null } }, inst: { index: 1, count: 2, key: null, nth: 1 } };
+  assert.equal(copyItem(f).index, null);
+  assert.match(describePick(f), /only copy 2 of 2 from ROWS\.filter\(Boolean\)\.map/);
+  assert.match(agentContext(f), /copy 2 of 2 \(counting from 1, in the order on the page\)/);
+  // the element itself (plain / Shift + click) with copies: every copy changes
+  assert.match(describePick({ ...base }), /Uu5Elements.Box \(all 3 copies from CONTACTS.map\)/);
+  assert.match(agentContext({ ...base }), /rendered 3 times \(once per item of `CONTACTS\.map\(…\)`\); the user marked the element itself/);
+  assert.equal(copyItem(base), null);
+});
+
+test("Cmd / Ctrl + click picks one copy in the page script; on macOS Ctrl + click comes as a context menu", () => {
+  assert.match(INJECT, /e\.metaKey \|\| e\.ctrlKey \? "copy" : e\.shiftKey \? "add" : "one"/);
+  assert.match(INJECT, /addEventListener\("contextmenu", ctx, true\)/);
+  assert.match(INJECT, /data-studio-inspect/);
+});
+
+test("updateSelection keeps two copies of one element apart (their keys differ by the copy)", () => {
+  const pick = (key) => ({ file: "a.html", key, additive: true, selected: true });
+  let r = updateSelection([], pick("4|@k:Jan Novák"));
+  r = updateSelection(r.selection, pick("4|@k:Studijní oddělení"));
+  assert.deepEqual(r.selection.map((x) => x.key), ["4|@k:Jan Novák", "4|@k:Studijní oddělení"]);
+});

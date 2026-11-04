@@ -11,8 +11,14 @@ export const CODEX_NOTE = [
 ].join(" ");
 
 /** The `codex exec` command line. A resumed run accepts fewer flags than a fresh one, so the sandbox is set with `-c`, which both accept. */
-export function codexArgs({ sessionId, model, plan = false, economy = false, writable = [], mcpUrl = "" }) {
+export function codexArgs({ sessionId, model, plan = false, economy = false, writable = [], mcpUrl = "", docServers = {}, docTools = {} }) {
   const toml = (v) => JSON.stringify(v);
+  const table = (o) => `{ ${Object.entries(o).map(([k, v]) => `${k} = ${toml(String(v))}`).join(", ")} }`;
+  // the Plus4U documents of the project: the MCP proxy with only its reading tools enabled (approved, as approval is "never")
+  const docs = Object.entries(docServers).flatMap(([name, s]) => [
+    "-c", `mcp_servers.${name}.command=${toml(s.command)}`, "-c", `mcp_servers.${name}.args=${JSON.stringify(s.args ?? [])}`, "-c", `mcp_servers.${name}.env=${table(s.env ?? {})}`,
+    "-c", `mcp_servers.${name}.enabled_tools=${JSON.stringify(docTools[name] ?? [])}`, "-c", `mcp_servers.${name}.startup_timeout_sec=120`, "-c", `mcp_servers.${name}.default_tools_approval_mode=${toml("approve")}`,
+  ]);
   return [
     "exec", ...(sessionId ? ["resume", sessionId] : []),
     "--json", "--skip-git-repo-check",
@@ -21,6 +27,7 @@ export function codexArgs({ sessionId, model, plan = false, economy = false, wri
     "-c", `approval_policy=${toml("never")}`,
     // the preview tools of the app; with approval "never" Codex refuses MCP calls unless the server is set to approve them
     ...(mcpUrl ? ["-c", `mcp_servers.studio-browser.url=${toml(mcpUrl)}`, "-c", `mcp_servers.studio-browser.default_tools_approval_mode=${toml("approve")}`] : []),
+    ...docs,
     ...(economy ? ["-c", `model_reasoning_effort=${toml("low")}`] : []),
     ...(model ? ["-m", model] : []),
     "-", // the prompt comes on stdin
@@ -48,7 +55,7 @@ export class CodexService {
 
   /** One `codex exec` run with `text` on stdin. Resolves what the run did: { finished, result (held back, see send), wrote, read, stderr }. */
   _run(bin, text, { model, plan, economy }) {
-    const args = codexArgs({ sessionId: this.sessionId, model, plan, economy, writable: this.globalRoot ? [this.globalRoot] : [], mcpUrl: this.mcpUrl });
+    const args = codexArgs({ sessionId: this.sessionId, model, plan, economy, writable: this.globalRoot ? [this.globalRoot] : [], mcpUrl: this.mcpUrl, docServers: this.docSetup?.servers, docTools: this.docSetup?.readTools });
     const child = spawn(bin, args, { cwd: this.cwd, shell: codexShell(), stdio: ["pipe", "pipe", "pipe"] });
     this.child = child;
     child.stdin.on("error", () => {}); // the process may end before it has read everything
@@ -77,7 +84,8 @@ export class CodexService {
     const bin = await findCodex();
     if (!bin) return this.onEvent({ type: "app_error", message: "Codex was not found. Install the Codex CLI or the ChatGPT app, or set STUDIO_CODEX_BIN." });
     await (pluginsDone ??= ensureCodexPlugins({ bin }).catch(() => null));
-    const { instructions } = await agentInstructions(this, { plan, economy });
+    const { instructions, docs } = await agentInstructions(this, { plan, economy });
+    this.docSetup = docs; // the MCP servers of the Plus4U documents for both runs
     const files = requiredFiles(), skills = skillsPrompt(files);
     let run = await this._run(bin, `${instructions}\n${CODEX_NOTE}${skills ? `\n${skills}` : ""}\n\n--- The request of the user ---\n${prompt}`, { model, plan, economy });
     // Codex only "may" use a skill: when it wrote a screen without having read them, it is sent back once.

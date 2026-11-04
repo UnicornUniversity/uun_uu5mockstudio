@@ -916,3 +916,28 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 .picon-mdi{font-size:24px;line-height:1;display:inline-block}.picon-mdi::before{display:inline-block}
 .pcode .picon-mdi{font-size:20px;flex:none}
 .ib-icon.ib-new .picon-mdi{outline:1px dashed var(--mute);outline-offset:3px;border-radius:3px}
+
+/* Plus4U documents pasted as links: a card next to the attached images, a preview of the snapshot */
+#attachments .att.doc{width:220px;height:auto;min-height:64px;padding:6px 26px 6px 8px;display:flex;flex-direction:column;gap:3px;font-size:12px;cursor:default}
+#attachments .att.doc.ready{cursor:pointer}#attachments .att.doc.ready:hover{border-color:var(--acc)}
+#attachments .att.doc .doc-k{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--acc);font-weight:600}
+#attachments .att.doc .doc-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#attachments .att.doc .doc-s{color:var(--mute)}
+#attachments .att.doc.error .doc-s{color:#ff7b7b}
+#attachments .att.doc .doc-row{display:flex;gap:6px}#attachments .att.doc select{flex:1;min-width:0;font:inherit}
+#attachments .att.doc .doc-a{position:static;width:auto;height:auto;padding:3px 10px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;font-size:12px;align-self:flex-start}
+#attachments .att.doc.loading .doc-t{color:var(--mute);font-weight:400}
+.msg .atts.docs .docchip{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:inherit;border-radius:8px;padding:3px 8px;font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.docprev{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:45;outline:none}
+.docprev .card{width:min(720px,92vw);max-height:84vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.docprev header{display:flex;align-items:flex-start;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.docprev header>div{flex:1;min-width:0}.docprev header small{color:var(--mute)}.docprev header h2{margin:2px 0 0;font-size:16px}
+.docprev .docprev-body{overflow:auto;padding:4px 18px 18px;font-size:13px;line-height:1.5}
+.docprev .card.terr{width:min(480px,92vw)}.docprev .card.terr select{max-width:100%;font:inherit;margin-left:6px}
+.docprev .card.terr .primary{background:var(--acc);border-color:var(--acc);color:#fff;padding:6px 16px;border-radius:8px}
+.docprev .card.terr .terr-f{display:flex;flex-direction:column;gap:4px;margin:10px 0}.docprev .card.terr .terr-f span{font-size:12px;color:var(--mute)}
+.docprev .card.terr .terr-f select{margin-left:0}
+.docprev .card.terr input{padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:12px ui-monospace,Menlo,monospace}
+.docprev .card.terr .terr-custom p.mute{color:var(--mute);font-size:12px}
+#attachments .att.doc .doc-img{width:100%;height:110px;object-fit:cover;object-position:top;border-radius:5px;border:1px solid var(--line);background:#fff;display:block}
+.docprev .docprev-body.shot{padding:0;background:#fff}.docprev .docprev-body.shot img{width:100%;display:block}

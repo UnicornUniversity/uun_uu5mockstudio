@@ -7,6 +7,8 @@ import path from "node:path";
 import fs from "node:fs";
 import { templatePrompt } from "./templates.mjs";
 import { claudeEvents } from "./providers/events.mjs";
+import { docAgentSetup } from "./docFetcher.mjs";
+import { docToolVerdict } from "./docSources.mjs";
 
 const RULES_LIMIT = 12000;
 
@@ -56,6 +58,8 @@ export function planPrompt() {
 /** One decision for a tool call: the rules of the project folder, and in planning mode no tool that changes files. */
 export function toolVerdict({ plan = false, cwd, repoDir, tool, target, extraFiles = [] }) {
   if (plan && PLAN_DENIED.has(tool)) return { behavior: "deny", message: "Planning mode: do not change files now, describe the change in the plan instead." };
+  const doc = docToolVerdict(tool); // Plus4U documents: reading only
+  if (doc) return doc;
   return accessPolicy({ cwd, repoDir, tool, target, extraFiles });
 }
 
@@ -102,8 +106,9 @@ export async function agentInstructions(svc, { plan = false, economy = false } =
   const rules = await readRules(svc.cwd), globalRules = svc.globalRoot ? await readGlobalRules(svc.globalRoot) : "", globalFile = svc.globalRoot ? path.join(svc.globalRoot, GLOBAL_FILE) : "";
   const templateMeta = await fs.promises.readFile(path.join(svc.cwd, ".studio", "template", "template.json"), "utf8").then(JSON.parse).catch(() => null); // a project started from a template
   const memory = memoryPrompt({ cwd: svc.cwd, repoDir: svc.repoDir, repoLabel: svc.repoLabel, rules, description: await readProject(svc.cwd), globalRules, globalFile, componentsBlock: componentsInRules(svc.docs, `${globalRules}\n${rules}`) });
-  const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
-  return { instructions, globalFile };
+  const docs = await docAgentSetup(svc.cwd).catch(() => ({ prompt: "", servers: {}, readTools: {} })); // documents of Plus4U read into the project
+  const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (docs.prompt ? `\n${docs.prompt}` : "") + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
+  return { instructions, globalFile, docs };
 }
 
 /** The provider "claude": the Claude Agent SDK driving the user's Claude Code. `onEvent` gets the events of providers/events.mjs. */
@@ -118,7 +123,7 @@ export class ClaudeService {
   async send(prompt, model, { plan = false, economy = false } = {}) {
     this.abort = new AbortController();
     const repoDir = this.repoDir;
-    const { instructions, globalFile } = await agentInstructions(this, { plan, economy });
+    const { instructions, globalFile, docs } = await agentInstructions(this, { plan, economy });
     const q = query({
       prompt,
       options: {
@@ -127,7 +132,7 @@ export class ClaudeService {
         settingSources: ["user", "project"],
         permissionMode: "acceptEdits",
         disallowedTools: disallowedTools(plan),
-        mcpServers: { "studio-browser": this.browserMcp },
+        mcpServers: { "studio-browser": this.browserMcp, ...Object.fromEntries(Object.entries(docs.servers).map(([n, s]) => [n, { type: "stdio", ...s }])) },
         ...(repoDir ? { additionalDirectories: [repoDir] } : {}),
         canUseTool: async (tool, input) => {
           const verdict = toolVerdict({ plan, cwd: this.cwd, repoDir, tool, target: input.file_path ?? input.path ?? input.notebook_path, extraFiles: globalFile ? [globalFile] : [] });

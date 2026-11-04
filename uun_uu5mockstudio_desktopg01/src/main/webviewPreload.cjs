@@ -21,6 +21,8 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.defaultPrevented) ipcRenderer.sendToHost("studio-escape"); });
 // A right click inside a screen opens the app's menu (add a note here, ...): the page cannot show it, the canvas can.
 window.addEventListener("contextmenu", (e) => {
+  // macOS turns Ctrl + click into a context menu (with the left button): in the Edit mode that click picks one copy of a component (the inspector handles it)
+  if (e.ctrlKey && e.button === 0 && document.documentElement.hasAttribute("data-studio-inspect")) return;
   e.preventDefault();
   ipcRenderer.sendToHost("studio-contextmenu", { x: e.clientX, y: e.clientY, vw: window.innerWidth });
 }, true);

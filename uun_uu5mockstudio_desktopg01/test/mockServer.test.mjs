@@ -36,3 +36,15 @@ test("hidden state folder is not served", async () => {
 test("in-memory routes are served", async () => {
   assert.equal(await (await get("/__warmup/0.html")).text(), "<p>warm</p>");
 });
+
+test("of .studio only the rendered Plus4U documents and their pictures are served", async () => {
+  const src = path.join(root, "p", ".studio", "sources");
+  await mkdir(path.join(src, "assets"), { recursive: true });
+  await writeFile(path.join(src, "mkEcc-1.html"), "<p>doc</p>");
+  await writeFile(path.join(src, "assets", "abc.jpg"), "jpg");
+  await writeFile(path.join(src, "mkEcc-1.json"), "{}");
+  await writeFile(path.join(root, "p", ".studio", "state.json"), "{}");
+  assert.equal(await (await get("/p/.studio/sources/mkEcc-1.html")).text(), "<p>doc</p>");
+  assert.equal((await get("/p/.studio/sources/assets/abc.jpg")).headers.get("content-type"), "image/jpeg");
+  for (const p of ["/p/.studio/sources/mkEcc-1.json", "/p/.studio/state.json", "/p/.studio/sources/../state.json"]) assert.equal((await get(p)).status, 404, p);
+});

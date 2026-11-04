@@ -24,6 +24,8 @@ import { createChatDock } from "./chatdock.js";
 import { flashCode } from "./flashComponent.js";
 import { collectCode } from "./uu5StringCollect.js";
 import { toUu5String, mergeTrees, summaryOf } from "./uu5String.js";
+import { createDocCards, docsContext, territoryDialog } from "./docCards.js";
+import { kindLabel } from "./docLinks.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -69,6 +71,7 @@ function entryEl(e) {
   else if (e.kind === "user") {
     el.innerHTML = highlightMentions(e.text);
     if (e.images?.length) { const row = Object.assign(document.createElement("div"), { className: "atts" }); for (const im of e.images) row.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name ?? "attachment", title: im.name ?? "" })); el.append(row); }
+    if (e.docs?.length) { const row = Object.assign(document.createElement("div"), { className: "atts docs" }); for (const d of e.docs) { if (d.thumb) row.append(Object.assign(document.createElement("img"), { src: d.thumb, alt: d.title, title: `${kindLabel(d.kind)}: ${d.title}` })); row.append(Object.assign(document.createElement("button"), { type: "button", className: "docchip", textContent: `📄 ${d.title}`, title: `${kindLabel(d.kind)}: ${d.url}`, onclick: () => window.studio.openExternal(d.url) })); } el.append(row); }
   }
   else el.textContent = e.text;
   return el;
@@ -416,6 +419,12 @@ let pendingPick = null;
 const markAfterReload = (file, ordinals) => { if (inspector.on && !chatPick && ordinals?.length) pendingPick = { file, ordinals, until: Date.now() + 10000 }; };
 const takePending = (file) => { const p = pendingPick; if (!p || Date.now() > p.until) return (pendingPick = null); if (p.file !== file) return null; pendingPick = null; return p.ordinals; };
 /** The marked components and list items by screen: [{ file, items: [{ ordinal, name, sub: { prop, index } | null }] }] (`ordinal` = the component, for an item the one whose list it is). */
+/** A copy of a component rendered by `.map` (Cmd / Ctrl + click) is one JSX element for all copies: it is not deleted or copied in the file, the agent changes its item. */
+function copyRefused(list) {
+  if (!list.some((m) => m.inst)) return false;
+  toast("A single copy from .map cannot be deleted or copied here (the file has one element for all copies). Use it in the chat and say what to do with that item.", { err: true });
+  return true;
+}
 function markedByFile() {
   const by = new Map();
   for (const m of marked) {
@@ -597,8 +606,8 @@ addEventListener("keydown", (e) => {
   else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); canvas.zoomBy(1.25); }
   else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); canvas.zoomBy(0.8); }
   else if (e.key === "i" && !e.metaKey && !e.ctrlKey) setInspect(!inspector.on);
-  else if (inspector.on && !chatPick && marked.length && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); for (const g of markedByFile()) deleteInScreen(g); }
-  else if (inspector.on && !chatPick && marked.length && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); for (const g of markedByFile()) duplicateInScreen(g); }
+  else if (inspector.on && !chatPick && marked.length && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) deleteInScreen(g); }
+  else if (inspector.on && !chatPick && marked.length && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) duplicateInScreen(g); }
   else if ((e.key === "Delete" || e.key === "Backspace") && canvas.selected() && !inspector.on) { e.preventDefault(); deleteScreen(canvas.selected()); }
   else if (e.key === "Escape") { if (inspector.on) escapeEdit(); else canvas.select(null); }
 });
@@ -606,14 +615,11 @@ addEventListener("keydown", (e) => {
 // ---------- inspector ----------
 // chat mode: the picker works without the side panel; every click adds the component to the message being written
 let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick session added (a plain click replaces them)
-let editTab = null; // the panel tab the user had before the Edit mode opened the Components tab
 function setInspect(v, { chat = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v); canvas.setEditing(v && !chatPick);
   $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
-  // the Edit mode puts the catalogue next to the screens (a component is dragged from it); leaving the mode gives the tab back
-  if (v && !chatPick) { if (!editTab) editTab = { before: panelTab }; setPanelTab("components", { focus: false }); }
-  else if (editTab) { const t = editTab.before; editTab = null; if (panelTab === "components") setPanelTab(t, { focus: false }); }
+  // the side panel keeps its tab: the Edit mode does not switch the chat to the Components catalogue (the user opens it to drag a component in)
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
@@ -631,8 +637,8 @@ const propsPanel = createPropsPanel({
   api: { markLevel: (file, i, item) => { const v = viewOfFile(file); if (v) inspector.markLevel(v, i, item); }, editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
   onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
-  onDelete: (p) => deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
-  onDuplicate: (p) => duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
+  onDelete: (p) => copyRefused([p]) || deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
+  onDuplicate: (p) => copyRefused([p]) || duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
   onCopyUu5: (p) => copyUu5Components(p),
   onAddItem: (p) => addItemInScreen({ file: p.file, ordinal: p.ordinal, prop: p.sub.prop, after: p.sub.index, ownerName: p.ownerName }),
 });
@@ -738,7 +744,7 @@ async function showChip(c) {
   const f = c.file && canvas.get(c.file), ord = c.chain?.[0]; if (!f) return;
   canvas.focus(c.file);
   await new Promise((r) => setTimeout(r, 450)); // the screen is moved into view first
-  const ok = await f.view.executeJavaScript(flashCode(typeof ord === "object" ? ord.ordinal : ord)).catch(() => false);
+  const ok = await f.view.executeJavaScript(flashCode(typeof ord === "object" ? ord.ordinal : ord, c.inst?.nth ?? null)).catch(() => false);
   if (!ok) toast("That component is not on the screen any more.");
 }
 function addChip(p, { quiet = false } = {}) {
@@ -1557,6 +1563,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:share-html": return withScreen((f) => screenAction("share-html", f));
       case "screen:share-png": return withScreen((f) => screenAction("share-png", f));
       case "screen:share-uu5": return withScreen((f) => screenAction("share-uu5", f));
+      case "docs:territory": return territoryDialog({ toast, onSaved: () => docCards.reloadWaiting() });
       case "project:rules": return needProject(openRules);
       case "project:desc": return needProject(() => openDesc(null));
       case "project:repo-link": return needProject(() => linkRepoFlow());
@@ -1618,6 +1625,7 @@ const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgen
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]
 let preparing = 0;
+const docCards = createDocCards({ onChange: () => renderAttachments(), toast }); // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 const toBlob = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
 /** Normalizes any image to a PNG (or JPEG when huge) of at most 2000 px plus a small thumbnail. */
@@ -1642,7 +1650,8 @@ function renderAttachments() {
     box.append(d);
   }
   if (preparing) box.append(Object.assign(document.createElement("div"), { className: "att busy", textContent: "…" }));
-  box.hidden = !pending.length && !preparing;
+  docCards.renderInto(box);
+  box.hidden = !pending.length && !preparing && !docCards.count();
 }
 async function addImages(files) {
   const imgs = [...files].filter((f) => f.type.startsWith("image/"));
@@ -1657,8 +1666,10 @@ async function addImages(files) {
 }
 $("prompt").addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
-  if (files.length) { e.preventDefault(); addImages(files); } // plain text pastes are left alone
+  if (files.length) { e.preventDefault(); addImages(files); return; }
+  docCards.scan(e.clipboardData?.getData("text") ?? ""); // a link to a uuBookKit / uuManagementKit document stays in the text and gets a card
 });
+$("prompt").addEventListener("input", () => docCards.sync($("prompt").value)); // a link deleted from the text takes its card away
 $("attach").onclick = () => $("attachfile").click();
 $("attachfile").onchange = (e) => { addImages(e.target.files); e.target.value = ""; };
 {
@@ -1678,8 +1689,11 @@ $("form").onsubmit = async (e) => {
   if (preparing) return toast("The images are still loading, one moment.");
   const imgs = pending.slice();
   let prompt = $("prompt").value.trim();
-  if (!prompt && !imgs.length) return;
-  if (!prompt) prompt = "Attaching a screenshot, see the attachment.";
+  if (docCards.scan(prompt) || docCards.busy()) return toast("The documents are still loading, one moment.");
+  if (docCards.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
+  if (!prompt && !imgs.length && !docCards.count()) return;
+  if (!prompt) prompt = docCards.count() ? "Use the attached document." : "Attaching a screenshot, see the attachment.";
+  const docs = docCards.take();
   // attached screenshots become files in the project (hidden folder) that the agent opens with Read
   let paths = [];
   if (imgs.length) {
@@ -1688,7 +1702,7 @@ $("form").onsubmit = async (e) => {
     paths = r;
   }
   const ctx = chips.length ? chips.slice() : null;
-  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name }) => ({ thumb, name })) } : {}) });
+  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name }) => ({ thumb, name })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
   $("prompt").value = ""; pending = []; renderAttachments(); setBusy(true);
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
@@ -1699,6 +1713,7 @@ $("form").onsubmit = async (e) => {
     repoRefs.length && repo && `Referenced files of the linked git repository (read-only, ${repo.readDir ?? repo.path}): ${repoRefs.map((p) => `${repo.readDir ?? repo.path}/${p}`).join(", ")}. Read them first and stay consistent with their names, props and structure.`,
     libBlock,
     noteBlock,
+    docsContext(docs),
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,
     ctx && agentContext(ctx),

@@ -837,3 +837,17 @@ test("a prop taken from the item of a .map callback shows the values of the list
   assert.match(out, /icon=\{m\.icon\}/);
   assert.throws(() => setProp(html, icon.ordinal, "icon", { type: "mapItem", value: { from: "mdi-x", to: "mdi-y" } }), /No item of MODULES/);
 });
+
+test("an element inside .map says which list it repeats and what tells its items apart (to name one copy picked in the inspector)", () => {
+  const html = aliased(`const CONTACTS = [{ initials: "JN", name: "Jan Novák", email: "m@x" }, { name: { cs: "Eva", en: "Eve" } }, { role: "Studijní", id: 7 }];`,
+    `<Uu5Elements.Grid>{CONTACTS.map((contact) => <Uu5Elements.Box key={contact.name}><Uu5Elements.Text>{contact.name}</Uu5Elements.Text></Uu5Elements.Box>)}</Uu5Elements.Grid>`);
+  const els = parseElements(html), box = els.find((e) => e.name === "Uu5Elements.Box"), text = els.find((e) => e.name === "Uu5Elements.Text");
+  const loop = describeElement(html, box.ordinal).loop;
+  assert.equal(loop.list, "CONTACTS"); assert.equal(loop.count, 3);
+  assert.deepEqual(loop.items.map((i) => i.label), ['name: "Jan Novák"', 'name: "Eva"', 'id: 7']);
+  assert.deepEqual(loop.items[0].values, ["JN", "Jan Novák", "m@x"]);
+  assert.equal(describeElement(html, text.ordinal).loop.list, "CONTACTS", "an element nested in the copy belongs to the same list");
+  assert.equal(describeElement(html, els.find((e) => e.name === "Uu5Elements.Grid").ordinal).loop, undefined, "the element around .map is not repeated");
+  const filtered = aliased(`const ROWS = [{ name: "a" }];`, `<div>{ROWS.filter(Boolean).map(({ name }) => <span key={name}>{name}</span>)}</div>`);
+  assert.deepEqual(describeElement(filtered, parseElements(filtered).find((e) => e.name === "span").ordinal).loop, { list: "ROWS.filter(Boolean)", count: null, items: null });
+});

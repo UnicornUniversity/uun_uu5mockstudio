@@ -8,7 +8,8 @@ A template string executed in the page with `webview.executeJavaScript` (so it m
 
 - adds capturing listeners for `mousemove` (the blue frame under the pointer; only an edge, no fill), `click`, `scroll`, `resize`, and swallows `mousedown`/`mouseup`/`pointerdown`/`pointerup`/`submit` so the page does not react to picking;
 - sets the **crosshair** cursor for everything (`<style>` with `* { cursor: crosshair !important }`, removed on off);
-- keeps a map of **marked** components (orange frames; Shift / ⌘ / Ctrl + click adds or removes) and repaints them periodically (the page re-renders and scrolls);
+- keeps a map of **marked** components (orange frames; Shift + click adds or removes a component, ⌘ / Ctrl + click one copy) and repaints them periodically (the page re-renders and scrolls);
+- **copies from `.map`**: an element written once in the file can be rendered several times (`LIST.map(…)`, or a component of the file used twice). `copiesOf` finds all outermost fibers with its ordinal in the committed tree; `copyOf` says which copy was clicked: at every level where the copies part, the place among the siblings that hold a copy, plus the React key of the innermost one. Shift / plain click marks the element (the other copies get dashed frames, the pick says `copies: n`); ⌘ / Ctrl + click marks one copy (key `ordinal|sub@k:<key>` or `@<path>`, pick `inst: { index, count, key, nth, path }`). On macOS Ctrl + click arrives as `contextmenu` with button 0: the inspector picks it there and the webview preload leaves it alone while `<html data-studio-inspect>` is set. `describeElement` / `describeItem` return `loop: { list, count, items: [{ index, label, values }] }` for an element inside `.map` (`jsxSource.mjs`, `loopOf`), and `copyItem` (inspector.js) matches the copy to its item (by the key among the item's values, else by place when the counts agree), so the chip says `CONTACTS[0] (name: "Jan Novák")` and `agentContext` tells the agent to change only that item. Delete / ⌘D refuse a copy (the file has one element for all copies); the chip's flash (`flashCode(ordinal, nth)`) frames the copy.
 - on click reports the pick with `console.log("<marker>" + JSON)`; the host's `console-message` handler (`handleConsole`) parses it. Escape is reported the same way (`__studio_esc__`) because the page swallows it;
 - exposes `window.__studioInspect` with `drop(key)`, `clear()`, `markLevel(i, item)` (the frame goes to the component `i` levels above the last pick) and `off()`.
 
@@ -76,4 +77,4 @@ An item of a list prop (an action of `actionList` / `itemList` of ActionGroup, a
 
 ## The catalogue next to the screens
 
-Entering the Edit mode opens the **Components** tab of the side panel (`setInspect`, the previous tab is remembered in `editTab` and comes back when the mode is left, unless the user changed tab in the meantime), so a component can be dragged from the catalogue onto the screen while editing.
+Entering the Edit mode leaves the side panel on the tab it is on (the chat stays open); a component is dragged onto the screen from the **Components** tab once the user opens it.

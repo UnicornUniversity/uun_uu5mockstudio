@@ -26,6 +26,8 @@ import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
 import { saveAttachments } from "./attachments.mjs";
+import { createDocFetcher } from "./docFetcher.mjs";
+import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
 import { loadBml } from "./uuBml.mjs";
 import { checkGithub, isRepoUrl, DEFAULT_REPO } from "./githubUpdates.mjs";
@@ -469,6 +471,53 @@ app.whenReady().then(async () => {
     return chatView(st);
   }));
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
+  // Documents of Plus4U (uuBookKit pages, uuManagementKit ECC documents) pasted into the chat: read once through the MCP proxy, kept as a snapshot in the project
+  const docFetcher = createDocFetcher();
+  app.on("will-quit", () => { docFetcher.close(); });
+  /**
+   * A picture of a rendered document (<project>/<rel>, served by the preview server): a hidden window 1280 px wide waits until the uu5
+   * libraries have painted the text, then the whole page is captured. { full: JPEG for the agent and the preview, thumb: data URL for the card }.
+   */
+  const captureSource = async (projectName, rel) => {
+    const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, offscreen: false } });
+    try {
+      await w.loadURL(`http://127.0.0.1:${port}/${encodeURIComponent(projectName)}/${rel.split(path.sep).map(encodeURIComponent).join("/")}`);
+      let ready = 0;
+      for (let t = 0; t < 60 && ready < 2; t++) { // the libraries come from the CDN: wait until the page shows text, twice in a row
+        await new Promise((r) => setTimeout(r, 500));
+        const n = await w.webContents.executeJavaScript(`(document.getElementById("uu5")?.innerText || "").trim().length`).catch(() => 0);
+        ready = n >= 20 ? ready + 1 : 0;
+      }
+      await new Promise((r) => setTimeout(r, 1500)); // pictures and icons
+      const wc = w.webContents;
+      wc.debugger.attach("1.3");
+      try {
+        const m = await wc.debugger.sendCommand("Page.getLayoutMetrics");
+        const size = m.cssContentSize ?? m.contentSize;
+        const height = Math.min(Math.ceil(size.height), 8000), width = 1280;
+        const r = await wc.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 80, captureBeyondViewport: true, clip: { x: 0, y: 0, width, height, scale: 1 } });
+        const img = nativeImage.createFromBuffer(Buffer.from(r.data, "base64"));
+        if (img.isEmpty()) return null;
+        const top = img.crop({ x: 0, y: 0, width, height: Math.min(height, 800) }).resize({ width: 320, quality: "good" });
+        return { full: img.toJPEG(78), thumb: `data:image/jpeg;base64,${top.toJPEG(75).toString("base64")}` };
+      } finally { try { wc.debugger.detach(); } catch { /* closed */ } }
+    } finally { w.destroy(); }
+  };
+  ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const name = current; return docFetcher.fetchDoc(dir(), String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(name, rel) }); }));
+  // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
+  ipcMain.handle("docs:shot", guard(async (_e, file) => {
+    const base = path.join(dir(), ".studio", "sources"), abs = path.resolve(String(file ?? ""));
+    if (path.dirname(abs) !== base || !/\.jpg$/.test(abs)) throw new Error("Not a picture of a document.");
+    return { url: `data:image/jpeg;base64,${(await fs.promises.readFile(abs)).toString("base64")}` };
+  }));
+  ipcMain.handle("docs:territory", guard(() => ({ store: readTerritory(), presets: presetsFor(KINDS.bookkit.plugin).map(({ name, description }) => ({ name, description })), inputs: Object.values(KINDS).map((k) => ({ id: k.input, label: k.label, current: parseAichatUrl(readTerritory()?.values?.[k.input]) })) })));
+  ipcMain.handle("docs:setTerritory", guard(async (_e, choice) => { // "<preset>" or { custom: { <input>: url } }
+    if (typeof choice === "string" && !presetsFor(KINDS.bookkit.plugin).some((p) => p.name === choice)) throw new Error("Unknown territory.");
+    if (typeof choice !== "string" && (!choice || typeof choice.custom !== "object")) throw new Error("Unknown territory.");
+    const store = writeTerritory(typeof choice === "string" ? choice : { custom: customValues(choice.custom) });
+    await docFetcher.close(); // the proxies of the old territory
+    return { store };
+  }));
   // The model select picks the provider too: "codex" or "codex:<model>" runs Codex, everything else Claude.
   ipcMain.handle("chat:send", guard((_e, { prompt, model, plan, economy }) => {
     const viaCodex = typeof model === "string" && /^codex(:|$)/.test(model), svc = viaCodex ? codex : claude;
