@@ -28,7 +28,7 @@ The control follows the type of the prop:
 | yes / no | a checkbox |
 | number, text | an input |
 | a list of known strings (`nestingLevelList`) | a multi choice |
-| icon | the **icon picker** (uuGDS and uuBml catalogs, uuBml states) |
+| icon | the **icon picker** (uuGDS, uuBml and Material Design Icons catalogs, uuBml states); in Material Design a dashed frame marks icons newer than MDI 4, which a document may not show, and **shown in documents** hides them |
 | a text that is an LSI (`{ cs, en }`, `t("Ano", "Yes")`, `<T lsi>`, a constant, `useLsi`) | the texts with a **switch of the languages**, edited where they are written |
 | a prop that points to a variable | the value of the variable, which you can edit |
 | a prop taken from the item of a list (`icon={m.icon}` in `MODULES.map((m) => …)`) | the value of the clicked copy with the usual control (the icon picker for an icon); a change is written into **that item** of the list |

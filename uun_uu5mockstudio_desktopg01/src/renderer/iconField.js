@@ -1,4 +1,4 @@
-import { iconGlyph, isBmlCode } from "./iconPicker.js";
+import { iconGlyph, isBmlCode, isMdiCode } from "./iconPicker.js";
 
 /** The icon of the button that opens the icon catalog: the same one wherever an icon is chosen. */
 export const ICON_PICK_SVG = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>`; // "choose from a catalog of shapes" (the old square glyph looked like a Stop button);
@@ -15,7 +15,7 @@ export function iconField({ value, glyphs, title = "Choose an icon (uuGDS or uuB
   input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
   const btn = Object.assign(document.createElement("button"), { type: "button", className: "pedit pico", title, innerHTML: ICON_PICK_SVG, onclick: async () => { const v = await onPick(); if (v) onText(v); } });
   const row = Object.assign(document.createElement("div"), { className: "pcode" });
-  if (cur && (glyphs || isBmlCode(cur))) row.append(iconGlyph(cur));
+  if (cur && (glyphs || isBmlCode(cur) || isMdiCode(cur))) row.append(iconGlyph(cur));
   row.append(input, btn);
   return { row, input };
 }

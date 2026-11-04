@@ -621,7 +621,7 @@ $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
 const inspectedFile = () => propsPanel.file ?? activeMarked?.file ?? canvas.selected() ?? null; // the screen the user works with (undo falls back to the last change in the project)
 $("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
-const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml() });
+const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml(), getMdi: () => window.studio.iconsMdi() });
 // the list of actions (actionList, itemList of ActionGroup, …) of the picked component, in a window
 const actionListEditor = createActionListEditor({ api: {
   list: window.studio.jsxList, item: window.studio.jsxItem, setText: window.studio.jsxSetText, set: window.studio.jsxSet, remove: window.studio.jsxRemove,

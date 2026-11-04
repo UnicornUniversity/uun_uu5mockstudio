@@ -912,3 +912,7 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 #selmenu .fmt-acts button.dragrow .grip{color:var(--mute)}
 #selmenu .fmt-acts button.dragrow[data-state="preparing"]{opacity:.45;cursor:progress}
 #selmenu .fmt-acts button.dragrow[data-state="preparing"]::after{content:none}
+/* Material Design Icons in the icon picker and the panel; a dashed frame: newer than MDI 4, a document may not show it */
+.picon-mdi{font-size:24px;line-height:1;display:inline-block}.picon-mdi::before{display:inline-block}
+.pcode .picon-mdi{font-size:20px;flex:none}
+.ib-icon.ib-new .picon-mdi{outline:1px dashed var(--mute);outline-offset:3px;border-radius:3px}

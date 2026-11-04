@@ -38,6 +38,7 @@ import { tagHtml, structureOf, structureOutline, moveElements, insertElement, re
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
+import { loadMdi } from "./mdiIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
 import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes, screenMemoryInfo, forgetScreen } from "./rules.mjs";
 
@@ -177,6 +178,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("icons:bml", async () => (bml ??= await loadBml({
     fetchText: async (url) => { const r = await net.fetch(url, { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); },
     cacheFile: path.join(app.getPath("userData"), "uubml.json"),
+  })));
+  let mdi;
+  ipcMain.handle("icons:mdi", async () => (mdi ??= await loadMdi({
+    fetchText: async (url) => { const r = await net.fetch(url, { signal: AbortSignal.timeout(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); },
+    cacheFile: path.join(app.getPath("userData"), "mdi-icons.json"),
   })));
   ipcMain.handle("icons:catalog", () => (iconCatalog === undefined ? (iconCatalog = loadIcons()) : iconCatalog));
   ipcMain.handle("jsx:inspect", guard((_e, { file, ordinals, sub }) => inspectInfo(fs.readFileSync(screenPath(file), "utf8"), ordinals, sub)));

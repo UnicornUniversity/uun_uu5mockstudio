@@ -103,6 +103,7 @@ contextBridge.exposeInMainWorld("studio", {
   jsxSetBranch: (file, ordinals, name, idx, type, value, sub) => invoke("jsx:setBranch", { file, ordinals, name, idx, type, value, sub }),
   iconCatalog: () => invoke("icons:catalog"),
   uuBml: () => invoke("icons:bml"),
+  iconsMdi: () => invoke("icons:mdi"),
   projectsFolder: (op) => invoke("projects:folder", op),
   meta: () => invoke("app:meta"),
   checkUpdates: () => invoke("update:check"),

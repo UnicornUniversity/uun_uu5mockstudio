@@ -1,4 +1,18 @@
+import { MDI_BASELINE } from "./mdiBaseline.js";
+
 const $ = (id) => document.getElementById(id);
+/** The Material Design Icons stylesheet the mockups load (the same as MDI_CSS of src/main/mdiIcons.mjs). */
+export const MDI_CSS = "https://cdn.plus4u.net/libs/materialdesignicons/7.0.96/css/materialdesignicons.min.css";
+/** `mdi-rocket-launch-outline`: an icon of Material Design Icons. */
+export const isMdiCode = (code) => /^mdi-[a-z0-9-]+$/.test(String(code ?? ""));
+/** May a document show it? Documents can load an older MDI (4.0.96, see mdiBaseline.js) than the screens. */
+export const inDocuments = (code) => MDI_BASELINE.has(String(code).replace(/^mdi-/, ""));
+let mdiLoaded = false;
+/** Loads the MDI stylesheet into the app once, so that mdi-* icons can be drawn in the panel and the picker. */
+export function ensureMdiCss() {
+  if (mdiLoaded) return; mdiLoaded = true;
+  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = MDI_CSS; l.setAttribute("data-iconset", "mdi"); document.head.append(l);
+}
 const SETS = ["icons", "arrow", "edit", "media", "layout", "uiaction", "it", "education", "chart", "communication", "commerce", "home", "badge", "security", "shape", "time", "weather", "user", "navigation", "transport", "alert"];
 const MAX = 480;
 
@@ -18,6 +32,7 @@ export const STATE_KINDS = { "": "No kind (grey)", default: "Default", initial: 
 
 /** A rendered icon (the icon fonts must be loaded: see ensureFonts / ensureStateFonts). */
 export function iconGlyph(code) {
+  if (isMdiCode(code)) { ensureMdiCss(); const m = document.createElement("span"); m.className = `picon-mdi mdi ${code}`; m.title = code; return m; }
   if (isBmlCode(code)) { const b = document.createElement("span"); b.className = `ib-bml uubml ${code}`; b.title = code; return b; }
   const g = document.createElement("span");
   g.className = `picon ${code.startsWith("uugdsstencil-") ? "uugdsstencil" : "uugds"} ${code}`; g.style.setProperty("--ff", fontOf(code)); g.title = code;
@@ -41,7 +56,7 @@ export function matches(icon, query) {
  * (the font stylesheets are taken from the CDN folder the page loaded them from).
  */
 let lastLib = "gds"; // the library the picker opened with last time
-export function createIconPicker({ getCatalog, getBml }) {
+export function createIconPicker({ getCatalog, getBml, getMdi }) {
   let catalog = null, loadedBase = null, resolve = null, state = null, bmlLoaded = false;
   const box = $("iconbox");
 
@@ -101,10 +116,33 @@ export function createIconPicker({ getCatalog, getBml }) {
     $("ib-note").textContent = list.length > MAX ? `Showing ${MAX} of ${list.length} — narrow the search.` : `${list.length} icon${list.length === 1 ? "" : "s"}`;
   }
 
-  /** Switches the icon dialog between the uuGDS catalog and the uuBml icon font (its own groups, search by name). */
+  function mdiCell(i) {
+    const b = document.createElement("button"), old = inDocuments(i.code);
+    b.type = "button"; b.className = "ib-icon" + (i.code === state.current ? " on" : "") + (old ? "" : " ib-new");
+    b.title = `${i.code}${i.keywords.length ? `\n${i.keywords.join(", ")}` : ""}${old ? "" : `\nNewer than MDI 4${i.since ? ` (since ${i.since})` : ""}: a document may not show it`}`;
+    const g = document.createElement("span"); g.className = `picon-mdi mdi ${i.code}`;
+    const n = document.createElement("span"); n.className = "ib-name"; n.textContent = i.name;
+    b.append(g, n); b.onclick = () => done(i.code); return b;
+  }
+  function renderMdi() {
+    const q = $("ib-search").value.trim(), cat = $("ib-cat").value, doc = $("ib-doc").checked, grid = $("ib-grid"); grid.replaceChildren();
+    const list = state.mdi.icons.filter((i) => (!cat || i.category === cat) && (!doc || inDocuments(i.code)) && (!q || matches(i, q)));
+    const cur = state.mdi.icons.find((i) => i.code === state.current);
+    if (cur) grid.append(head("Current"), mdiCell(cur), head("All icons")); // what is chosen now comes first
+    grid.append(...list.filter((i) => i !== cur).slice(0, MAX).map(mdiCell));
+    $("ib-note").textContent = (list.length > MAX ? `Showing ${MAX} of ${list.length} — narrow the search.` : `${list.length} icon${list.length === 1 ? "" : "s"}`) + ` · Material Design Icons ${state.mdi.version}; a dashed frame: newer than MDI 4, a document may not show it`;
+  }
+
+  /** Switches the icon dialog between the uuGDS catalog, the uuBml icon font (its own groups, search by name) and Material Design Icons. */
   function setLib(lib) {
     state.lib = lib; lastLib = lib; $("ib-lib").value = lib;
-    if (lib === "bml") {
+    $("ib-doc").parentElement.hidden = lib !== "mdi";
+    if (lib === "mdi") {
+      ensureMdiCss();
+      const cats = [...new Set(state.mdi.icons.map((i) => i.category))].sort();
+      $("ib-cat").replaceChildren(new Option("All categories", ""), ...cats.map((c) => new Option(c, c)));
+      $("ib-search").placeholder = "Search (name, alias, category)…"; $("ib-dep").parentElement.hidden = true;
+    } else if (lib === "bml") {
       loadBml(state.bml.cssUrl);
       const groups = [...new Set(state.bml.icons.map((i) => i.group))];
       $("ib-cat").replaceChildren(new Option("All groups", ""), ...groups.map((g) => new Option(g, g)));
@@ -120,6 +158,7 @@ export function createIconPicker({ getCatalog, getBml }) {
   function render() {
     if (state?.mode === "state") return renderStates();
     if (state?.lib === "bml") return renderBml();
+    if (state?.lib === "mdi") return renderMdi();
     const q = $("ib-search").value.trim(), cat = $("ib-cat").value, dep = $("ib-dep").checked, byCode = new Map(catalog.icons.map((i) => [i.code, i]));
     let list = catalog.icons.filter((i) => (dep || !i.deprecated || i.code === state.current) && (!cat || i.category === cat) && (!q || matches(i, q)));
     const grid = $("ib-grid"); grid.replaceChildren();
@@ -137,7 +176,7 @@ export function createIconPicker({ getCatalog, getBml }) {
 
   function done(value) { box.hidden = true; const r = resolve; resolve = null; r?.(value); }
   $("ib-x").onclick = () => done(null);
-  $("ib-search").oninput = render; $("ib-cat").onchange = render; $("ib-dep").onchange = render;
+  $("ib-search").oninput = render; $("ib-cat").onchange = render; $("ib-dep").onchange = render; $("ib-doc").onchange = render;
   $("ib-lib").onchange = () => setLib($("ib-lib").value);
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); done(null); } });
   box.addEventListener("mousedown", (e) => { if (e.target === box) done(null); });
@@ -166,13 +205,19 @@ export function createIconPicker({ getCatalog, getBml }) {
     async pick({ current, text, base, mode = "icon" }) {
       if (mode === "state") return pickState(current);
       catalog ??= await getCatalog();
-      const bml = await getBml?.().catch(() => null), hasBml = Boolean(bml?.icons?.length);
-      if (!catalog && !hasBml) return null;
+      const [bml, mdi] = await Promise.all([getBml?.().catch(() => null), getMdi?.().catch(() => null)]);
+      const has = { gds: Boolean(catalog), bml: Boolean(bml?.icons?.length), mdi: Boolean(mdi?.icons?.length) };
+      if (!has.gds && !has.bml && !has.mdi) return null;
       if (catalog) loadFonts(base);
-      const lib = !hasBml ? "gds" : !catalog ? "bml" : isBmlCode(current) ? "bml" : current ? "gds" : lastLib; // the current value decides, an empty one takes the last choice
-      state = { current, text, glyphs: Boolean(base), mode: "icon", lib, bml };
+      // the current value decides the library, an empty one takes the last choice; a library that is not there is skipped
+      const want = isMdiCode(current) ? "mdi" : isBmlCode(current) ? "bml" : current ? "gds" : lastLib;
+      const lib = has[want] ? want : ["gds", "mdi", "bml"].find((l) => has[l]);
+      state = { current, text, glyphs: Boolean(base), mode: "icon", lib, bml, mdi };
       $("ib-title").textContent = "Choose an icon";
-      const sel = $("ib-lib"); sel.hidden = !(hasBml && catalog); // the library switch is only offered when both catalogs are there
+      const sel = $("ib-lib"); // the library switch offers the catalogs that are there, when there are more of them
+      for (const o of sel.options) o.hidden = !has[o.value];
+      sel.hidden = Object.values(has).filter(Boolean).length < 2;
+      $("ib-doc").checked = false;
       $("ib-dep").checked = false; $("ib-cur").textContent = current ? `Current: ${current}` : "";
       setLib(lib); box.hidden = false; $("ib-search").focus();
       return new Promise((r) => { resolve = r; });
