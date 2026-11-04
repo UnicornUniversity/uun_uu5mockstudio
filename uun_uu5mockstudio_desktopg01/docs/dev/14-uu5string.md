@@ -25,6 +25,10 @@ The root is the fiber behind the `__reactContainer$…` key of `#uu5` (or of any
 
 `<uu5string/>` prefix; numbers and booleans unquoted; data as `'<uu5json/>…'`; JSX in a prop as a nested `"<uu5string/>…"` (only text → a plain string); a value takes the quotes it does not contain, else `"…"` with `\"`. Children that contain text are written on one line exactly as they are (whitespace matters inline); children that are only elements go one per line. A space at the edge of a text, next to a tag, is written as `&nbsp;`: the uu5String parsers of documents trim text at tags (`Zbývá <span>7 míst</span> za` would lose both spaces), uu5g05 renders the entity as a space.
 
+## Icons
+
+Documents may load an older Material Design Icons font than the screens (the screens load 7.0.96; uuBookKit / uuManagementKit pages were seen with 4.x). The serializer collects every `mdi-*` value it writes (icon props, items of action lists) and `notesOf` names those that are not in `src/renderer/mdiBaseline.js`, the 4110 icon names of `@mdi/font` 4.0.96. Regenerate it with `node scripts/mdi-baseline.mjs [version]`.
+
 ## In the app
 
 The **uu5String** tile of the Share menu of the selected screen (`OUT_FORMATS` in `renderer.js`: copy `uu5string`, save `save-uu5string`, share `share-uu5`, drag `uu5`), **File → Export** (`screen:uu5string`, `screen:save-uu5string`), **File → Share** (`screen:share-uu5`), and **Copy as uu5String** (`#insp-uu5`) in the Edit panel: the marked components (grouped by screen) or the shown one. The text goes to the clipboard through the main process (`clipboard:text`; `navigator.clipboard` needs a focused document) or to a file (`export:text`). Share and drag pass the text to the main process (`share:mail` / `drag:prepare` with kind `uu5` and the text), which writes `<screen>.uu5string.txt` to the share folder. The toast gives a summary, **Details** the notes.

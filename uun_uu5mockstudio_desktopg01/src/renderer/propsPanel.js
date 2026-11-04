@@ -183,10 +183,49 @@ export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicat
     return el("div", { className: "pcode plinked" }, field, edit);
   }
 
+  /**
+   * A prop taken from the item of a list in `.map` (`icon={m.icon}` in `MODULES.map((m) => …)`): the value of the copy that was clicked,
+   * with the usual control (an icon from the catalog, a choice, a text); a change is written into the item of the list it comes from.
+   */
+  function mapControl(name, attr, prop, runtime) {
+    const { list, path, items } = attr.mapRef, cur = String(runtime), it = items.find((x) => String(x.value) === cur);
+    const where = `${list}[${it ? it.index : "…"}].${path}`;
+    // the shown value is the one of the clicked copy (from the page); after a change it is the new one, so that a next change finds its item again
+    const holder = () => (useSub || !pick.sub ? (pick.runtime ??= {}) : (pick.ownerRuntime ??= {}));
+    const write = async (v) => {
+      if (v === "" || String(v) === cur) return;
+      holder()[name] = v;
+      if (!(await setProp(name, { type: "mapItem", value: { from: cur, to: v } }))) { holder()[name] = runtime; render(); }
+    };
+    const edit = el("button", { type: "button", className: "pedit", title: `Edit the expression of ${name} in a window (now ${attr.code})`, textContent: "{…}", onclick: () => openJson(name, attr) });
+    const title = `From the list: ${where}. A change is written into that item; the other items keep theirs.`;
+    let field;
+    if (isIconProp(name, prop) && api.pickIcon) { // the same control as any icon prop: the icon, its name and the catalog
+      const { row } = iconField({ value: cur, glyphs: Boolean(pick.assets?.gdsBase), title: `Choose an icon (written into ${where})`, onText: write, onPick: () => api.pickIcon({ current: cur, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: isStateIconProp(name) ? "state" : "icon" }) });
+      row.classList.add("plinked"); row.title = title; // like any icon prop, without {…}: the name field needs the room (the cross still removes the prop)
+      return row;
+    } else {
+      const base = kindOf(prop, { ...attr, type: "string", value: cur }, palettes(), name);
+      if (base.kind === "select" || base.kind === "bool") {
+        const flat = base.kind === "bool" ? ["true", "false"] : Array.isArray(base.options) ? base.options : Object.values(base.options).flat();
+        field = el("select");
+        for (const o of flat.includes(cur) ? flat : [cur, ...flat]) field.append(el("option", { value: o, textContent: o }));
+        field.value = cur;
+        field.onchange = () => write(base.kind === "bool" ? field.value === "true" : field.value);
+      } else {
+        field = el("input", { type: typeof runtime === "number" ? "number" : "text", value: cur, spellcheck: false });
+        field.onchange = () => write(typeof runtime === "number" ? Number(field.value) : field.value);
+        field.onkeydown = (e) => { if (e.key === "Enter") field.blur(); };
+      }
+    }
+    return el("div", { className: "pcode plinked", title }, field, edit);
+  }
+
   function control(name, attr) {
     const prop = docProp(name) ?? WELL_KNOWN[name] ?? null, { kind, options, value: multiValue } = kindOf(prop, attr, palettes(), name);
     const runtime = runtimeOf(name);
     if (kind === "multi") return multiControl(name, options, multiValue);
+    if (attr?.mapRef && attr.type === "code" && runtime != null && typeof runtime !== "object") return mapControl(name, attr, prop, runtime);
     if (attr?.resolved && attr.type === "code") return textControl(name, attr, runtime);
     if (attr?.type === "code") {
       const base = kindOf(prop, { ...attr, type: "string" }, palettes());

@@ -97,3 +97,14 @@ test("a space next to a tag is kept as &nbsp; (document parsers trim text at tag
   const lead = rootOf(el(Text, {}, " ", "bez DPH"));
   assert.equal(toUu5String(collectUu5Tree({ rootFiber: lead, styleRules: [] })).text, "<uu5string/>\n<Uu5Elements.Text>&nbsp;bez DPH</Uu5Elements.Text>\n");
 });
+
+test("icons newer than the Material Design Icons of documents are noted", () => {
+  const Icon = named("Uu5Elements.Icon");
+  const Button = named("Uu5Elements.Button");
+  const root = rootOf(el("div", {}, el(Icon, { icon: "mdi-brain" }), el(Icon, { icon: "mdi-strategy" }), el(Button, { itemList: [{ icon: "mdi-rocket-launch-outline" }] })));
+  const r = toUu5String(collectUu5Tree({ rootFiber: root, styleRules: [] }));
+  assert.deepEqual(r.stats.icons, ["mdi-brain", "mdi-rocket-launch-outline", "mdi-strategy"]);
+  const note = r.notes.find((n) => n.startsWith("Icons"));
+  assert.match(note, /mdi-rocket-launch-outline, mdi-strategy/);
+  assert.doesNotMatch(note, /mdi-brain/);
+});

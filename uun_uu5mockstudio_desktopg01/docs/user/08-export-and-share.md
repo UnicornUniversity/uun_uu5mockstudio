@@ -27,7 +27,8 @@ Not everything can go in. The message after copying says how many notes there ar
 - event handlers (`onClick`, `onSubmit`, …) are left out;
 - a closed dialog (`Modal`, `Drawer`, …) is left out; open it in the screen and copy again to include it;
 - CSS that cannot be written inline (`:hover`, nested selectors) is lost;
-- components that are not rendered (in a closed dialog, a hidden tab) are left out.
+- components that are not rendered (in a closed dialog, a hidden tab) are left out;
+- icons a document may not show: documents can load an older Material Design Icons font (4.x) than the screens (7.x), so a newer icon (`mdi-strategy`, `mdi-rocket-launch-outline`, …) stays empty there. The note names them; pick older icons in the screen if that happens.
 
 The result uses the components of the screen (`Uu5Elements.*`, `Uu5Forms.*`). It renders wherever uu5String can load those libraries; a document that accepts only Bricks components needs it rewritten.
 

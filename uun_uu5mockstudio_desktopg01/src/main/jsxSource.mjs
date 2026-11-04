@@ -286,6 +286,40 @@ function childTextsOf(el, script, cx) {
   return out;
 }
 
+/**
+ * The callbacks of `LIST.map((item) => …)` whose list is an array written in the file: `{ param, start, end, arr, list }`.
+ * A prop written as `icon={item.icon}` inside such a callback takes its value from the items of that array (see resolveMapRef).
+ */
+function mapCallbacks(ast, decls, code) {
+  const out = [];
+  walk(ast.program, (n) => {
+    if (n.type !== "CallExpression" && n.type !== "OptionalCallExpression") return;
+    const c = n.callee;
+    if (!/MemberExpression$/.test(c?.type ?? "") || c.computed || c.property?.name !== "map") return;
+    const fn = n.arguments[0];
+    if (!fn || !/FunctionExpression$/.test(fn.type) || fn.params[0]?.type !== "Identifier") return;
+    const arr = findListArray(c.object, decls);
+    if (arr?.elements.length) out.push({ param: fn.params[0].name, start: fn.start, end: fn.end, arr, list: code.slice(c.object.start, c.object.end) });
+  });
+  return out;
+}
+/** `item.icon` inside `LIST.map((item) => …)`: the literal of that key in every item of LIST, `{ list, path, items: [{ index, type, value, start, end }] }`. */
+function resolveMapRef(ex, maps, abs) {
+  const path = memberPath(ex);
+  if (!path || path.length < 2) return null;
+  const around = maps.filter((m) => m.param === path[0] && m.start <= ex.start && ex.end <= m.end);
+  if (!around.length) return null;
+  const m = around.reduce((a, b) => (b.start > a.start ? b : a)); // the innermost callback with that parameter
+  const items = [];
+  m.arr.elements.forEach((it, index) => {
+    let cur = it;
+    for (const k of path.slice(1)) cur = propOf(cur, k);
+    const lit = cur && literalOf(cur);
+    if (lit && lit.type !== "null") items.push({ index, ...lit, start: abs(cur.start), end: abs(cur.end) });
+  });
+  return items.length ? { list: m.list, path: path.slice(1).join("."), items } : null;
+}
+
 /** `E`, `E.Block` of an identifier or a chain of plain member accesses; null for anything else. */
 function dotted(n) {
   if (n?.type === "Identifier") return n.name;
@@ -331,6 +365,7 @@ export function parseElements(html) {
       if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && v.init && !decls.has(v.id.name)) decls.set(v.id.name, v.init);
     }
     const declList = collectDecls(ast), cx = { decls: declList, abs: (o) => script.start + o, langFns: langFunctions(declList) };
+    const maps = mapCallbacks(ast, declList, script.code);
     const found = [];
     const elOf = new Map();
     walk(ast.program, (n) => { if (n.type === "JSXOpeningElement") found.push(n); else if (n.type === "JSXElement") elOf.set(n.openingElement, n); });
@@ -352,7 +387,8 @@ export function parseElements(html) {
           const ref = init ? { name: ex.name, start: abs(init.start), end: abs(init.end), code: script.code.slice(init.start, init.end), json: jsonOf(init) } : null;
           const arr = (ex.type === "ArrayExpression" ? ex : init?.type === "ArrayExpression" ? init : null) ?? findListArray(ex, declList);
           const valueRef = resolveValueRef(ex, declList, ex.start, abs), resolvedText = textOf(ex, cx);
-          return { ...attr, type: "code", value: code, code, json: jsonOf(ex), branches: branchesOf(ex, script.code, abs), ...(ref ? { ref } : {}), ...(valueRef ? { valueRef } : {}), ...(resolvedText ? { resolved: resolvedText } : {}), ...(arr ? { items: arrayItems(arr, script.code, abs, cx), itemsRange: { start: abs(arr.start), end: abs(arr.end) } } : {}) };
+          const mapRef = valueRef ? null : resolveMapRef(ex, maps, abs);
+          return { ...attr, type: "code", value: code, code, json: jsonOf(ex), branches: branchesOf(ex, script.code, abs), ...(ref ? { ref } : {}), ...(valueRef ? { valueRef } : {}), ...(mapRef ? { mapRef } : {}), ...(resolvedText ? { resolved: resolvedText } : {}), ...(arr ? { items: arrayItems(arr, script.code, abs, cx), itemsRange: { start: abs(arr.start), end: abs(arr.end) } } : {}) };
         }
         return { ...attr, type: "code", value: script.code.slice(a.value.start, a.value.end) };
       });
@@ -366,17 +402,17 @@ export function parseElements(html) {
   return elements;
 }
 
-/** The copy of the page that is shown in the preview: every uu5 component gets its ordinal as a prop. Any failure returns the page untouched. */
+/** The copy of the page that is shown in the preview: every uu5 component and every plain HTML element gets its ordinal as a prop. Any failure returns the page untouched. */
 export function tagHtml(html) {
   try {
-    const els = parseElements(html).filter((e) => e.uu5);
+    const els = parseElements(html).filter((e) => e.uu5 || /^[a-z][\w-]*$/.test(e.name)); // uu5 components and plain HTML elements (a tile made of a <div>)
     let out = html;
     for (let i = els.length - 1; i >= 0; i--) out = out.slice(0, els[i].nameEnd) + ` ${SRC_ATTR}="${els[i].ordinal}"` + out.slice(els[i].nameEnd);
     return out;
   } catch { return html; }
 }
 
-const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATTR).map(({ name, type, value, code, bare, json, ref, branches, valueRef, items, resolved }) => ({ name, type, value, code, bare, json, ...(items ? { listed: true, count: items.length } : {}), ...(resolved ? { resolved: publicText(resolved) } : {}), ...(valueRef ? { valueRef: { path: valueRef.path, via: valueRef.via, targets: valueRef.targets.map(({ lang, type: t, value: v }) => ({ lang, type: t, value: v })) } } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}), ...(ref ? { ref: { name: ref.name, code: ref.code, json: ref.json } } : {}) }));
+const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATTR).map(({ name, type, value, code, bare, json, ref, branches, valueRef, mapRef, items, resolved }) => ({ name, type, value, code, bare, json, ...(items ? { listed: true, count: items.length } : {}), ...(resolved ? { resolved: publicText(resolved) } : {}), ...(valueRef ? { valueRef: { path: valueRef.path, via: valueRef.via, targets: valueRef.targets.map(({ lang, type: t, value: v }) => ({ lang, type: t, value: v })) } } : {}), ...(mapRef ? { mapRef: { list: mapRef.list, path: mapRef.path, items: mapRef.items.map(({ index, type: t, value: v }) => ({ index, type: t, value: v })) } } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}), ...(ref ? { ref: { name: ref.name, code: ref.code, json: ref.json } } : {}) }));
 
 export function describeElement(html, ordinal) {
   const e = parseElements(html)[ordinal];
@@ -437,6 +473,17 @@ export function setProp(html, ordinal, name, value) {
     const t = same.length === 1 ? same[0] : targets.length === 1 ? targets[0] : null;
     if (!t) throw new Error(`The value of ${cur.valueRef.path} is written in ${targets.length} places (${targets.map((x) => x.lang ?? "?").join(", ")}) and none of them is clearly the one shown. Edit it in the file or ask in the chat.`);
     const conv = t.type === "number" ? Number(to) : t.type === "boolean" ? to === true || to === "true" : String(to);
+    const out = html.slice(0, t.start) + literalSource({ type: t.type, value: conv }, html.slice(t.start, t.end)) + html.slice(t.end);
+    assertValid(out);
+    return out;
+  }
+  if (value.type === "mapItem") { // `icon={m.icon}` in `MODULES.map((m) => …)`: the value in the item of MODULES that the shown copy comes from
+    if (!cur?.mapRef) throw new Error(`“${name}” does not take its value from the items of a list in the file.`);
+    const { to, from } = value.value, { list, path, items } = cur.mapRef;
+    const same = items.filter((t) => String(t.value) === String(from));
+    if (!same.length) throw new Error(`No item of ${list} has ${path} = “${from}”. Edit it in the file or ask in the chat.`);
+    if (same.length > 1) throw new Error(`${same.length} items of ${list} have ${path} = “${from}”, so it is not clear which one this is. Edit it in the file or ask in the chat.`);
+    const t = same[0], conv = t.type === "number" ? Number(to) : t.type === "boolean" ? to === true || to === "true" : String(to);
     const out = html.slice(0, t.start) + literalSource({ type: t.type, value: conv }, html.slice(t.start, t.end)) + html.slice(t.end);
     assertValid(out);
     return out;

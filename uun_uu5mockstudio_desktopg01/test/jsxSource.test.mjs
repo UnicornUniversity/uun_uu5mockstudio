@@ -52,12 +52,13 @@ test("attributes are read with their kind and value", () => {
   assert.equal(by.width.type, "code");
 });
 
-test("tagHtml adds the ordinal prop to uu5 components only and keeps the rest of the page", () => {
+test("tagHtml adds the ordinal prop to uu5 components and plain HTML elements, not to other components, and keeps the rest of the page", () => {
   const src = page(BODY), tagged = tagHtml(src);
-  assert.equal([...tagged.matchAll(new RegExp(SRC_ATTR, "g"))].length, 3);
+  assert.equal([...tagged.matchAll(new RegExp(SRC_ATTR, "g"))].length, 4);
   assert.match(tagged, new RegExp(`<Uu5Elements.Block ${SRC_ATTR}="2" header`));
   assert.match(tagged, new RegExp(`<Uu5Elements.Button ${SRC_ATTR}="3"\\n`));
-  assert.ok(!/<div[^>]*data-uu5-src/.test(tagged));
+  assert.match(tagged, new RegExp(`<div ${SRC_ATTR}="1" className="x"`));
+  assert.ok(!/<(Other\.Thing|Row|Page)[^>]*data-uu5-src/.test(tagged));
   assert.equal(tagged.replace(new RegExp(` ${SRC_ATTR}="\\d+"`, "g"), ""), src);
 });
 
@@ -823,4 +824,16 @@ test("destructured components, nested aliases and member paths are followed; unr
   assert.deepEqual(parseElements(d).filter((e) => e.uu5).map((e) => e.name), ["Uu5Elements.Block", "Uu5Elements.Text", "Uu5Elements.Grid"]);
   const n = aliased("const Fake = Other;", `<Fake/>`);
   assert.deepEqual(parseElements(n).filter((e) => e.uu5), []);
+});
+
+test("a prop taken from the item of a .map callback shows the values of the list and is edited in the item it comes from", () => {
+  const html = aliased(`const MODULES = [{ title: "A", icon: "mdi-brain" }, { title: "B", icon: "mdi-strategy" }];`,
+    `<div>{MODULES.map((m) => <div key={m.title}><Uu5Elements.Icon icon={m.icon} /></div>)}</div>`);
+  const icon = parseElements(html).find((e) => e.name === "Uu5Elements.Icon");
+  const d = describeElement(html, icon.ordinal), attr = d.attrs.find((a) => a.name === "icon");
+  assert.deepEqual(attr.mapRef, { list: "MODULES", path: "icon", items: [{ index: 0, type: "string", value: "mdi-brain" }, { index: 1, type: "string", value: "mdi-strategy" }] });
+  const out = setProp(html, icon.ordinal, "icon", { type: "mapItem", value: { from: "mdi-strategy", to: "mdi-chess-knight" } });
+  assert.match(out, /\{ title: "B", icon: "mdi-chess-knight" \}/);
+  assert.match(out, /icon=\{m\.icon\}/);
+  assert.throws(() => setProp(html, icon.ordinal, "icon", { type: "mapItem", value: { from: "mdi-x", to: "mdi-y" } }), /No item of MODULES/);
 });

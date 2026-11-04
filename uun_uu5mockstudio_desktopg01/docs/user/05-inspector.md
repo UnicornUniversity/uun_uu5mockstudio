@@ -8,7 +8,7 @@ Click the inspector button (a crosshair in a frame) in the top bar or on the bar
 
 ## Picking a component
 
-Click a uu5 component in the screen. The panel shows:
+Click a uu5 component or a plain HTML element (a tile made of a `<div>`) in the screen. The panel shows:
 
 - the **breadcrumb**: the components it is nested in, for example `AlertBus › ContentContainer › Grid › Box`. **Click any of them to select that one instead**; the frame on the page moves to it. This is how you select a `Grid` that is covered by its items.
 - the name of the component, its text and its documentation (with a link), and the **props written in the file** as controls.
@@ -31,6 +31,7 @@ The control follows the type of the prop:
 | icon | the **icon picker** (uuGDS and uuBml catalogs, uuBml states) |
 | a text that is an LSI (`{ cs, en }`, `t("Ano", "Yes")`, `<T lsi>`, a constant, `useLsi`) | the texts with a **switch of the languages**, edited where they are written |
 | a prop that points to a variable | the value of the variable, which you can edit |
+| a prop taken from the item of a list (`icon={m.icon}` in `MODULES.map((m) => …)`) | the value of the clicked copy with the usual control (the icon picker for an icon); a change is written into **that item** of the list |
 | objects, arrays, functions | **{…}** opens the code in a window |
 
 The cross removes a prop from the file.

@@ -6,7 +6,7 @@ A uu5 mockup is a React program inside `<script type="text/babel">` blocks of an
 
 `parseElements(html)` finds every `JSXOpeningElement` of all babel scripts, sorts them by position, and numbers them in document order: the **ordinal**. An element is `{ ordinal, name, uu5, start, end, nameEnd, selfClosing, attrs, snippet }`. `uu5` is true for components imported from `uu5*` / `uu_*` / `plus4u*` modules.
 
-`tagHtml(html)` (used by the preview server) inserts ` data-uu5-src="<ordinal>"` after the name of every uu5 element, so the running React fiber carries its ordinal (see [06](06-inspector.md)). If anything fails the page is served untouched.
+`tagHtml(html)` (used by the preview server) inserts ` data-uu5-src="<ordinal>"` after the name of every uu5 element and every plain HTML element (lowercase tag: a tile made of a `<div>` can be picked, moved and deleted; components defined in the file are not tagged), so the running React fiber carries its ordinal (see [06](06-inspector.md)). If anything fails the page is served untouched.
 
 Because ordinals depend on the whole file, every operation re-parses the current text; nothing caches positions across edits.
 
@@ -15,7 +15,7 @@ Because ordinals depend on the whole file, every operation re-parses the current
 Each attribute is parsed into `{ name, type, value, code, … }`:
 
 - literals (`string`, `number`, `boolean`, `null`) are editable as such;
-- anything else is `type: "code"` with `json` when it is plain data (objects, arrays), a `ref` when it names a top-level constant, `valueRef` when it is a member path into a constant (`texts.title`), `branches` when it is a conditional (`cond ? "a" : "b"`), and `resolved` when it is a **text** (see below);
+- anything else is `type: "code"` with `json` when it is plain data (objects, arrays), a `ref` when it names a top-level constant, `valueRef` when it is a member path into a constant (`texts.title`), `mapRef` when it is a member path of the parameter of a `.map` callback over an array of the file (`icon={m.icon}` in `MODULES.map((m) => …)`: `{ list, path, items: [{ index, type, value }] }`; `setProp` with `{ type: "mapItem", value: { from, to } }` edits the item whose value is `from`, the value of the clicked copy), `branches` when it is a conditional (`cond ? "a" : "b"`), and `resolved` when it is a **text** (see below);
 - `items` when it is a list (see below).
 
 `setProp`, `removeProp`, `setBranch`, `setText` and the item variants rewrite the attribute source (`attrSource`, `propSource`), keep multi-line indentation (`reindent`) and **validate the whole result** with the parser (`assertValid`) before returning it; an invalid edit throws a readable message.

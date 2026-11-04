@@ -6,6 +6,8 @@
  * strings in the quotes they do not contain (double, else single, else double with `\"`); children with text stay on one line exactly
  * as they are, children that are only elements go one per line.
  */
+import { MDI_BASELINE, MDI_BASELINE_VERSION } from "./mdiBaseline.js";
+
 const VOID = new Set(["br", "hr", "img", "input", "meta", "link", "source", "wbr", "col", "area"]);
 
 export function quote(s) {
@@ -35,7 +37,8 @@ function normalize(nodes = []) {
 
 export function createSerializer() {
   const stats = { components: 0, html: 0, jsxInData: 0 };
-  const names = new Set();
+  const names = new Set(), icons = new Set();
+  const seeIcon = (v) => { if (typeof v === "string" && /^mdi-[a-z0-9-]+$/.test(v)) icons.add(v); }; // icon props, items of action lists, …
 
   const nested = (nodes) => {
     const list = normalize(nodes);
@@ -48,11 +51,12 @@ export function createSerializer() {
       if (v.$nodes) { stats.jsxInData++; return nested(v.$nodes); }
       const o = {}; for (const k of Object.keys(v)) o[k] = data(v[k]); return o;
     }
+    seeIcon(v);
     return v;
   };
   const attr = (v) => {
     if (typeof v === "number" || typeof v === "boolean") return String(v);
-    if (typeof v === "string") return quote(v);
+    if (typeof v === "string") { seeIcon(v); return quote(v); }
     if (v && v.$json !== undefined) return quote("<uu5json/>" + JSON.stringify(data(v.$json)));
     if (v && v.$nodes) return quote(nested(v.$nodes));
     return quote(String(v));
@@ -71,14 +75,15 @@ export function createSerializer() {
     return `<${n.name}${attrs}>${children(kids, indent, inline)}</${n.name}>`;
   }
   const render = (nodes) => normalize(nodes).filter((n) => n.t !== "text" || n.v.trim()).map((n) => node(n, "", false)).join("\n");
-  return { render, stats, names };
+  return { render, stats, names, icons };
 }
 
 /** `tree` = the result of `collectUu5Tree`. Returns `{ text, stats, notes }` (`notes`: what was left out or may not render, for the user). */
 export function toUu5String(tree) {
   const s = createSerializer();
   const body = s.render(tree?.nodes ?? []);
-  return { text: body ? `<uu5string/>\n${body}\n` : "", stats: { ...s.stats, names: [...s.names].sort() }, notes: notesOf(tree?.report ?? {}, s.stats, tree?.missing ?? []) };
+  const stats = { ...s.stats, names: [...s.names].sort(), icons: [...s.icons].sort() };
+  return { text: body ? `<uu5string/>\n${body}\n` : "", stats, notes: notesOf(tree?.report ?? {}, stats, tree?.missing ?? []) };
 }
 
 const times = (o) => Object.entries(o ?? {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k));
@@ -94,6 +99,8 @@ export function notesOf(report, stats = {}, missing = []) {
   if (unresolved.length) notes.push(`Not rendered, so left out: ${list(unresolved)}.`);
   if (report.renderProp) notes.push(`Left out ${report.renderProp} child render function${report.renderProp > 1 ? "s" : ""}.`);
   if (report.cssLost?.length) notes.push(`CSS that cannot be written inline (hover, nested selectors, missing rules): ${list(report.cssLost)}.`);
+  const newIcons = (stats.icons ?? []).filter((i) => !MDI_BASELINE.has(i.slice(4)));
+  if (newIcons.length) notes.push(`Icons that a document may not show (not in Material Design Icons ${MDI_BASELINE_VERSION}, which documents may still load): ${list(newIcons)}. Pick older icons in the screen if they stay empty.`);
   if (stats.jsxInData) notes.push(`${stats.jsxInData} piece${stats.jsxInData > 1 ? "s" : ""} of JSX inside data written as nested uu5String; it may show as text.`);
   const skipped = times(report.skipped);
   if (skipped.length) notes.push(`Values that are not plain data were left out: ${list(skipped)}.`);
