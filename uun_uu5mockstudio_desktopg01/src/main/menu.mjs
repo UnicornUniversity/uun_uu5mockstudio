@@ -36,11 +36,14 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       { label: "Export", enabled: has, submenu: [
         item("Screen as Image (PNG, JPEG, PDF)…", "screen:image"),
         item("Screen as HTML…", "screen:html"),
+        item("Copy Screen as uu5String", "screen:uu5string"),
+        item("Screen as uu5String…", "screen:save-uu5string"),
         item("Project as ZIP…", "project:zip"),
       ] },
       { label: "Share", enabled: has, submenu: [
         item("Screen Image…", "screen:share-png"),
         item("Screen HTML File…", "screen:share-html"),
+        item("Screen as uu5String…", "screen:share-uu5"),
         item("Project ZIP…", "project:share-zip"),
       ] },
       sep,

@@ -73,7 +73,7 @@ All take the **file name** of the screen; `ordinals` is the chain of ordinals (`
 | --- | --- |
 | `docsSearch(query, library)`, `docsLibraries`, `docsDetail(name)`, `docsDescribe(names)` (`docs:*`) | the component documentation of the `uu5-development` plugin |
 | `iconCatalog` (`icons:catalog`), `uuBml` (`icons:bml`) | icon catalogs |
-| `exportHtml(file)`, `exportImage(file, format)`, `exportZip`, `shareMail(kind, file)`, `dragPrepare(kind, file)`, `dragStart(path)` | export, share, native drag of a prepared file |
+| `exportHtml(file)`, `exportImage(file, format)`, `exportText(name, text)`, `copyText(text)`, `copyOut(kind, file)` (Copy of the Share menu: `png` image, `html` source, `zip` file), `exportZip`, `shareMail(kind, file)`, `dragPrepare(kind, file)`, `dragStart(path)` | export, share, native drag of a prepared file |
 | `cdnStatus`, `cdnSetOffline(v)`, `cdnClear`, `cdnWarmup` (`cdn:*`) | the CDN cache; progress arrives as `cdn:progress` |
 
 ## Events (main → renderer)

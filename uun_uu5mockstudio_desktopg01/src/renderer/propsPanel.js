@@ -74,7 +74,7 @@ export function toLiteral(v, pad = "") {
  * components it is nested in, the props written in the file as editable controls, and the other props it supports.
  * Editing writes to the HTML file through `api`.
  */
-export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicate, onAddItem }) {
+export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicate, onAddItem, onCopyUu5 }) {
   let pick = null, info = null, ordinals = [], level = 0, useSub = false;
   const root = $("insp-comp");
 
@@ -344,6 +344,7 @@ export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicat
   $("insp-duplicate").onclick = () => pick && info && onDuplicate?.(targetOf());
   $("insp-delete").onclick = () => pick && info && onDelete?.(targetOf());
   $("insp-additem").onclick = () => pick && info && info.element.item && onAddItem?.(targetOf());
+  $("insp-uu5").onclick = () => pick && info && onCopyUu5?.(targetOf());
   $("insp-use").onclick = () => pick && info && onUse({ ...pick, chain: info.chain, element: info.element, sub: info.element.item ? pick.sub : null });
 
   return {

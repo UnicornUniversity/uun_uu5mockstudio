@@ -703,6 +703,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .inputbox #send,.inputbox #stop{position:static;grid-column:5;grid-row:2;margin-right:8px}
 #structbox .row{align-items:center;gap:8px}#structbox #st-regen{background:var(--acc);border-color:var(--acc);color:#fff}#structbox #st-regen:disabled,#structbox #st-reset:disabled{opacity:.45}#st-hint{font-size:12px}
 #insp-struct{margin-top:8px;width:100%}
+#insp-uu5{margin-top:8px;width:100%}
 #previewbar{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:46;display:flex;align-items:center;gap:10px;max-width:min(760px,92vw);padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px}#previewbar[hidden]{display:none}
 #previewbar #pv-text{flex:1;min-width:0}#previewbar .primary{background:var(--acc);border-color:var(--acc);color:#fff}
 /* a click or a drag on the canvas must not select the screens: a selected <webview> is painted with a blue wash over the whole screen */
@@ -890,3 +891,24 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 .chip.showable{cursor:pointer}.chip.showable:hover{background:var(--panel)}
 #lb-detail .ld-preview{position:relative;margin:10px 0;height:140px;min-height:80px;resize:vertical;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:#fff}
 #lb-detail .ld-preview webview{position:absolute;inset:0;width:100%;height:100%}#lb-detail .ld-pnote{position:absolute;left:10px;top:8px;font-size:12px;color:#777;pointer-events:none}
+/* the Share menu of the selected screen: what (format tiles), then what to do (actions) */
+#selbar button.labeled .lbl{line-height:1;font-size:13px;margin-left:3px}
+#selmenu.fmt{min-width:0;width:max-content;padding:10px}
+#selmenu .fmt-tiles{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
+#selmenu .fmt-tiles .fmt-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:72px;padding:6px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:center;font-size:12.5px;line-height:1.2}
+#selmenu .fmt-tiles .fmt-tile .ico{width:22px;height:22px;color:var(--mute)}
+#selmenu .fmt-tiles .fmt-tile:hover{background:var(--bg)}
+#selmenu .fmt-tiles .fmt-tile.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
+#selmenu .fmt-tiles .fmt-tile.on .ico{color:var(--acc)}
+#selmenu .fmt-hint{margin:8px 2px 2px;color:var(--mute);font-size:12px;max-width:386px}
+#selmenu.fmt hr{margin:8px 0}
+#selmenu .fmt-acts{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
+#selmenu .fmt-acts button{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);padding:7px 6px;border-radius:8px;white-space:nowrap}
+#selmenu .fmt-acts button .ico{width:15px;height:15px}
+#selmenu .fmt-acts button:hover{background:var(--bg);border-color:var(--mute)}
+#selmenu .fmt-acts button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+#selmenu .fmt-acts button.primary:hover{filter:brightness(1.08);background:var(--acc)}
+#selmenu .fmt-acts button.dragrow{color:inherit;cursor:grab}
+#selmenu .fmt-acts button.dragrow .grip{color:var(--mute)}
+#selmenu .fmt-acts button.dragrow[data-state="preparing"]{opacity:.45;cursor:progress}
+#selmenu .fmt-acts button.dragrow[data-state="preparing"]::after{content:none}

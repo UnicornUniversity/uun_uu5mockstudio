@@ -41,6 +41,7 @@ test("non-ASCII attachment names get an ASCII fallback plus filename*", () => {
 test("mail body mentions how to open the attachment", () => {
   assert.match(mailBody("zip", "P"), /node serve\.mjs/);
   assert.match(mailBody("html", "S"), /in a browser/);
+  assert.match(mailBody("uu5", "S"), /as uu5String/);
 });
 
 test("image format follows the chosen file extension", () => {

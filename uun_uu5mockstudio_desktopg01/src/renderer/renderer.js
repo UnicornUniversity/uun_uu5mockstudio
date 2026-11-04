@@ -22,6 +22,8 @@ import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMes
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
 import { flashCode } from "./flashComponent.js";
+import { collectCode } from "./uu5StringCollect.js";
+import { toUu5String, mergeTrees, summaryOf } from "./uu5String.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -631,6 +633,7 @@ const propsPanel = createPropsPanel({
   onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
   onDelete: (p) => deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
   onDuplicate: (p) => duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
+  onCopyUu5: (p) => copyUu5Components(p),
   onAddItem: (p) => addItemInScreen({ file: p.file, ordinal: p.ordinal, prop: p.sub.prop, after: p.sub.index, ownerName: p.ownerName }),
 });
 let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
@@ -1092,17 +1095,29 @@ function showContextMenu({ file, clientX, clientY, at }) {
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
 }
-addEventListener("click", () => { $("ctxmenu").hidden = true; });
-addEventListener("keydown", (e) => { if (e.key === "Escape") $("ctxmenu").hidden = true; });
-addEventListener("blur", () => { $("ctxmenu").hidden = true; });
+const hideCtx = () => { $("ctxmenu").hidden = true; delete $("ctxmenu").dataset.from; $("morebtn").classList.remove("on"); };
+addEventListener("click", hideCtx);
+addEventListener("keydown", (e) => { if (e.key === "Escape") { hideCtx(); $("selmenu").hidden = true; updateSelbar(); } });
+addEventListener("blur", hideCtx);
 
 // ---------- actions on the selected screen (bar above the canvas) ----------
-const SCREEN_MENUS = {
-  export: [["image", "Image… (PNG, JPEG, PDF)"], ["copy-html", "Save a copy of the HTML…"], ["zip", "Save the whole project (ZIP)…"]],
-  // on macOS these open the system share sheet (contacts and apps such as Messages, Mail, AirDrop, WhatsApp, Signal); elsewhere an e-mail draft.
-  // The two "drag" entries are files to take with the mouse into a chat, a mail or a folder.
-  share: [["share-png", "Share image…"], ["share-html", "Share HTML file…"], ["share-zip", "Share the whole project (ZIP)…"], ["-", ""], ["drag-png", "Drag the image into an app"], ["drag-html", "Drag the HTML file into an app"]],
-};
+// The Share menu has two parts: first WHAT goes out (a format, the tiles), then WHAT TO DO with it (Copy, Save…, Share…, Drag).
+// "Share…" opens the system share sheet on macOS (Messages, Mail, AirDrop, WhatsApp, Signal …), elsewhere an e-mail draft;
+// "Drag" is the file to take with the mouse into a chat, a mail or a folder. The chosen format is remembered.
+const fmtIcon = (inner) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+const OUT_FORMATS = [
+  { id: "png", label: "Image", hint: "The screen as a picture. Save… offers PNG, JPEG or PDF.", icon: fmtIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'), copy: "copy-png", save: "image", share: "share-png" },
+  { id: "html", label: "HTML file", hint: "The source of the screen; opens in a browser.", icon: fmtIcon('<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'), copy: "copy-html-src", save: "copy-html", share: "share-html" },
+  { id: "uu5", label: "uu5String", hint: "To paste into a document (uuBookKit, uuManagementKit).", icon: fmtIcon('<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>'), copy: "uu5string", save: "save-uu5string", share: "share-uu5" },
+  { id: "zip", label: "Project ZIP", hint: "Every screen of the project, with its notes and rules.", icon: fmtIcon('<path d="M21 8v13H3V8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>'), copy: "copy-zip", save: "zip", share: "share-zip" },
+];
+const OUT_ACTS = [
+  ["copy", "Copy", fmtIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>')],
+  ["save", "Save…", fmtIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')],
+  ["share", "Share…", fmtIcon('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>')],
+];
+const OUT_KEY = "uu5studio.shareFormat";
+let outFormat = (() => { try { return OUT_FORMATS.some((f) => f.id === localStorage.getItem(OUT_KEY)) ? localStorage.getItem(OUT_KEY) : "png"; } catch { return "png"; } })();
 function updateSelbar() {
   const f = canvas.selected();
   $("selbar").hidden = !f; $("selmenu").hidden = true;
@@ -1139,26 +1154,85 @@ async function screenAction(act, file) {
   if (act === "zip") report(await window.studio.exportZip(), (r) => `ZIP saved (${r.files} screens)`);
   else if (act === "copy-html") report(await window.studio.exportHtml(file), (r) => `Saved: ${r.path.split("/").pop()}`);
   else if (act === "image") { await showFrame(file); report(await window.studio.exportImage(file), (r) => `Image saved: ${r.path.split("/").pop()}`); }
+  else if (act === "uu5string") copyUu5Screen(file);
+  else if (act === "copy-png" || act === "copy-html-src" || act === "copy-zip") {
+    const kind = { "copy-png": "png", "copy-html-src": "html", "copy-zip": "zip" }[act];
+    if (kind === "png") await showFrame(file);
+    const r = await window.studio.copyOut(kind, file);
+    if (r?.error) toast(r.error, { err: true }); else if (r.pathOnly) toast("The path of the project ZIP is in the clipboard."); else toast({ png: "The image of the screen is in the clipboard.", html: "The HTML source of the screen is in the clipboard.", zip: "The project ZIP is in the clipboard: paste it into a chat, a mail or a folder." }[kind]);
+  }
+  else if (act === "save-uu5string") saveUu5Screen(file);
   else if (act === "fullscreen") openFullscreen(file);
   else if (act === "more") { const r = $("morebtn").getBoundingClientRect(); showContextMenu({ file, clientX: r.left, clientY: r.bottom + 6 }); }
   else if (act === "reveal") window.studio.revealScreen(file);
+  else if (act === "share-uu5") { const r = await uu5File(file, (text) => window.studio.shareMail("uu5", file, text)); notifyShare(r); if (!r?.error && r.notes?.length) reportUu5Notes(r.notes); }
   else if (act.startsWith("share-")) { const kind = act.slice(6); if (kind === "png") await showFrame(file); notifyShare(await window.studio.shareMail(kind, file)); }
 }
-// ----- drag the selected screen as a file (into WhatsApp, Signal, Teams, Mail, a folder, ...): the two entries at the end of the Share menu
+// ----- uu5String of a screen or of chosen components (see uu5StringCollect.js / uu5String.js): a snapshot of what is rendered now
+/** `parts`: [{ file, ordinals }] (no ordinals = the whole screen). Returns the result of `toUu5String` or `{ error }`. */
+async function uu5StringOf(parts) {
+  const trees = [];
+  for (const { file, ordinals = [] } of parts) {
+    const view = viewOfFile(file);
+    if (!view) return { error: `The screen ${file} is not shown on the canvas.` };
+    const t = await Promise.race([view.executeJavaScript(collectCode(ordinals)).catch((e) => ({ error: e.message })), new Promise((r) => setTimeout(() => r({ error: "The screen did not answer." }), 5000))]);
+    if (!t || t.error) return { error: t?.error ?? "The screen did not answer." };
+    trees.push(t);
+  }
+  const r = toUu5String(mergeTrees(trees));
+  return r.text ? r : { error: "Nothing to copy: the screen renders no content." };
+}
+function reportUu5(r, scope) {
+  if (r.error) return toast(r.error, { err: true });
+  toast(summaryOf(r, { scope }), r.notes.length ? { action: { label: "Details", run: () => toast(r.notes.join(" ")) } } : {});
+}
+async function copyUu5(r, scope) {
+  if (r.error) return reportUu5(r, scope);
+  const c = await window.studio.copyText(r.text).catch((e) => ({ error: e.message }));
+  if (!c?.ok) return toast(c?.error ?? "Could not copy to the clipboard.", { err: true });
+  reportUu5(r, scope);
+}
+/** The uu5String of a screen handed to `use(text)` (share or drag a file); the notes ride along on the result. */
+async function uu5File(file, use) {
+  const u = await uu5StringOf([{ file }]);
+  if (u.error) return u;
+  const r = await use(u.text);
+  return r?.error ? r : { ...r, notes: u.notes };
+}
+const reportUu5Notes = (notes) => toast(`uu5String: ${notes.length} note${notes.length > 1 ? "s" : ""} on what was left out.`, { action: { label: "Details", run: () => toast(notes.join(" ")) } });
+const copyUu5Screen = async (file) => copyUu5(await uu5StringOf([{ file }]), "screen");
+async function saveUu5Screen(file) {
+  const r = await uu5StringOf([{ file }]);
+  if (r.error) return reportUu5(r);
+  report(await window.studio.exportText(file.replace(/\.html$/, ".uu5string.txt"), r.text), (x) => `Saved: ${x.path.split("/").pop()}${r.notes.length ? ` (${r.notes.length} note${r.notes.length > 1 ? "s" : ""} on what was left out)` : ""}`);
+}
+/** The button of the Edit panel: the marked components (several, also across screens), else the shown one. */
+async function copyUu5Components(p) {
+  const ordOf = (m) => { const c = m.chain?.[0]; return typeof c === "number" ? c : c?.ordinal; };
+  const items = marked.length > 1 ? marked.map((m) => ({ file: m.file, ordinal: ordOf(m) })) : [{ file: p.file, ordinal: p.ordinal }];
+  const byFile = new Map();
+  for (const it of items) if (Number.isFinite(Number(it.ordinal))) byFile.set(it.file, [...(byFile.get(it.file) ?? []), Number(it.ordinal)]);
+  const n = items.length;
+  copyUu5(await uu5StringOf([...byFile].map(([file, ordinals]) => ({ file, ordinals }))), n > 1 ? `${n} components` : "The component");
+}
+// ----- drag the selected screen as a file (into WhatsApp, Signal, Teams, Mail, a folder, ...): the ⠿ buttons of the Share menu
 const drags = new Map(); // kind -> { file, path, at }
 async function prepareDrag(kind) {
   const file = canvas.selected(); if (!file) return;
   const el = () => document.querySelector(`#selmenu [data-drag="${kind}"]`), have = drags.get(kind);
   if (have && have.file === file && Date.now() - have.at < 15000 && have.path) return;
   if (el()) el().dataset.state = "preparing"; drags.set(kind, { file, path: null, at: Date.now() });
-  const r = await window.studio.dragPrepare(kind, file);
+  const r = kind === "uu5" ? await uu5File(file, (text) => window.studio.dragPrepare("uu5", file, text)) : await window.studio.dragPrepare(kind, file);
   if (r?.error) { if (el()) delete el().dataset.state; drags.delete(kind); return toast(r.error, { err: true }); }
   drags.set(kind, { file, path: r.path, at: Date.now() }); if (el()) el().dataset.state = "ready";
 }
-function dragEntry(kind, label) {
-  const btn = Object.assign(document.createElement("button"), { textContent: `⠿  ${label}`, className: "dragrow", draggable: true, title: "Press, hold and drag it into a chat, a mail or a folder" });
+const DRAG_NAMES = { png: "image", html: "HTML file", uu5: "uu5String file", zip: "project ZIP" };
+function dragEntry(kind) {
+  const what = DRAG_NAMES[kind] ?? "file";
+  const btn = Object.assign(document.createElement("button"), { className: "dragrow", draggable: true, title: `Drag the ${what} (press, hold and move) into a chat, a mail or a folder` });
+  btn.innerHTML = '<span class="grip" aria-hidden="true">⠿</span><span>Drag</span>';
   btn.dataset.drag = kind;
-  btn.onclick = (e) => { e.stopPropagation(); toast("Drag this entry (press and hold) into a chat, a mail or a folder."); };
+  btn.onclick = (e) => { e.stopPropagation(); toast("Press, hold and drag this into a chat, a mail or a folder."); };
   btn.addEventListener("dragstart", (e) => {
     e.preventDefault();
     const d = drags.get(kind);
@@ -1171,15 +1245,39 @@ $("selbar").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
   e.stopPropagation();
   const file = canvas.selected(); if (!file) return;
-  if (b.dataset.act) return screenAction(b.dataset.act, file);
+  // only one menu of the bar is open at a time: the Share menu and the ⋯ menu close each other, a second click closes its own
+  const ctx = $("ctxmenu"), ctxOpen = !ctx.hidden && ctx.dataset.from === "bar";
+  ctx.hidden = true; delete ctx.dataset.from;
+  if (b.dataset.act) {
+    $("selmenu").hidden = true; updateSelbar();
+    if (b.dataset.act === "more") { if (ctxOpen) return; screenAction("more", file); ctx.dataset.from = "bar"; b.classList.add("on"); return; }
+    return screenAction(b.dataset.act, file);
+  }
   const m = $("selmenu"), open = !m.hidden && m.dataset.for === b.dataset.menu;
   m.hidden = true; updateSelbar(); if (open) return;
-  m.replaceChildren(...SCREEN_MENUS[b.dataset.menu].map(([act, label]) => {
-    if (act === "-") return document.createElement("hr");
-    if (act.startsWith("drag-")) return dragEntry(act.slice(5), label);
-    return Object.assign(document.createElement("button"), { textContent: label, onclick: () => { m.hidden = true; b.classList.remove("on"); screenAction(act, file); } });
-  }));
-  if (b.dataset.menu === "share") { prepareDrag("png"); prepareDrag("html"); } // the files are ready when the user takes one
+  const close = () => { m.hidden = true; b.classList.remove("on"); };
+  m.className = "fmt";
+  const render = () => {
+    const f = OUT_FORMATS.find((x) => x.id === outFormat) ?? OUT_FORMATS[0];
+    const tiles = Object.assign(document.createElement("div"), { className: "fmt-tiles", role: "radiogroup", ariaLabel: "What to share" });
+    tiles.append(...OUT_FORMATS.map((x) => {
+      const t = Object.assign(document.createElement("button"), { className: `fmt-tile${x.id === f.id ? " on" : ""}`, role: "radio", ariaChecked: String(x.id === f.id), title: x.hint });
+      t.innerHTML = `${x.icon}<span>${esc(x.label)}</span>`;
+      t.onclick = (ev) => { ev.stopPropagation(); outFormat = x.id; try { localStorage.setItem(OUT_KEY, x.id); } catch { /* not remembered */ } render(); };
+      return t;
+    }));
+    const hint = Object.assign(document.createElement("p"), { className: "fmt-hint", textContent: f.hint });
+    const acts = Object.assign(document.createElement("div"), { className: "fmt-acts" });
+    acts.append(...OUT_ACTS.map(([k, label, icon]) => {
+      const a = Object.assign(document.createElement("button"), { className: k === "copy" ? "primary" : "", title: `${label.replace("…", "")}: ${f.label}` });
+      a.innerHTML = `${icon}<span>${esc(label)}</span>`;
+      a.onclick = () => { close(); screenAction(f[k], file); };
+      return a;
+    }), dragEntry(f.id));
+    m.replaceChildren(tiles, hint, document.createElement("hr"), acts);
+    prepareDrag(f.id); // the file is ready when the user takes it
+  };
+  render();
   const cr = $("canvas").getBoundingClientRect(), br = b.getBoundingClientRect();
   m.style.left = br.left - cr.left + "px"; m.style.top = br.bottom - cr.top + 6 + "px"; m.dataset.for = b.dataset.menu; m.hidden = false; b.classList.add("on");
 };
@@ -1449,8 +1547,11 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "chat:history": return needProject(() => $("chathist").click());
       case "screen:image": return withScreen((f) => screenAction("image", f));
       case "screen:html": return withScreen((f) => screenAction("copy-html", f));
+      case "screen:uu5string": return withScreen((f) => screenAction("uu5string", f));
+      case "screen:save-uu5string": return withScreen((f) => screenAction("save-uu5string", f));
       case "screen:share-html": return withScreen((f) => screenAction("share-html", f));
       case "screen:share-png": return withScreen((f) => screenAction("share-png", f));
+      case "screen:share-uu5": return withScreen((f) => screenAction("share-uu5", f));
       case "project:rules": return needProject(openRules);
       case "project:desc": return needProject(() => openDesc(null));
       case "project:repo-link": return needProject(() => linkRepoFlow());

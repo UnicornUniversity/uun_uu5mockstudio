@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, session, shell, ShareMenu } from "electron";
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, session, shell, ShareMenu } from "electron";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -560,6 +560,15 @@ app.whenReady().then(async () => {
     const dest = await pickDest(path.basename(file), "html", "HTML");
     return dest ? { path: await exportHtml(dir(), file, dest) } : { canceled: true };
   }));
+  // the Electron clipboard works also when the window is not focused (navigator.clipboard does not)
+  ipcMain.handle("clipboard:text", guard(async (_e, text) => { await clipboard.writeText(String(text ?? "")); return { ok: true }; }));
+  ipcMain.handle("export:text", guard(async (_e, name, text) => {
+    if (typeof text !== "string") throw new Error("Nothing to save.");
+    const dest = await pickDest(path.basename(String(name)), "txt", "Text");
+    if (!dest) return { canceled: true };
+    fs.writeFileSync(dest, text, "utf8");
+    return { path: dest };
+  }));
   ipcMain.handle("export:zip", guard(async () => {
     const dest = await pickDest(`${current}.zip`, "zip", "ZIP");
     return dest ? { path: dest, ...(await exportZip(dir(), dest)) } : { canceled: true };
@@ -587,10 +596,13 @@ app.whenReady().then(async () => {
   // unsent .eml draft with the attachment is opened in the default mail client. STUDIO_MAIL_DRY_RUN only prepares the files.
   /** The file to share (HTML copy, PNG render or project ZIP) written to a temp folder. */
   const SHARE_DIR = path.join(os.tmpdir(), "uu5studio-share");
-  async function prepareShare(kind, file) {
+  async function prepareShare(kind, file, text) {
     const out = SHARE_DIR; await fs.promises.mkdir(out, { recursive: true });
     let name, data, label;
-    if (kind === "zip") { name = `${current}.zip`; await exportZip(dir(), path.join(out, name)); data = await fs.promises.readFile(path.join(out, name)); label = current; }
+    if (kind === "uu5") { // the text comes from the renderer (collected from the rendered screen)
+      if (typeof text !== "string" || !text) throw new Error("Nothing to share.");
+      label = path.basename(String(file), ".html"); name = `${label}.uu5string.txt`; data = Buffer.from(text, "utf8"); await fs.promises.writeFile(path.join(out, name), data);
+    } else if (kind === "zip") { name = `${current}.zip`; await exportZip(dir(), path.join(out, name)); data = await fs.promises.readFile(path.join(out, name)); label = current; }
     else if (kind === "png") { name = `${path.basename(file, ".html")}.png`; data = await render(file, "png"); await fs.promises.writeFile(path.join(out, name), data); label = path.basename(file, ".html"); }
     else { name = path.basename(file); data = await fs.promises.readFile(path.join(dir(), name)); await fs.promises.writeFile(path.join(out, name), data); label = path.basename(file, ".html"); }
     return { out, name, data, label, attachment: path.join(out, name) };
@@ -598,16 +610,29 @@ app.whenReady().then(async () => {
   // Drag a screen as a file into a chat, a mail or a folder. The file is prepared while the pointer is over the handle (a drag
   // has to start at once), `drag:start` then hands it to the operating system.
   const dragIcon = nativeImage.createFromPath(path.join(here, "../renderer/assets/icon.png")).resize({ width: 64 });
-  ipcMain.handle("drag:prepare", guard(async (_e, kind, file) => ({ path: (await prepareShare(kind, file)).attachment })));
+  // Copy of the Share menu: the image as an image, the HTML as its source text, the project ZIP as a file (macOS: pasted into
+  // Finder, Mail, Messages … like a file copied in Finder; elsewhere its path as text). Electron's clipboard takes ClipboardItems.
+  ipcMain.handle("clipboard:out", guard(async (_e, kind, file) => {
+    if (kind === "png") { await clipboard.write([new ClipboardItem({ "image/png": new Blob([await render(file, "png")], { type: "image/png" }) })]); return { ok: true }; }
+    if (kind === "html") { await clipboard.writeText(await fs.promises.readFile(path.join(dir(), path.basename(String(file))), "utf8")); return { ok: true }; }
+    if (kind === "zip") {
+      const { attachment } = await prepareShare("zip", file);
+      if (process.platform !== "darwin") { await clipboard.writeText(attachment); return { ok: true, pathOnly: true }; }
+      await clipboard.write([new ClipboardItem({ 'electron application/osclipboard;format="public.file-url"': new Blob([pathToFileURL(attachment).href], { type: "text/plain" }), "text/plain": attachment })]);
+      return { ok: true };
+    }
+    throw new Error(`Unknown kind: ${kind}`);
+  }));
+  ipcMain.handle("drag:prepare", guard(async (_e, kind, file, text) => ({ path: (await prepareShare(kind, file, text)).attachment })));
   ipcMain.on("drag:start", (e, filePath) => {
     const target = path.resolve(String(filePath));
     if (target.startsWith(SHARE_DIR + path.sep) && fs.existsSync(target)) e.sender.startDrag({ file: target, icon: dragIcon });
   });
-  ipcMain.handle("share:mail", guard(async (_e, kind, file) => {
-    const { out, name, data, label, attachment } = await prepareShare(kind, file);
+  ipcMain.handle("share:mail", guard(async (_e, kind, file, text) => {
+    const { out, name, data, label, attachment } = await prepareShare(kind, file, text);
     if (process.platform === "darwin" && !process.env.STUDIO_MAIL_DRY_RUN) { new ShareMenu({ filePaths: [attachment] }).popup({ window: win }); return { shared: true, method: "share-sheet", path: attachment }; }
     const eml = path.join(out, `${name}.eml`);
-    await fs.promises.writeFile(eml, buildEml({ subject: `uu5 mockup: ${label}`, body: mailBody(kind === "zip" ? "zip" : "html", label), attachments: [{ name, data }] }));
+    await fs.promises.writeFile(eml, buildEml({ subject: `uu5 mockup: ${label}`, body: mailBody(kind === "zip" || kind === "uu5" ? kind : "html", label), attachments: [{ name, data }] }));
     if (!process.env.STUDIO_MAIL_DRY_RUN) { const err = await shell.openPath(eml); if (err) throw new Error(`Could not open the mail client: ${err}`); }
     return { shared: true, method: "eml", path: eml };
   }));

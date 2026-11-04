@@ -9,7 +9,7 @@ This guide is for people who design screens with the app. It follows what you do
 5. [The inspector](05-inspector.md): pick a component, change its props, edit lists of actions, undo and redo.
 6. [The component tree of a screen](06-component-tree.md): see how a screen is composed and rearrange it.
 7. [Project memory](07-project-memory.md): business rules, descriptions, notes, the linked git repository.
-8. [Export and share](08-export-and-share.md): image, HTML, ZIP, drag into other apps.
+8. [Export and share](08-export-and-share.md): image, HTML, uu5String, ZIP, drag into other apps.
 9. [Appearance and settings](09-appearance-and-settings.md): theme, Glass Effect, offline use, updates.
 10. [Keyboard shortcuts and menus](10-shortcuts-and-menus.md).
 11. [Troubleshooting](11-troubleshooting.md).

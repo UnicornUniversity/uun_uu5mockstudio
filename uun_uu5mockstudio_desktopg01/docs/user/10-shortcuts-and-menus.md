@@ -28,7 +28,7 @@
 
 ## Menus
 
-- **File**: New Project…, Switch Project…, Close Project, **Export** (screen as image, as HTML, project as ZIP), **Share** (screen image, HTML file, project ZIP), Quit.
+- **File**: New Project…, Switch Project…, Close Project, **Export** (screen as image, as HTML, as uu5String, project as ZIP), **Share** (screen image, HTML file, uu5String, project ZIP), Quit.
 - **Project**: Rename Project…, Project Description…, Business Rules…, **Git Repository** (link, Switch Branch…, Open Repository Folder, Unlink Repository), **Projects Folder** (show, Change…), Delete Project….
 - **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, **Show Component Tree…**, Undo / Redo Screen Change, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. The same entries are in the context menu (right click) of a screen.
 - **Chat**: New Chat, Chat History…, Floating / Docked Chat.

@@ -25,6 +25,7 @@
 | `setup.js`, `tour.js` | First-run setup dialog; the welcome tour. |
 | `markdown.js` | A small, safe Markdown subset for chat messages (everything is escaped first). |
 | `icons.js` | Shared SVG icons. |
+| `uu5StringCollect.js`, `uu5String.js` | Copy as uu5String: the tree collected from the rendered screen and its serialization, see [14](14-uu5string.md). |
 
 ## Conventions
 
