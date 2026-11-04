@@ -1317,8 +1317,12 @@ $("chatmin").onclick = () => dock.toggleCollapsed();
 document.body.dataset.platform = window.studio.platform;
 const meta = await window.studio.meta();
 // Glass Effect (macOS): the toolbar and the description strip float over the canvas, so the canvas reserves their height (--glass-top)
-const updateGlassInset = () => { const b = $("bar").offsetHeight, s = $("descstrip").hidden ? 0 : $("descstrip").offsetHeight; document.body.style.setProperty("--glass-bar", `${b}px`); document.body.style.setProperty("--glass-top", `${b + s}px`); };
-new ResizeObserver(updateGlassInset).observe($("bar")); new ResizeObserver(updateGlassInset).observe($("descstrip"));
+// Glass: the toolbar, the description strip and the update notices (when they are over the canvas, in an open project) float over it, one under another
+const updateGlassInset = () => {
+  const b = $("bar").offsetHeight, s = $("descstrip").hidden ? 0 : $("descstrip").offsetHeight, up = $("updates"), u = up.parentElement === $("bar").parentElement ? up.offsetHeight : 0;
+  document.body.style.setProperty("--glass-bar", `${b}px`); document.body.style.setProperty("--glass-updates", `${b + s}px`); document.body.style.setProperty("--glass-top", `${b + s + u}px`);
+};
+for (const id of ["bar", "descstrip", "updates"]) new ResizeObserver(updateGlassInset).observe($(id));
 function applyGlass(on) {
   const top0 = $("canvas").getBoundingClientRect().top;
   if (on) document.body.dataset.glass = "1"; else delete document.body.dataset.glass;
@@ -1420,6 +1424,7 @@ function updateNoProject() {
   $("prompt").disabled = none; $("send").disabled = none || !ready || busy;
   $("prompt").placeholder = none ? "Open or create a project first…" : "Describe the screen you want to design…";
   if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("descstrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
+  updateGlassInset();
 }
 /** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
 const templatesDialog = createTemplatesDialog({ api: window.studio });
