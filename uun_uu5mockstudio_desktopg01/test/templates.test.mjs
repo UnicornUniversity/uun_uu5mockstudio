@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, writeFile, readFile, symlink } from "node:fs/promises";
-import { parseTemplate, loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, templatePrompt } from "../src/main/templates.mjs";
+import { parseTemplate, loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, templatePrompt, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "../src/main/templates.mjs";
 import { tmp } from "./helpers.mjs";
 
 async function make(root, id, manifest = {}, files = { "start.html": "<h1>x</h1>" }, md = "# Instructions") {
@@ -16,7 +16,7 @@ async function make(root, id, manifest = {}, files = { "start.html": "<h1>x</h1>
 test("a template folder is read and checked", async () => {
   const root = await tmp("tpl");
   assert.equal((await parseTemplate(await make(root, "ok", { kind: "form", prompt: "Make a form" }), "mine")).template.kind, "form");
-  assert.match((await parseTemplate(await make(root, "no-level", { level: "page" }))).error, /level/);
+  assert.match((await parseTemplate(await make(root, "no-level", { level: "screen" }))).error, /level/);
   assert.match((await parseTemplate(await make(root, "Bad_Id", { id: "Bad_Id" }))).error, /kebab-case/);
   assert.match((await parseTemplate(await make(root, "evil", { files: ["../x.html"] }))).error, /unsafe/);
   assert.match((await parseTemplate(await make(root, "empty", {}, {}))).error, /no starter/);
@@ -48,26 +48,108 @@ test("plugins: their templates folder and the skeletons of uu5-mockup", async ()
   assert.deepEqual(mergeSources([r.templates]).map((t) => t.id), ["own", "uu5-mockup-form"]);
 });
 
-test("applying a template copies the starter files without overwriting and keeps the instructions", async () => {
+test("applying a template keeps the starter files as a reference for the agent, not as screens of the project", async () => {
   const root = await tmp("tpl-apply"), project = await tmp("tpl-proj");
   await writeFile(path.join(project, "start.html"), "mine");
   const t = (await parseTemplate(await make(root, "two", { level: "app" }, { "start.html": "<a/>", "other.html": "<b/>" }), "mine")).template;
   const r = await applyTemplate(await readTemplate(t), project);
-  assert.deepEqual(r, { written: ["other.html"], skipped: ["start.html"] });
-  assert.equal(await readFile(path.join(project, "start.html"), "utf8"), "mine");
+  assert.deepEqual(r, { starter: ["other.html", "start.html"] });
+  assert.equal(await readFile(path.join(project, "start.html"), "utf8"), "mine"); // nothing in the project folder is touched
+  await assert.rejects(readFile(path.join(project, "other.html"), "utf8")); // and no sample screen appears on the canvas
+  assert.equal(await readFile(path.join(project, ".studio", "template", "files", "other.html"), "utf8"), "<b/>");
   const meta = JSON.parse(await readFile(path.join(project, ".studio", "template", "template.json"), "utf8"));
-  assert.equal(meta.id, "two"); assert.deepEqual(meta.written, ["other.html"]);
+  assert.equal(meta.id, "two"); assert.deepEqual(meta.files, ["other.html", "start.html"]);
   assert.match(await readFile(path.join(project, ".studio", "template", "TEMPLATE.md"), "utf8"), /Instructions/);
-  assert.match(templatePrompt(meta), /Application template "two".*other\.html.*TEMPLATE\.md/);
+  assert.match(templatePrompt(meta), /Application template "two".*TEMPLATE\.md.*other\.html, start\.html.*\.studio\/template\/files/);
+  assert.match(templatePrompt(meta), /not screens of this project/);
+  assert.match(templatePrompt(meta), /Build exactly what the user asked for/);
   assert.equal(templatePrompt(null), "");
   assert.match(templatePrompt(meta), /every route has its own route header/i);
   assert.match(templatePrompt({ ...meta, level: "route" }), /one route \(uu5Route\).*route header/i);
   assert.doesNotMatch(templatePrompt({ ...meta, level: "component" }), /route header/i);
 });
 
-test("the built-in templates are all valid and cover the three levels", async () => {
+test("the built-in templates are all valid and cover the four levels", async () => {
   const { templates, errors } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
   assert.deepEqual(errors, []);
-  assert.deepEqual([...new Set(templates.map((t) => t.level))].sort(), ["app", "component", "route"]);
+  assert.deepEqual([...new Set(templates.map((t) => t.level))].sort(), ["app", "component", "page", "route"]);
   for (const t of templates) assert.ok(t.hasInstructions && t.prompt, `${t.id} has instructions and a prompt`);
+});
+
+test("a Page template is made of Bricks only: every library it uses is a dependency of the page and imported, nothing of uu5g05-elements", async () => {
+  const { templates } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
+  const pages = templates.filter((t) => t.level === "page");
+  assert.ok(pages.length >= 6);
+  for (const t of pages) {
+    const html = await readFile(path.join(t.dir, t.files[0]), "utf8");
+    const deps = JSON.parse(html.match(/var uu5DemoDependencies = (\{[^}]*\})/)[1].replace(/(\w[\w-]*)(?=\s*:)/g, (k) => `"${k}"`).replace(/""/g, '"'));
+    const used = [...new Set([...html.matchAll(/<\/?(Uu5\w+)\./g)].map((m) => m[1]))];
+    assert.ok(used.length && used.every((ns) => /Bricks$/.test(ns)), `${t.id} uses only Bricks: ${used}`);
+    for (const ns of used) {
+      const imp = html.match(new RegExp(`import \\* as ${ns} from "([\\w-]+)"`));
+      assert.ok(imp, `${t.id} imports ${ns}`);
+      assert.ok(deps[imp[1]], `${t.id} loads ${imp[1]}`);
+    }
+    assert.doesNotMatch(html, /className=|useState|onClick=/, `${t.id} has nothing that would not survive the uu5String`);
+  }
+});
+
+test("the prompt of a Page names the uu5Bricks rules", () => {
+  const p = templatePrompt({ id: "page-portal", title: "Portal", level: "page", files: ["portal.html"] });
+  assert.match(p, /Page template "Portal"/);
+  assert.match(p, /uu5bricks-knowledge/);
+  assert.match(p, /uu5String/);
+});
+
+test("my templates: an id from the title and a guessed level", () => {
+  assert.equal(slugify("Detail předmětu – ZS 2026"), "detail-predmetu-zs-2026");
+  assert.equal(slugify("  ---  "), "");
+  assert.equal(guessLevel(["<Uu5Bricks.Section><Uu5ChartsBricks.PieChart/></Uu5Bricks.Section>"]), "page");
+  assert.equal(guessLevel(["<Plus4U5App.RouteHeader title='x'/><Uu5Elements.Block/>"]), "route");
+  assert.equal(guessLevel(["<Uu5Elements.Block/>"]), "component");
+  assert.equal(guessLevel(["<a/>", "<b/>"]), "app");
+});
+
+test("the instructions of a template made from screens carry the rules and the notes of the project", () => {
+  const md = buildInstructions({ title: "Course detail", description: "A course page.", instructions: "Keep the hero.", rules: "# Business rules\n\nRules, constraints and decisions …\n\n## General\n\n- R1: prices in EUR\n", notes: [{ screen: "course.html", text: "The badge\nis green" }, { screen: "x.html", text: " " }], createdFrom: "Product (course.html)" });
+  assert.match(md, /^# Course detail\n\nA course page\./);
+  assert.match(md, /worked example/);
+  assert.match(md, /## Instructions\n\nKeep the hero\./);
+  assert.match(md, /## Rules of the project it was made in[\s\S]*R1: prices in EUR/);
+  assert.match(md, /^### General$/m);
+  assert.doesNotMatch(md, /Rules, constraints and decisions/);
+  assert.match(md, /- course\.html: The badge is green/);
+  assert.doesNotMatch(md, /x\.html/);
+  assert.match(md, /_Made from Product \(course\.html\)\._/);
+  assert.doesNotMatch(buildInstructions({ title: "T" }), /## (Instructions|Rules|Notes)/);
+});
+
+test("a template saved from screens is a valid template of my own: it is listed, applied, edited and deleted", async () => {
+  const root = await tmp("tpl-mine");
+  const t = { title: "Course detail", level: "page", kind: "product", description: "A course page.", prompt: "A course page", files: [{ name: "course-detail.html", html: "<Uu5Bricks.Section/>" }], instructions: "# Course detail\n" };
+  const r = await saveTemplate(root, t);
+  assert.equal(r.id, "course-detail");
+  const { templates, errors } = await loadSource(root, "mine");
+  assert.deepEqual(errors, []);
+  assert.equal(templates[0].title, "Course detail"); assert.equal(templates[0].level, "page"); assert.equal(templates[0].kind, "product"); assert.deepEqual(templates[0].files, ["course-detail.html"]);
+  assert.deepEqual(await saveTemplate(root, { ...t, title: "Other" , id: "course-detail" }), { exists: true, id: "course-detail", dir: path.join(root, "course-detail") }); // not replaced without asking
+  await saveTemplate(root, { ...t, id: "course-detail", description: "Changed." }, { overwrite: true });
+  const mine = await readMine(root, "course-detail");
+  assert.equal(mine.description, "Changed."); assert.equal(mine.markdown, "# Course detail\n"); assert.equal(mine.dir, undefined);
+  const project = await tmp("tpl-mine-proj");
+  await applyTemplate(await readTemplate(templates[0]), project);
+  assert.equal(await readFile(path.join(project, ".studio", "template", "files", "course-detail.html"), "utf8"), "<Uu5Bricks.Section/>");
+  await removeTemplate(root, "course-detail");
+  assert.equal(mineDir(root, "course-detail"), null);
+  await assert.rejects(removeTemplate(root, "../etc"), /not one of yours/);
+});
+
+test("saving refuses what a template may not contain", async () => {
+  const root = await tmp("tpl-bad"), ok = { title: "T", level: "component", files: [{ name: "a.html", html: "x" }] };
+  await assert.rejects(saveTemplate(root, { ...ok, id: "Bad Id" }), /kebab-case/);
+  await assert.rejects(saveTemplate(root, { ...ok, level: "screen" }), /level/);
+  await assert.rejects(saveTemplate(root, { ...ok, title: " " }), /title/);
+  await assert.rejects(saveTemplate(root, { ...ok, files: [] }), /at least one/);
+  await assert.rejects(saveTemplate(root, { ...ok, files: [{ name: "../a.html", html: "x" }] }), /Unsafe/);
+  await assert.rejects(saveTemplate(root, { ...ok, files: [{ name: "a.html", html: "x".repeat(600 * 1024) }] }), /bigger/);
 });

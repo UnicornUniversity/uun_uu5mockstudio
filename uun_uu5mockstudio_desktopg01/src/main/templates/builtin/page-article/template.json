@@ -1,0 +1,14 @@
+{
+  "id": "page-article",
+  "title": "Article",
+  "level": "page",
+  "description": "A how-to or a knowledge article: steps, notes, warnings, code and troubleshooting.",
+  "prompt": "A how-to article with steps, notes and troubleshooting",
+  "order": 50,
+  "kind": "article",
+  "icon": "article",
+  "tags": [
+    "uu5Bricks",
+    "uu5String"
+  ]
+}

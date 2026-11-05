@@ -1,0 +1,14 @@
+{
+  "id": "page-home",
+  "title": "Home page",
+  "level": "page",
+  "description": "The starting page of a project, team or organisation: key facts, an announcement, links, milestones and people.",
+  "prompt": "A home page of our project with key facts, links, milestones and the team",
+  "order": 30,
+  "kind": "home",
+  "icon": "home",
+  "tags": [
+    "uu5Bricks",
+    "uu5String"
+  ]
+}

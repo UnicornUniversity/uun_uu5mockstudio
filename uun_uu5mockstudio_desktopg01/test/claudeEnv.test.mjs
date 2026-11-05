@@ -8,7 +8,7 @@ import { tmp } from "./helpers.mjs";
 afterEach(() => delete process.env.STUDIO_CLAUDE_BIN);
 
 const PLUGINS_OK = JSON.stringify([
-  { id: "uu5-mockup@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uugds@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uu5-development@uu-technical-products-mp", version: "1.5.0", enabled: true },
+  { id: "uu5-mockup@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uugds@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uu5-development@uu-technical-products-mp", version: "1.5.0", enabled: true }, { id: "uu5bricks@uu-technical-products-mp", version: "0.3.0", enabled: true },
 ]);
 /**
  * A stand-in for the `claude` CLI. `auth` / `list` / `market` are shell snippets answering `auth ...`, `plugin list --json` and
@@ -58,7 +58,7 @@ test("pluginsMissing when logged in but a required plugin is not installed, read
   process.env.STUDIO_CLAUDE_BIN = await fakeClaude(`echo '{"loggedIn":true}'`, { list: none });
   const s = await getStatus({ refresh: true });
   assert.equal(s.state, "pluginsMissing");
-  assert.deepEqual(s.plugins.map((p) => [p.name, p.state]), [["uu5-mockup", "missing"], ["uugds", "ok"], ["uu5-development", "missing"]]);
+  assert.deepEqual(s.plugins.map((p) => [p.name, p.state]), [["uu5-mockup", "missing"], ["uugds", "ok"], ["uu5-development", "missing"], ["uu5bricks", "missing"]]);
   process.env.STUDIO_CLAUDE_BIN = await fakeClaude(`echo '{"loggedIn":true}'`);
   assert.equal((await getStatus({ refresh: true })).state, "ready");
 });
@@ -82,8 +82,8 @@ test("installPlugins adds the marketplace, installs the missing plugins and repo
   assert.equal(r.ok, true);
   const log = await calls(bin);
   assert.match(log[0], /^plugin marketplace add ssh:\/\/git@uucodebase\.plus4u\.net\S+ --scope user$/);
-  assert.deepEqual(log.slice(1), ["plugin install uu5-mockup@uu-technical-products-mp -y --scope user", "plugin install uugds@uu-technical-products-mp -y --scope user", "plugin install uu5-development@uu-technical-products-mp -y --scope user"]);
-  assert.equal(seen.filter((x) => x.startsWith("ok:")).length, 4);
+  assert.deepEqual(log.slice(1), ["plugin install uu5-mockup@uu-technical-products-mp -y --scope user", "plugin install uugds@uu-technical-products-mp -y --scope user", "plugin install uu5-development@uu-technical-products-mp -y --scope user", "plugin install uu5bricks@uu-technical-products-mp -y --scope user"]);
+  assert.equal(seen.filter((x) => x.startsWith("ok:")).length, 5);
 });
 
 test("installPlugins stops at the first failure and explains missing SSH access", async () => {

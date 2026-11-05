@@ -44,7 +44,7 @@ Type `@` and a few letters:
 
 - **another screen** of the project (`@room-list`): Claude opens it and uses it as a template;
 - **a file of the linked git repository** (`@repo/…`, see [project memory](07-project-memory.md#linked-git-repository));
-- **a component of the uu5 libraries** (`@Uu5Elements.Block`, `@Uu5Forms.FormText`): Claude gets the description of the component, its props and the reference file. Only components known to the documentation of the `uu5-development` plugin are suggested; the cube button opens a browser of them with the props, defaults (long defaults are one clipped line; click to read all) and a link to the online documentation.
+- **a component of the uu5 libraries** (`@Uu5Elements.Block`, `@Uu5Forms.FormText`): Claude gets the description of the component, its props and the reference file. Only components known to the documentation of the `uu5-development` and `uu5bricks` plugins are suggested; the cube button opens a browser of them with the props, defaults (long defaults are one clipped line; click to read all) and a link to the online documentation.
 
 ## Picking components of a screen
 

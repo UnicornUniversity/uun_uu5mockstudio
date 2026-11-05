@@ -3,32 +3,69 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Component reference (props, types, allowed values) read from the user's own `uu5-development` Claude Code plugin
- * (its uu5-knowledge wiki). Nothing is copied or bundled; without the plugin the inspector still works from the props
+ * Component reference (props, types, allowed values) read from the user's own Claude Code plugins: `uu5-development` (its uu5-knowledge
+ * wiki: the uu5g05 generation) and `uu5bricks` (the registry pages of its uu5bricks-knowledge skill: Uu5Bricks and the other Bricks
+ * libraries that documents are written with). Nothing is copied or bundled; without the plugins the inspector still works from the props
  * that exist in the file and at runtime.
  */
 
 const WIKI = path.join("skills", "uu5-knowledge", "references", "wiki", "05-component-taxonomy-library-selection");
+const BRICKS = path.join("skills", "uu5bricks-knowledge", "references", "uu5bricks-kb", "raw");
 const TYPE_WORDS = new Set(["string", "bool", "number", "object", "func", "node", "lsi", "icon", "unit", "array", "any", "ref", "element", "colorScheme", "borderRadius"]);
 
 /**
- * The wiki of the `uu5-development` plugin: where Claude Code installed it, else in a marketplace synchronised by the uuAiMarketplace extension
+ * The folder `sub` of the plugin `plugin`: where Claude Code installed it, else in a marketplace synchronised by the uuAiMarketplace extension
  * (`marketplaceDirs`, default the uu5 one; not looked at when a `pluginsFile` is named), so that it also works for users of Codex alone.
  */
-export function findWikiRoot({ pluginsFile, marketplaceDirs } = {}) {
+function findPluginDir(plugin, sub, { pluginsFile, marketplaceDirs } = {}) {
   const mps = marketplaceDirs ?? (pluginsFile ? [] : [path.join(os.homedir(), ".skilled-plus4u-mcp", "marketplaces", "uu-technical-products-mp")]);
   try {
     const reg = JSON.parse(fs.readFileSync(pluginsFile ?? path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8")).plugins ?? {};
     for (const [key, installs] of Object.entries(reg)) {
-      if (!/^uu5-development@/.test(key)) continue;
+      if (key.split("@")[0] !== plugin) continue;
       for (const inst of [...installs].reverse()) {
-        const dir = path.join(inst.installPath, WIKI);
+        const dir = path.join(inst.installPath, sub);
         if (fs.existsSync(dir)) return dir;
       }
     }
   } catch { /* no Claude Code plugins installed */ }
-  for (const mp of mps) { const dir = path.join(mp, "plugins", "uu5-development", WIKI); if (fs.existsSync(dir)) return dir; }
+  for (const mp of mps) { const dir = path.join(mp, "plugins", plugin, sub); if (fs.existsSync(dir)) return dir; }
   return null;
+}
+
+/** The wiki of the `uu5-development` plugin, or null. */
+export const findWikiRoot = (opts) => findPluginDir("uu5-development", WIKI, opts);
+/** The registry pages of the `uu5bricks` plugin (one markdown file per component), or null. */
+export const findBricksRoot = (opts) => findPluginDir("uu5bricks", BRICKS, opts);
+
+/**
+ * A registry page of the uu5bricks plugin: `# Uu5Bricks.Tile`, a table with the npm package, `## Description`, and under `## Props` one
+ * `### \`name\`` per prop followed by `` `type` · optional · default `value` `` (or `· **required**`). Same shape as `parseDoc`, plus `package`
+ * and `deprecated`. null for a page that is not a component (the catalogue, the common props).
+ */
+export function parseBricksDoc(md) {
+  const lines = String(md).split("\n");
+  const title = (lines[0] ?? "").replace(/^#\s*/, "").trim();
+  if (!/^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$/.test(title)) return null;
+  const meta = (key) => (md.match(new RegExp(`^\\|\\s*${key}\\s*\\|\\s*(.*?)\\s*\\|\\s*$`, "mi")) ?? [])[1] ?? "";
+  const section = (name) => { const m = md.match(new RegExp(`^## ${name}\\s*$([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, "m")); return m ? m[1] : ""; };
+  const description = section("Description").trim().split(/\n\s*\n/)[0]?.replace(/\s+/g, " ").trim() ?? "";
+  const url = (meta("Documentation").match(/https?:\S+/) ?? [])[0] ?? null;
+  const props = [];
+  for (const block of section("Props").split(/^### /m).slice(1)) {
+    const name = ((block.match(/^`([^`]+)`/) ?? [])[1] ?? "").trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) continue;
+    const body = block.slice(block.indexOf("\n") + 1).trim();
+    const head = body.match(/^`([^`]*)`\s*·\s*(\*\*required\*\*|optional)(?:\s*·\s*default\s*`([^`]*)`)?/);
+    const type = head ? head[1].replace(/\|\|/g, "|").replace(/\s*\|\s*/g, " | ").trim() : "";
+    const desc = (head ? body.slice(head[0].length) : body).replace(/\n\s*Example:[\s\S]*$/, "").replace(/\s+/g, " ").trim();
+    const def = head?.[3]?.trim();
+    props.push({
+      name, type, required: head?.[2] === "**required**", default: !def || def === "undefined" ? null : unquote(def), description: desc,
+      enum: enumOf(type.replace(/\s*\|\s*/g, "|"), desc), listEnum: listEnumOf(type, desc),
+    });
+  }
+  return { title, description, url, props, package: meta("npm package").replace(/`/g, "") || null, deprecated: /\*\*yes\*\*/i.test(meta("Deprecated")) };
 }
 
 const splitRow = (line) => line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
@@ -86,30 +123,47 @@ export function parseDoc(md) {
   return { title, description, url, props };
 }
 
-/** `findWikiRoot()` result -> lookup for `Uu5Elements.Button` -> parsed doc (cached), plus the list / search used to pick components for the chat. */
-export function createDocs(wikiRoot = findWikiRoot()) {
+/**
+ * `findWikiRoot()` result -> lookup for `Uu5Elements.Button` -> parsed doc (cached), plus the list / search used to pick components for the chat.
+ * The components of the uu5bricks plugin (`bricksRoot`) come into the same lookup; called without arguments both plugins are looked for, with a
+ * wiki given (tests) the bricks only when named.
+ */
+export function createDocs(...args) {
+  const [wikiRoot = findWikiRoot(), { bricksRoot = args.length ? null : findBricksRoot() } = {}] = args;
   let index = null, summaries = null;
-  const cache = new Map();
-    function load() {
+  const cache = new Map(), bricksFiles = new Set();
+  function load() {
     if (index) return index;
     index = new Map();
-    if (!wikiRoot) return index;
-    try {
-      for (const dir of fs.readdirSync(wikiRoot, { withFileTypes: true })) {
-        if (!dir.isDirectory()) continue;
-        try {
-          const map = JSON.parse(fs.readFileSync(path.join(wikiRoot, dir.name, "_index.json"), "utf8"));
-          for (const [name, file] of Object.entries(map)) { index.set(name, path.join(wikiRoot, dir.name, file)) }
-        } catch { /* folder without an index */ }
-      }
-    } catch { /* unreadable wiki */ }
+    if (wikiRoot) {
+      try {
+        for (const dir of fs.readdirSync(wikiRoot, { withFileTypes: true })) {
+          if (!dir.isDirectory()) continue;
+          try {
+            const map = JSON.parse(fs.readFileSync(path.join(wikiRoot, dir.name, "_index.json"), "utf8"));
+            for (const [name, file] of Object.entries(map)) { index.set(name, path.join(wikiRoot, dir.name, file)) }
+          } catch { /* folder without an index */ }
+        }
+      } catch { /* unreadable wiki */ }
+    }
+    if (bricksRoot) {
+      try {
+        for (const f of fs.readdirSync(bricksRoot).filter((n) => n.endsWith(".md")).sort()) {
+          const file = path.join(bricksRoot, f);
+          let first = "";
+          try { first = fs.readFileSync(file, "utf8").split("\n", 1)[0].replace(/^#\s*/, "").trim(); } catch { continue; }
+          if (!/^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$/.test(first) || index.has(first)) continue; // the catalogue and the common props are not components
+          index.set(first, file); bricksFiles.add(file);
+        }
+      } catch { /* unreadable registry */ }
+    }
     return index;
   }
   const get = (name) => {
     if (cache.has(name)) return cache.get(name);
     const file = load().get(name);
     let doc = null;
-    if (file) { try { doc = parseDoc(fs.readFileSync(file, "utf8")); } catch { doc = null; } }
+    if (file) { try { const md = fs.readFileSync(file, "utf8"); doc = bricksFiles.has(file) ? parseBricksDoc(md) : parseDoc(md); } catch { doc = null; } }
     cache.set(name, doc);
     return doc;
   };

@@ -10,7 +10,7 @@ The app does not ship a model. `ClaudeService` (`src/main/claudeService.mjs`) dr
 | --- | --- | --- |
 | `cwd` | the project folder | the agent works in the project and nowhere else |
 | `pathToClaudeCodeExecutable` | found by `claudeEnv.mjs` | the user's Claude Code, with its login and plugins |
-| `settingSources` | `["user", "project"]` | the user's skills and plugins (uu5-mockup, uugds, uu5-development) apply |
+| `settingSources` | `["user", "project"]` | the user's skills and plugins (uu5-mockup, uugds, uu5-development, uu5bricks) apply |
 | `permissionMode` | `acceptEdits` | edits inside the project need no prompt |
 | `disallowedTools` | `["Bash"]`, plus **`Write`, `Edit`, `MultiEdit`, `NotebookEdit`** in Plan mode | tools that are removed cannot be used at all |
 | `canUseTool` | `toolVerdict` → `accessPolicy` | a verdict for the tools that are still asked about (reading outside the project, writing outside it, secrets) |

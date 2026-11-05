@@ -18,11 +18,11 @@ const page = (imports = `import Uu5Elements from "uu5g05-elements";`) => `<scrip
 </script>`;
 const doc = (rows, children = "") => parseDoc(`# X\n\nDesc.\n\n| Name | Type | Required | Default | Description |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}${children ? "\n" + children : ""}\n`);
 
-test("every curated snippet is one JSX element and can be put into a screen (the libraries of the core are imported when missing)", () => {
+test("every curated snippet is one JSX element and can be put into a screen (the libraries of the core are imported when missing, the Bricks are imported by a content page)", () => {
   for (const [name, snippet] of Object.entries(CURATED)) {
     assert.equal(parseExpression(snippet, { plugins: ["jsx"] }).type, "JSXElement", name);
     assert.ok(snippet.startsWith(`<${name}`), `${name} snippet starts with its own tag`);
-    const html = page(), target = parseElements(html).find((e) => e.name === "Uu5Elements.Text").ordinal;
+    const html = page(name.startsWith("Uu5Bricks.") ? `import Uu5Elements from "uu5g05-elements";\n  import * as Uu5Bricks from "uu5bricksg01";` : undefined), target = parseElements(html).find((e) => e.name === "Uu5Elements.Text").ordinal;
     const r = insertElement(html, { target, position: "after", snippet, imports: CORE_IMPORTS });
     assert.ok(!r.error && !r.missingImport, `${name}: ${r.error ?? r.missingImport}`);
     assert.ok(r.html.includes(snippet.split("\n")[0]), name);

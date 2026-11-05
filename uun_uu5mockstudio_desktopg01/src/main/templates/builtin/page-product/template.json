@@ -1,0 +1,14 @@
+{
+  "id": "page-product",
+  "title": "Product detail",
+  "level": "page",
+  "description": "The detail of one product: a picture, price and availability, a gallery, specifications and questions.",
+  "prompt": "A product detail page with a picture, price, gallery, specifications and questions",
+  "order": 40,
+  "kind": "product",
+  "icon": "product",
+  "tags": [
+    "uu5Bricks",
+    "uu5String"
+  ]
+}

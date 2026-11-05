@@ -86,6 +86,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
       item("Description…", "screen:desc", { enabled: has }),
       item("Show Component Tree…", "screen:structure", { enabled: has }),
+      item("Save as Template…", "screen:template", { enabled: has }),
       item("Undo Screen Change", "screen:undo", { accelerator: "Alt+CmdOrCtrl+Z", enabled: has }),
       item("Redo Screen Change", "screen:redo", { accelerator: "Alt+Shift+CmdOrCtrl+Z", enabled: has }),
       item("Add Rule…", "screen:rule", { enabled: has }),

@@ -23,6 +23,14 @@ test("the newest installed version is read, rules first, then the skills", async
   assert.deepEqual(f, ["0.10.0/rules/uu5-mockup-coding.mdc", "skills/create-mockup/SKILL.md", "skills/mockup-iterate/SKILL.md", "1.0.0/rules/uugds-content.mdc", "skills/uugds-icons/SKILL.md", "skills/uu5-knowledge/SKILL.md"].map((x) => x.split("/").slice(-3).join("/")));
 });
 
+test("a content page (Page template) also demands the uu5bricks knowledge", async () => {
+  const h = await install();
+  const base = path.join(h, ".codex", "plugins", "cache", "uu-technical-products-mp", "uu5bricks", "0.3.0", "skills", "uu5bricks-knowledge");
+  await mkdir(base, { recursive: true }); await writeFile(path.join(base, "SKILL.md"), "x");
+  assert.equal(requiredFiles({ home: h }).some((f) => f.includes("uu5bricks-knowledge")), false);
+  assert.match(requiredFiles({ home: h, bricks: true }).at(-1), /uu5bricks-knowledge[\\/]SKILL\.md$/);
+});
+
 test("nothing installed, nothing demanded", async () => {
   const h = await tmp();
   assert.deepEqual(requiredFiles({ home: h }), []);

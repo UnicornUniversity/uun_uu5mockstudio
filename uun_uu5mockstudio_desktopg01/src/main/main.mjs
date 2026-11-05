@@ -21,7 +21,8 @@ import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
 import { createThumbs } from "./thumbs.mjs";
-import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVEL_LABELS } from "./templates.mjs";
+import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
+import { zipSync } from "fflate";
 import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
@@ -424,6 +425,49 @@ app.whenReady().then(async () => {
     const r = await applyTemplate(await readTemplate(t), dir());
     return { ...r, screens: listScreens() };
   }));
+  // ----- my templates made from screens of the open project (Screen → Save as Template…, the Templates dialog)
+  const chosenScreens = (files) => [...new Set([].concat(files ?? []).map((f) => path.basename(String(f))))].filter((f) => f.endsWith(".html") && fs.existsSync(path.join(dir(), f)));
+  const mineIds = () => new Set(fs.existsSync(tplMine) ? fs.readdirSync(tplMine).filter((id) => mineDir(tplMine, id)) : []);
+  // what the dialog starts with: a title from the <title> of the first screen, a guessed level, whether the id is taken
+  ipcMain.handle("templates:draft", guard(async (_e, files) => {
+    const names = chosenScreens(files); if (!names.length) throw new Error("Choose a screen of the project.");
+    const htmls = names.map((f) => fs.readFileSync(path.join(dir(), f), "utf8"));
+    const title = (/<title>([^<]*)<\/title>/i.exec(htmls[0])?.[1] ?? "").split(/\s+[–—|-]\s+/)[0].trim() || names[0].replace(/\.html$/, "").replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+    const notes = (await Promise.all(names.map(async (f) => (await readNotes(dir(), f)).length))).reduce((a, b) => a + b, 0);
+    const local = [...new Set(htmls.flatMap((h) => [...h.matchAll(/\b(?:src|href)\s*=\s*["']([^"'{}]+)["']/g)].map((m) => m[1].trim())))].filter((u) => u && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\$)/i.test(u));
+    return { files: names, screens: listScreens(), title, local, id: slugify(title), level: guessLevel(htmls), levels: LEVEL_LABELS, kinds: TEMPLATE_KINDS, taken: [...mineIds()], hasRules: Boolean((await readRules(dir())).replace(/^#.*$/m, "").replace(/Rules, constraints[^\n]*/, "").replace(/##\s*General/, "").trim()), notes };
+  }));
+  ipcMain.handle("templates:save", guard(async (_e, t) => {
+    const names = chosenScreens(t?.files); if (!names.length) throw new Error("Choose at least one screen.");
+    const notes = (await Promise.all(names.map(async (f) => (await readNotes(dir(), f)).map((n) => ({ screen: f, text: n.text }))))).flat();
+    const createdFrom = `${current} (${names.join(", ")})`;
+    const instructions = buildInstructions({ title: String(t.title ?? ""), description: String(t.description ?? ""), instructions: String(t.instructions ?? ""), rules: t.withRules === false ? "" : await readRules(dir()), notes: t.withNotes === false ? [] : notes, createdFrom });
+    const r = await saveTemplate(tplMine, { ...t, id: t.id || slugify(t.title), files: names.map((f) => ({ name: f, html: fs.readFileSync(path.join(dir(), f), "utf8") })), instructions, createdFrom }, { overwrite: Boolean(t.overwrite) });
+    if (!r.exists) await templateList();
+    return { exists: Boolean(r.exists), id: r.id };
+  }));
+  ipcMain.handle("templates:get", guard((_e, id) => readMine(tplMine, id)));
+  // a change of one of my templates (title, level, texts, the whole TEMPLATE.md); its screens stay
+  ipcMain.handle("templates:update", guard(async (_e, id, t) => {
+    const old = await readMine(tplMine, id), d = mineDir(tplMine, id);
+    const files = old.files.map((name) => ({ name, html: fs.readFileSync(path.join(d, name), "utf8") }));
+    const newId = t.id && t.id !== id ? String(t.id) : id;
+    if (newId !== id && mineIds().has(newId)) throw new Error(`A template with the id ${newId} exists already.`);
+    await saveTemplate(tplMine, { ...old, ...t, id: newId, files, instructions: t.markdown ?? old.markdown, createdFrom: old.createdFrom }, { overwrite: true });
+    if (newId !== id) await removeTemplate(tplMine, id);
+    await templateList();
+    return { id: newId };
+  }));
+  ipcMain.handle("templates:remove", guard(async (_e, id) => { const r = await removeTemplate(tplMine, id); await templateList(); return r; }));
+  ipcMain.handle("templates:show", guard((_e, id) => { const d = mineDir(tplMine, id); if (!d) throw new Error("That template is not one of yours."); shell.showItemInFolder(path.join(d, "template.json")); return { ok: true }; }));
+  // a template as a ZIP (a folder ready for my templates of a colleague or for the templates/ folder of a plugin)
+  ipcMain.handle("templates:zip", guard(async (_e, id) => {
+    const d = mineDir(tplMine, id); if (!d) throw new Error("That template is not one of yours.");
+    const dest = await pickDest(`${id}.zip`, "zip", "ZIP"); if (!dest) return { canceled: true };
+    const entries = Object.fromEntries(fs.readdirSync(d).filter((f) => fs.statSync(path.join(d, f)).isFile()).map((f) => [`${id}/${f}`, new Uint8Array(fs.readFileSync(path.join(d, f)))]));
+    fs.writeFileSync(dest, zipSync(entries));
+    return { path: dest };
+  }));
   ipcMain.handle("projects:thumb", guard((_e, name) => thumbs.get(String(name))));
   ipcMain.handle("projects:close", guard(() => closeProject()));
   ipcMain.handle("projects:open", guard((_e, name) => openProject(name)));
@@ -632,7 +676,7 @@ app.whenReady().then(async () => {
   const render = (file, format) => {
     const wc = browser.viewOf(file);
     if (!wc) throw new Error(`Screen ${file} is not shown on the canvas.`);
-    return captureScreen(wc, { format });
+    return captureScreen(wc, { format, nativeImage });
   };
   ipcMain.handle("export:image", guard(async (_e, file, format = "png") => {
     const base = path.basename(file, ".html");

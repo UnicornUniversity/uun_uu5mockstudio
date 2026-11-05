@@ -8,7 +8,7 @@ import path from "node:path";
 export const DEFAULTS = {
   marketplace: { name: "uu-technical-products-mp", source: "ssh://git@uucodebase.plus4u.net:9422/ec65742216410afe7eced8e5ede01102/uu-technical-products-mp.git" },
   required: ["uu5-mockup", "uugds"], // skills the agent builds the mockups with
-  recommended: ["uu5-development"], // component reference for the inspector
+  recommended: ["uu5-development", "uu5bricks"], // component reference for the inspector (uu5bricks: the Bricks of content pages)
   minVersions: {}, // { plugin: "x.y.z" }: older than this counts as "needs update"
 };
 

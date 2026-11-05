@@ -10,7 +10,7 @@ const cfg = loadPrerequisites({ env: {} });
 
 test("defaults name the uu5 marketplace and the plugins", () => {
   assert.equal(cfg.marketplace.name, "uu-technical-products-mp"); assert.match(cfg.marketplace.source, /^ssh:\/\/git@uucodebase\.plus4u\.net/);
-  assert.deepEqual(cfg.required, ["uu5-mockup", "uugds"]); assert.deepEqual(cfg.recommended, ["uu5-development"]);
+  assert.deepEqual(cfg.required, ["uu5-mockup", "uugds"]); assert.deepEqual(cfg.recommended, ["uu5-development", "uu5bricks"]);
 });
 
 test("prerequisites.json and environment variables override the defaults, bad values are ignored", async () => {
@@ -37,9 +37,9 @@ test("pluginStates: ok, disabled, missing and outdated, only for the configured 
     { id: "uu5-development@other-mp", version: "9.9.9", enabled: true },
   ];
   const s = pluginStates(installed, { ...cfg, minVersions: { uugds: "0.3.0" } });
-  assert.deepEqual(s.map((x) => [x.name, x.kind, x.state]), [["uu5-mockup", "required", "disabled"], ["uugds", "required", "outdated"], ["uu5-development", "recommended", "missing"]]);
+  assert.deepEqual(s.map((x) => [x.name, x.kind, x.state]), [["uu5-mockup", "required", "disabled"], ["uugds", "required", "outdated"], ["uu5-development", "recommended", "missing"], ["uu5bricks", "recommended", "missing"]]);
   assert.equal(pluginStates([], cfg).every((x) => x.state === "missing"), true);
-  assert.equal(pluginStates("garbage", cfg).length, 3);
+  assert.equal(pluginStates("garbage", cfg).length, 4);
 });
 
 test("classifyInstallError recognises missing SSH access and network trouble", () => {

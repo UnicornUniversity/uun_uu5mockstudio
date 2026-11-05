@@ -14,6 +14,7 @@ import { listKind, newAction } from "./actionGrammar.js";
 import { attachFreeze } from "./freeze.js";
 import { usageDelta, usageLabel, usageTitle, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
+import { openTemplateSave } from "./templateSaveDialog.js";
 import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
@@ -523,6 +524,7 @@ const canvas = createCanvas({
   onReady: (file, id) => window.studio.registerView(file, id),
   onDelete: (file) => deleteScreen(file),
   onFullscreen: (file) => toggleFullscreen(file),
+  onTemplate: (file) => saveAsTemplate(file),
   onRequestSize: askSize,
   onGone: (file) => { window.studio.unregisterView(file); renderTabs(); },
   onChange: (what) => { $("zpct").textContent = canvas.zoomPercent() + "%"; persistLayout(); },
@@ -1433,7 +1435,19 @@ function updateNoProject() {
   updateGlassInset();
 }
 /** The dashboard: a prompt makes a project for it and the chat goes on there; a card opens a project. */
-const templatesDialog = createTemplatesDialog({ api: window.studio });
+/** Screens of the open project saved as a template of my own (Screen → Save as Template…, the Templates dialog). */
+const saveAsTemplate = async (file) => {
+  const f = file ?? canvas.selected() ?? canvas.files()[0];
+  if (!project || !f) return toast("Open a project with a screen first.", { err: true });
+  await openTemplateSave({ api: window.studio, files: [f], toast });
+};
+const templatesDialog = createTemplatesDialog({
+  api: window.studio, toast,
+  canNew: () => Boolean(project && canvas.files().length),
+  onNew: () => saveAsTemplate(),
+  onEdit: async (id) => { await openTemplateSave({ api: window.studio, id, toast }); templatesDialog.open(); },
+  confirm: (text) => askConfirm({ title: "Delete template?", detail: text }),
+});
 let autoNamed = null, autoLevel = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
 const dashboard = createDashboard({
   api: window.studio,
@@ -1578,6 +1592,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:note": return withScreen((f) => addNote(f));
       case "screen:desc": return withScreen((f) => openDesc(f));
       case "screen:structure": return withScreen((f) => structureDialog.open(f));
+      case "screen:template": return withScreen((f) => saveAsTemplate(f));
       case "edit:undo": case "edit:redo": return editStep(action === "edit:undo" ? "undo" : "redo");
       case "screen:undo": return stepScreen(inspectedFile(), "undo");
       case "screen:redo": return stepScreen(inspectedFile(), "redo");

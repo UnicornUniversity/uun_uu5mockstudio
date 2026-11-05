@@ -20,7 +20,7 @@
 | `projects.mjs`, `paths.mjs`, `chats.mjs` | Projects (folders, names, per-project `state.json`), where the projects live, the conversations of a project (several chats, titles, Claude session ids). |
 | `repo.mjs` | The linked git repository: validation, files, branches, a read-only snapshot of a branch, **`accessPolicy`** (what the agent may read or write), secret paths. |
 | `attachments.mjs` | Images attached to a message: file type by magic bytes, saved under `.studio/attachments`. |
-| `uu5Docs.mjs` | Index of the documentation (wiki) of the `uu5-development` plugin: components, props, enums; search, detail, descriptions for prompts. |
+| `uu5Docs.mjs` | Index of the component documentation: the wiki of the `uu5-development` plugin and the registry pages of the `uu5bricks` plugin (`parseBricksDoc`); components, props, enums; search, detail, descriptions for prompts. |
 | `uuGdsIcons.mjs`, `uuBml.mjs`, `mdiIcons.mjs` | Catalogs of uuGDS, uuBml and Material Design icons (the last two loaded from the network and cached in the app data; MDI = the names of the Plus4U CDN stylesheet 7.0.96 that the mockups load, with aliases and tags of the @mdi/svg metadata). |
 | `exporter.mjs`, `mailDraft.mjs` | HTML / ZIP export (with a tiny server script, since uu5 pages need `http://`), and `.eml` drafts for sharing outside macOS. |
 | `claudeEnv.mjs`, `prerequisites.mjs`, `pluginUpdates.mjs` | Finding the Claude Code binary and its environment; the checks of the setup dialog (Claude Code, sign-in, plugins); the schedule of plugin update checks. |

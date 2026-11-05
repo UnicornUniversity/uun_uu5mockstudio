@@ -28,7 +28,7 @@ test("enabled plugins and known marketplaces are read from config.toml", () => {
 
 test("the plan lists what is missing; a marketplace unknown to Codex is added from its local folder", async () => {
   const p = codexInstallPlan(TOML, cfg);
-  assert.deepEqual(p.missing, ["uu5-mockup@uu-technical-products-mp", "uu5-development@uu-technical-products-mp"]);
+  assert.deepEqual(p.missing, ["uu5-mockup@uu-technical-products-mp", "uu5-development@uu-technical-products-mp", "uu5bricks@uu-technical-products-mp"]);
   assert.equal(p.addMarketplace, null);
   const dir = await tmp();
   assert.equal(codexInstallPlan("", cfg, { marketplaceDir: dir }).addMarketplace, dir);
@@ -45,8 +45,8 @@ test("ensure installs the missing plugins one by one and reports failures withou
   const calls = [];
   const h = await home(TOML);
   const r = await ensureCodexPlugins({ bin: "codex", cfg, home: h, env: {}, exec: async (_b, args) => { calls.push(args.join(" ")); if (args[2] === "uu5-development@uu-technical-products-mp") throw Object.assign(new Error("x"), { stderr: "Permission denied (publickey)" }); } });
-  assert.deepEqual(calls, ["plugin add uu5-mockup@uu-technical-products-mp", "plugin add uu5-development@uu-technical-products-mp"]);
-  assert.deepEqual(r.installed, ["uu5-mockup@uu-technical-products-mp"]);
+  assert.deepEqual(calls, ["plugin add uu5-mockup@uu-technical-products-mp", "plugin add uu5-development@uu-technical-products-mp", "plugin add uu5bricks@uu-technical-products-mp"]);
+  assert.deepEqual(r.installed, ["uu5-mockup@uu-technical-products-mp", "uu5bricks@uu-technical-products-mp"]);
   assert.equal(r.failed[0].id, "uu5-development@uu-technical-products-mp");
   assert.match(r.failed[0].message, /SSH key|refused/);
 });

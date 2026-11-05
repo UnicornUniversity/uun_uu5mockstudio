@@ -10,7 +10,7 @@
 /** Libraries whose default import works in every mockup without more dependencies (the others need `uu5DemoDependencies` in the page). */
 export const CORE_IMPORTS = { Uu5Elements: "uu5g05-elements", Uu5Forms: "uu5g05-forms" };
 
-const E = "Uu5Elements", F = "Uu5Forms";
+const E = "Uu5Elements", F = "Uu5Forms", B = "Uu5Bricks";
 export const CURATED = {
   [`${E}.Text`]: `<${E}.Text>Text</${E}.Text>`,
   [`${E}.Block`]: `<${E}.Block header="Block" headerType="heading" level={2} borderRadius="moderate">\n  <${E}.Text>Content</${E}.Text>\n</${E}.Block>`,
@@ -57,6 +57,24 @@ export const CURATED = {
   [`${F}.FormRadios`]: `<${F}.FormRadios name="radios" label="Radios" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
   [`${F}.FormSwitchSelect`]: `<${F}.FormSwitchSelect name="switch" label="Switch" itemList={[\n  { value: "a", children: "Option A" },\n  { value: "b", children: "Option B" },\n]} />`,
   [`${F}.Form`]: `<${F}.Form onSubmit={(e) => console.log("Submit:", e.data.value)}>\n  <${F}.FormText name="text" label="Text" />\n  <${F}.SubmitButton>Save</${F}.SubmitButton>\n</${F}.Form>`,
+  // the Bricks of content pages (checked in the browser: they render and come out of "Copy as uu5String" without losses)
+  [`${B}.Section`]: `<${B}.Section header="Section" headerType="heading" level={2}>\n  <p>Content</p>\n</${B}.Section>`,
+  [`${B}.Block`]: `<${B}.Block header="Block" headerType="heading" level={2}>\n  <p>Content</p>\n</${B}.Block>`,
+  [`${B}.Card`]: `<${B}.Card header="Card">\n  <p>Content</p>\n</${B}.Card>`,
+  [`${B}.Tile`]: `<${B}.Tile header="Tile" href="https://uuapp.plus4u.net" target="_blank" shape="interactiveElement" borderRadius="moderate" headerSeparator>\n  <p>Where the tile leads.</p>\n</${B}.Tile>`,
+  [`${B}.Link`]: `<${B}.Link href="https://uuapp.plus4u.net" target="_blank">Link</${B}.Link>`,
+  [`${B}.Badge`]: `<${B}.Badge colorScheme="green">Badge</${B}.Badge>`,
+  [`${B}.InfoGroup`]: `<${B}.InfoGroup>\n  <${B}.InfoGroup.Item icon="uugds-account" title="Title" subtitle="Subtitle" />\n  <${B}.InfoGroup.Item icon="uugds-calendar" title="Title" subtitle="Subtitle" />\n</${B}.InfoGroup>`,
+  [`${B}.InfoItem`]: `<${B}.InfoItem icon="uugds-info" title="Title" subtitle="Subtitle" />`,
+  [`${B}.HighlightedBox`]: `<${B}.HighlightedBox icon="uugds-info">\n  <p>Something worth noticing.</p>\n</${B}.HighlightedBox>`,
+  [`${B}.InfoBlock`]: `<${B}.InfoBlock>\n  <p>A note.</p>\n</${B}.InfoBlock>`,
+  [`${B}.WarningBlock`]: `<${B}.WarningBlock>\n  <p>A warning.</p>\n</${B}.WarningBlock>`,
+  [`${B}.SuccessBlock`]: `<${B}.SuccessBlock>\n  <p>Done.</p>\n</${B}.SuccessBlock>`,
+  [`${B}.Blockquote`]: `<${B}.Blockquote footer="Author">\n  <p>A quotation.</p>\n</${B}.Blockquote>`,
+  [`${B}.Accordion`]: `<${B}.Accordion>\n  <${B}.Accordion.Item header="First question">\n    <p>Answer</p>\n  </${B}.Accordion.Item>\n  <${B}.Accordion.Item header="Second question">\n    <p>Answer</p>\n  </${B}.Accordion.Item>\n</${B}.Accordion>`,
+  [`${B}.Tabs`]: `<${B}.Tabs>\n  <${B}.Tabs.Item label="First" icon="uugds-info">\n    <p>Content</p>\n  </${B}.Tabs.Item>\n  <${B}.Tabs.Item label="Second">\n    <p>Content</p>\n  </${B}.Tabs.Item>\n</${B}.Tabs>`,
+  [`${B}.Layout`]: `<${B}.Layout type="tiles" minTileWidth={280}>\n  <${B}.Layout.Item>\n    <${B}.Card header="First">\n      <p>Content</p>\n    </${B}.Card>\n  </${B}.Layout.Item>\n  <${B}.Layout.Item>\n    <${B}.Card header="Second">\n      <p>Content</p>\n    </${B}.Card>\n  </${B}.Layout.Item>\n</${B}.Layout>`,
+  [`${B}.VerticalTimeline`]: `<${B}.VerticalTimeline singleColumn>\n  <${B}.VerticalTimeline.Item label="January">\n    <p>What happened</p>\n  </${B}.VerticalTimeline.Item>\n  <${B}.VerticalTimeline.Item label="February">\n    <p>What happened</p>\n  </${B}.VerticalTimeline.Item>\n</${B}.VerticalTimeline>`,
 };
 
 const label = (s) => String(s).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());

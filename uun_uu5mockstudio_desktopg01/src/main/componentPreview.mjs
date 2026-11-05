@@ -7,6 +7,13 @@ import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
  */
 export const PREVIEW_PREFIX = "/__preview/";
 
+// the Bricks of content pages (documents), with the major published on the CDN (uu5treeg01-bricks is not published there)
+export const BRICKS_LIBS = {
+  Uu5Bricks: ["uu5bricksg01", "1.x"], Uu5RichTextBricks: ["uu5richtextg01-bricks", "3.x"], Uu5ImagingBricks: ["uu5imagingg01-bricks", "2.x"],
+  Uu5ChartsBricks: ["uu5chartsg01-bricks", "3.x"], Uu5TilesBricks: ["uu5tilesg02-bricks", "2.x"], Uu5CodeKitBricks: ["uu5codekitg01-bricks", "3.x"],
+  Uu5AnimationBricks: ["uu5animationg01-bricks", "2.x"], Uu5MapsBricks: ["uu5mapsg01-bricks", "2.x"], Uu5MathBricks: ["uu5mathg01-bricks", "3.x"],
+};
+
 // the latest major of each library published on the CDN (found out by loading every library with 1.x, 2.x and 3.x)
 export const PREVIEW_LIBS = {
   Uu5Calendar: ["uu5calendarg01", "2.x"], Uu5Charts: ["uu5chartsg01", "3.x"],
@@ -19,6 +26,7 @@ export const PREVIEW_LIBS = {
   Uu5RichText: ["uu5richtextg01", "3.x"], Uu5RichTextElements: ["uu5richtextg01-elements", "3.x"], Uu5RichTextForms: ["uu5richtextg01-forms", "3.x"],
   Uu5Tree: ["uu5treeg01", "3.x"], Uu5TreeElements: ["uu5treeg01-elements", "3.x"], UuI18n: ["uu_i18ng01", "1.x"],
   Plus4U5: ["uu_plus4u5g02", "1.x"], Plus4U5Elements: ["uu_plus4u5g02-elements", "1.x"],
+  ...BRICKS_LIBS,
 };
 // charts need data to show anything; these are only for the preview (a screen gets the generated snippet)
 const PREVIEW_ONLY = {

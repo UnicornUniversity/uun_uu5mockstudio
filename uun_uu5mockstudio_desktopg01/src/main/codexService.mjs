@@ -84,9 +84,9 @@ export class CodexService {
     const bin = await findCodex();
     if (!bin) return this.onEvent({ type: "app_error", message: "Codex was not found. Install the Codex CLI or the ChatGPT app, or set STUDIO_CODEX_BIN." });
     await (pluginsDone ??= ensureCodexPlugins({ bin }).catch(() => null));
-    const { instructions, docs } = await agentInstructions(this, { plan, economy });
+    const { instructions, docs, templateMeta } = await agentInstructions(this, { plan, economy });
     this.docSetup = docs; // the MCP servers of the Plus4U documents for both runs
-    const files = requiredFiles(), skills = skillsPrompt(files);
+    const files = requiredFiles({ bricks: templateMeta?.level === "page" }), skills = skillsPrompt(files);
     let run = await this._run(bin, `${instructions}\n${CODEX_NOTE}${skills ? `\n${skills}` : ""}\n\n--- The request of the user ---\n${prompt}`, { model, plan, economy });
     // Codex only "may" use a skill: when it wrote a screen without having read them, it is sent back once.
     if (!this.stopped && run.finished && !plan && files.length && run.wrote && !run.read) {

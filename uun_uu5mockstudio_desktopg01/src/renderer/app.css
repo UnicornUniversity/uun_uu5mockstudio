@@ -69,7 +69,7 @@ main{overflow:hidden}
 .ftitle{height:max(34px,calc(30px*var(--iz,1)));display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 2px;cursor:grab;user-select:none;color:var(--mute);font-size:calc(13px*var(--iz,1))}
 .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fctl{flex:none}
-.frame[data-compact="2"] .ffit,.frame[data-compact="3"] .fctl{display:none}
+.frame[data-compact="2"] .ffit,.frame[data-compact="2"] .ftpl,.frame[data-compact="3"] .fctl{display:none}
 .ftitle select{font-size:inherit;padding:0 4px;border-radius:5px;opacity:.8}
 .frame.sel .ftitle{color:var(--acc)}
 .fbody{position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 0 0 calc(1px*var(--iz,1)) var(--line),0 12px 40px rgba(0,0,0,.45)}
@@ -286,7 +286,9 @@ a.mention{font-weight:600;text-decoration:underline;cursor:pointer;color:inherit
 button.icon{display:inline-flex;align-items:center;justify-content:center;padding:5px 8px}
 .fexp{display:inline-flex;align-items:center;border:0;background:none;color:var(--mute);padding:0 4px;opacity:.7}.fexp:hover{color:var(--acc);opacity:1}
 .fexp .ico{width:calc(16px*var(--iz,1));height:calc(16px*var(--iz,1))}
-#confirm{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:48}
+.ftpl{display:inline-flex;align-items:center;border:0;background:none;color:var(--mute);padding:0 4px;opacity:.7}.ftpl:hover{color:var(--acc);opacity:1}.ftpl[hidden]{display:none}
+.ftpl .ico{width:calc(16px*var(--iz,1));height:calc(16px*var(--iz,1))}
+#confirm{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:51}
 #confirm .card{width:min(440px,90vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:8px}
 #confirm h2{margin:0;font-size:16px}#confirm p{margin:0 0 6px;line-height:1.5}
 #confirm .row{margin-top:8px}
@@ -941,3 +943,20 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 .docprev .card.terr .terr-custom p.mute{color:var(--mute);font-size:12px}
 #attachments .att.doc .doc-img{width:100%;height:110px;object-fit:cover;object-position:top;border-radius:5px;border:1px solid var(--line);background:#fff;display:block}
 .docprev .docprev-body.shot{padding:0;background:#fff}.docprev .docprev-body.shot img{width:100%;display:block}
+/* Save as template / edit one of my templates */
+.tsdbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:50}
+.tsdbox .card{width:min(620px,94vw);max-height:min(760px,90vh);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.tsdbox h2{margin:0;font-size:15px}
+.tsd-body{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;padding-right:2px}
+.tsd-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tsd-f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute);min-width:0}.tsd-f small{font-size:11px}
+.tsd-f input,.tsd-f select,.tsd-f textarea{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:13px}
+.tsd-f textarea{resize:vertical;line-height:1.45}.tsd-f textarea.mono{font:12.5px/1.45 ui-monospace,Menlo,monospace}
+.tsd-screens{border:1px solid var(--line);border-radius:8px;padding:6px 10px 8px;margin:0;display:flex;flex-direction:column;gap:3px;max-height:150px;overflow:auto}
+.tsd-screens legend{font-size:12px;color:var(--mute);padding:0 4px}
+.tsd-screens label,.tsd-checks label{display:flex;align-items:center;gap:8px;font-size:13px}
+.tsd-checks{display:flex;flex-direction:column;gap:4px}
+.tsd-warn{margin:0;font-size:12px;color:#c27c0e}.tsd-err{margin:0;font-size:12px;color:#e5484d;min-height:1em}
+.tsdbox .row{display:flex;gap:8px;align-items:center}.tsdbox .row .grow{flex:1}
+.tsdbox button.primary{background:var(--acc);border-color:var(--acc);color:#fff}.tsdbox button:disabled{opacity:.5}
+.tp-acts{display:flex;gap:6px;margin-top:4px}.tp-acts button{padding:2px 9px;font-size:11.5px;border-radius:7px}.tp-acts .danger{color:#e5484d}
