@@ -202,3 +202,33 @@ test("imageRefs, fileLink and localizeImages, also inside escaped nested uu5Stri
   assert.equal(out[1], `<X uu5string="<uu5string/><Uu5Bricks.Card image=\\"assets/${oid}.jpg\\"/>"/>`);
   assert.deepEqual(localizeImages(raw, {}), raw);
 });
+
+test("truncatedSections finds the cut sections and completeSection fills them in", async () => {
+  const { truncatedSections, completeSection } = await import("../src/main/docSources.mjs");
+  const data = { sectionList: [{ sectionOid: "a", truncated: false, contentUu5String: "x" }, { sectionOid: "b", truncated: true, contentUu5String: "<uu5string/><A>cut..." }] };
+  const cut = truncatedSections(data);
+  assert.deepEqual(cut.map((s) => s.sectionOid), ["b"]);
+  assert.equal(completeSection(cut[0], "<uu5string/><A>all</A>"), true);
+  assert.deepEqual(data.sectionList[1], { sectionOid: "b", truncated: false, contentUu5String: "<uu5string/><A>all</A>" });
+  assert.equal(completeSection(cut[0], ""), false);
+});
+
+test("sourcePage renders each section on its own: one that does not parse does not blank the page", async () => {
+  const { sourcePage } = await import("../src/main/docSources.mjs");
+  const html = sourcePage({ title: "T", url: "https://x.test", kind: "mkEcc", raw: ["<uu5string/><A>"] });
+  assert.match(html, /try \{ return <Section>\{Utils\.Uu5String\.toChildren\(local\(uu5String\)\)\}<\/Section>; \}/);
+  assert.match(html, /This section could not be shown/);
+  assert.match(html, /static getDerivedStateFromError/, "an error boundary per section");
+});
+
+test("imageRefs and localizeImages also take links to the document's file store (getDataByOid with a fileOid)", () => {
+  const a = "6628cf1833c2250035144bfb", b = "6633153f11ccf00035e0b380";
+  const raw = [
+    `<Uu5ImagingBricks.Image src="https://uuapp.plus4u.net/uu-managementkit-maing02/x/document/ebc/file/getDataByOid?oid=660d8eb6e75ca600355fe18d&uuEbcData=%7B%22fileOid%22%3A%22${a}%22%7D"/>`,
+    `<Uu5ImagingBricks.Image src=\\"https://uuapp.plus4u.net/uu-managementkit-maing02/x/document/ebc/file/getDataByOid?oid=660d8eb6e75ca600355fe18d&uuEbcData.fileOid=${b}\\"/>`,
+  ];
+  assert.deepEqual(imageRefs(raw), [a, b]);
+  const out = localizeImages(raw, { [a]: { path: "/P/.studio/sources/assets/a.png", name: "a.png" }, [b]: { path: "/P/.studio/sources/assets/b.png", name: "b.png" } });
+  assert.equal(out[0], '<Uu5ImagingBricks.Image src="/P/.studio/sources/assets/a.png"/>');
+  assert.equal(out[1], '<Uu5ImagingBricks.Image src=\\"/P/.studio/sources/assets/b.png\\"/>');
+});

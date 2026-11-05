@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT } from "./docSources.mjs";
+import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT, truncatedSections, completeSection } from "./docSources.mjs";
 
 const run = promisify(execFile);
 export const NPM_REGISTRY = "https://repo.plus4u.net/repository/public-javascript";
@@ -135,6 +135,25 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     return out;
   }
 
+  /**
+   * Loads the whole content of the sections the load tool cut short (uuManagementKit: 20 000 characters a section), so that the snapshot
+   * and the rendered page hold valid uu5Strings. Best effort: a section that cannot be loaded stays as it was.
+   */
+  async function completeTruncated(doc, data) {
+    const tool = KINDS[doc.kind]?.sectionTool;
+    if (!tool || !data || typeof data !== "object") return;
+    const cut = truncatedSections(data);
+    const one = async (section) => {
+      try {
+        const r = await call(doc.kind, tool, { sectionOid: section.sectionOid, documentUrl: doc.url, targetAwid: doc.awid }, LOAD_TIMEOUT);
+        if (r?.isError) return;
+        const d = resultData(r);
+        completeSection(section, typeof d === "string" ? d : d?.content ?? d?.contentUu5String);
+      } catch { /* stays cut */ }
+    };
+    for (let i = 0; i < cut.length; i += 3) await Promise.all(cut.slice(i, i + 3).map(one));
+  }
+
   /** Signs in to Plus4U: the proxy opens the login page in the browser and waits for it. */
   async function login(kind) {
     try {
@@ -161,8 +180,10 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
       const res = await call(doc.kind, k.loadTool, loadArgs(doc), allowLogin ? LOGIN_TIMEOUT : LOAD_TIMEOUT);
       if (res?.isError) { const msg = textOf(res) || "The document could not be loaded."; return { error: isAuthError(msg) && !allowLogin ? "login" : msg, kind: doc.kind }; }
       const { source } = await connect(doc.kind);
+      const data = resultData(res);
+      await completeTruncated(doc, data);
       const fetchedAt = new Date().toISOString();
-      const snap = toSnapshot(doc, resultData(res), { fetchedAt, territory: String(source ?? "").replace(/^preset:/, "") });
+      const snap = toSnapshot(doc, data, { fetchedAt, territory: String(source ?? "").replace(/^preset:/, "") });
       const dir = path.join(projectDir, SOURCES_DIR), name = snapshotName(doc), file = path.join(dir, `${name}.md`);
       await mkdir(dir, { recursive: true });
       await writeFile(file, snap.markdown);
@@ -194,7 +215,14 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     await Promise.all(all.map((p) => p.then(({ client }) => client.close()).catch(() => {})));
   }
 
-  return { fetchDoc, status, login, close };
+  /** Signs in for the kind of document of `url` (the card shows "waiting for the sign-in" only while this runs, then the loading). */
+  async function loginFor(url) {
+    const doc = parseDocUrl(url);
+    if (!doc) return { error: "This is not a link to a uuBookKit page or a uuManagementKit document." };
+    return login(doc.kind);
+  }
+
+  return { fetchDoc, status, login, loginFor, close };
 }
 
 /** The snapshots of a project: [{ file, title, url, kind }] (newest first). */

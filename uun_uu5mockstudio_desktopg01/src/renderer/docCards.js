@@ -18,7 +18,13 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
 
   async function load(card, { login = false } = {}) {
     set(card.id, { state: "loading", waitLogin: login, error: "" });
-    const r = await studio.docFetch(card.url, { login }).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (login && studio.docLogin) { // the sign-in first (the browser), then the card says it is loading the document
+      const l = await studio.docLogin(card.url).catch((e) => ({ error: String(e?.message ?? e) }));
+      if (!cards.some((c) => c.id === card.id)) return;
+      if (l?.error) return set(card.id, { state: "error", error: `The sign-in did not finish: ${l.error}`, waitLogin: false });
+      set(card.id, { waitLogin: false });
+    }
+    const r = await studio.docFetch(card.url, { login: login && !studio.docLogin }).catch((e) => ({ error: String(e?.message ?? e) }));
     if (!cards.some((c) => c.id === card.id)) return; // removed meanwhile
     if (r?.ok) return set(card.id, { state: "ready", title: r.title, sections: r.sections ?? [], file: r.file, shot: r.shot, thumb: r.thumb, images: r.images ?? 0, waitLogin: false });
     const code = r?.error;

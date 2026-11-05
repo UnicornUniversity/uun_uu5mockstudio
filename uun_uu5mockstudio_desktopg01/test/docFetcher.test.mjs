@@ -119,3 +119,23 @@ test("fetchDoc downloads the pictures of an ECC document and shows them in the r
   assert.ok(!html.includes("UuContentKit.Images.Image"));
   assert.match(await readFile(r.file, "utf8"), /## Pictures[\s\S]*assets\/66cdbdfefbc8750023912811\.jpg \(corp2\.jpg\)/);
 });
+
+test("fetchDoc loads the whole content of a section the load tool cut short", async (t) => {
+  const f = createDocFetcher({ spec: spec(true) });
+  t.after(() => f.close());
+  const dir = await makeProject({});
+  const r = await f.fetchDoc(dir, ECC, { download: async () => new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0])) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const md = await readFile(r.file, "utf8");
+  assert.match(md, /Hardwario<\/Uu5Bricks\.Link><\/Uu5Bricks\.Section>/);
+  assert.ok(!md.includes("getDa..."), "the cut content is replaced");
+  assert.ok(!md.includes("(truncated by the server)"));
+  assert.ok((await readFile(r.page, "utf8")).includes("Hardwario"));
+});
+
+test("loginFor signs in for the kind of the link", async (t) => {
+  const f = createDocFetcher({ spec: spec(false) });
+  t.after(() => f.close());
+  assert.deepEqual(await f.loginFor(ECC), { ok: true });
+  assert.match((await f.loginFor("https://example.com/x")).error, /not a link/);
+});

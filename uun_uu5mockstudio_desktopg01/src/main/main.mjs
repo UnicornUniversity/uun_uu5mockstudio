@@ -547,6 +547,7 @@ app.whenReady().then(async () => {
       } finally { try { wc.debugger.detach(); } catch { /* closed */ } }
     } finally { w.destroy(); }
   };
+  ipcMain.handle("docs:login", guard((_e, url) => docFetcher.loginFor(String(url ?? ""))));
   ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const name = current; return docFetcher.fetchDoc(dir(), String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(name, rel) }); }));
   // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
   ipcMain.handle("docs:shot", guard(async (_e, file) => {

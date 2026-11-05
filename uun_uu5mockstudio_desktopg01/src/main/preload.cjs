@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("studio", {
   saveChat: (project, chatId, chat) => invoke("chat:save", project, chatId, chat),
   saveAttachments: (items) => invoke("attachments:save", items),
   docFetch: (url, opts) => invoke("docs:fetchSource", url, opts),
+  docLogin: (url) => invoke("docs:login", url),
   docTerritory: () => invoke("docs:territory"),
   docShot: (file) => invoke("docs:shot", file),
   docSetTerritory: (preset) => invoke("docs:setTerritory", preset),

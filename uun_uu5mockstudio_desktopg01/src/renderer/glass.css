@@ -88,7 +88,8 @@ body[data-glass] :is(#jsonbox,#dialog,#sizebox,#setup,#iconbox,#libbox,#tplbox,.
 body[data-glass] .docprev .docprev-body.shot{background:#fff}
 
 /* ---------- controls become capsules ---------- */
-body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item),select){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+/* not inside the attachment cards, chips and hints of the composer: their buttons have colours of their own (blue Sign in, the dark ✕) */
+body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item),select):not(:is(#attachments,#chips,#mentions,#screenctx,#pickhint) *){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
 body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item)):hover{background:var(--glass-thick)!important}
 body[data-glass] #previewbar .primary{background:var(--glass-accent)!important;color:#fff;border-color:rgba(255,255,255,.5)!important}
 body[data-glass] #chat #stop{background:linear-gradient(180deg,#f06a6e,#e5484d)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;color:#fff;box-shadow:0 4px 14px rgba(229,72,77,.4),inset 0 1px 0 rgba(255,255,255,.5)}

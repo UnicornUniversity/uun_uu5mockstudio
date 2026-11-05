@@ -29,6 +29,7 @@ export const KINDS = {
     readTools: ["toolUuManagementkitEccPanelGetContent", "toolUuManagementkitEccPanelListSections", "toolUuManagementkitEccSectionGet", "toolUuManagementkitEccDocumentGetMetadata", "toolUuManagementkitEccSectionListVersions", "toolUuManagementkitEccSectionGetVersion",
       "toolUuManagementkitEbcGetMetadata", "toolUuManagementkitEbcCollectionList", "toolUuManagementkitEbcFileList", "toolUuManagementkitEbcFileGetMetadata", "toolUuManagementkitEbcFileLoad"],
     fileTool: "toolUuManagementkitEbcFileLoad",
+    sectionTool: "toolUuManagementkitEccSectionGet", // the load tool cuts a section at 20 000 characters (truncated: true): this one gives all of it
   },
 };
 
@@ -249,6 +250,29 @@ export function extractSections(data) {
   return out;
 }
 
+/** The sections of a load result that the server cut short ({ truncated: true, sectionOid }), as the objects of the result. */
+export function truncatedSections(data) {
+  const out = [], seen = new Set();
+  const walk = (v, depth) => {
+    if (!v || typeof v !== "object" || depth > 12 || seen.has(v)) return;
+    seen.add(v);
+    if (Array.isArray(v)) { v.forEach((x) => walk(x, depth + 1)); return; }
+    if (v.truncated === true && typeof v.sectionOid === "string" && v.sectionOid) out.push(v);
+    for (const x of Object.values(v)) walk(x, depth + 1);
+  };
+  walk(data, 0);
+  return out;
+}
+
+/** Puts the full uu5String of a cut section (`full`, from the section tool) into its object of the load result. */
+export function completeSection(section, full) {
+  if (typeof full !== "string" || !full.trim()) return false;
+  const key = Object.keys(section).find((k) => typeof section[k] === "string" && /uu5string/i.test(k)) ?? (typeof section.content === "string" ? "content" : "contentUu5String");
+  section[key] = full;
+  section.truncated = false;
+  return true;
+}
+
 const MAX_SECTION = 60000, MAX_TOTAL = 400000;
 
 /**
@@ -353,17 +377,32 @@ export function sourcePage({ title, url, kind, raw = [] }, { lang = "cs" } = {})
       window.__SOURCE_SECTIONS = ${sections};
     </script>
     <script type="text/babel">
+      import React from "react";
       import { Utils, LanguageProvider } from "uu5g05";
       import Uu5Elements from "uu5g05-elements";
       import * as Uu5Bricks from "uu5bricksg01";
       window.Uu5Bricks = window.Uu5Bricks || Uu5Bricks;
+
+      // a section that does not parse (invalid uu5String) or whose component fails to render is left out with a note, the rest of the page stays
+      const failed = (e) => <p style={{ color: "#888", fontStyle: "italic" }}>(This section could not be shown: {String(e?.message ?? e)})</p>;
+      class Section extends React.Component {
+        constructor(props) { super(props); this.state = { error: null }; }
+        static getDerivedStateFromError(error) { return { error }; }
+        render() { return this.state.error ? failed(this.state.error) : this.props.children; }
+      }
+      // the downloaded pictures are paths on the preview server: Uu5ImagingBricks.Image would resolve them (src, thumbnailSrc) against Plus4U, so they get this origin
+      const local = (s) => s.replace(/(src=\\\\*")[/](?![/])/gi, "$1" + location.origin + "/");
+      function section(uu5String) {
+        try { return <Section>{Utils.Uu5String.toChildren(local(uu5String))}</Section>; }
+        catch (e) { return failed(e); }
+      }
 
       function SourcePage() {
         return (
           <LanguageProvider language=${JSON.stringify(lang)}>
             <Uu5Elements.Block>
               {window.__SOURCE_SECTIONS.map((uu5String, i) => (
-                <div key={i} style={{ padding: "8px 16px" }}>{Utils.Uu5String.toChildren(uu5String)}</div>
+                <div key={i} style={{ padding: "8px 16px" }}>{section(uu5String)}</div>
               ))}
             </Uu5Elements.Block>
           </LanguageProvider>
@@ -380,12 +419,18 @@ export function sourcePage({ title, url, kind, raw = [] }, { lang = "cs" } = {})
 // ---------- pictures of a document ----------
 
 export const ASSETS_DIR = "assets"; // in .studio/sources, next to the rendered pages
+/** A link to a file (or its thumbnail) of the document's own store (…/document/ebc/file/getDataByOid?…fileOid…): it needs the Plus4U sign-in, so the page cannot load it. */
+const EBC_URL = /https?:\/\/[^\s"'\\<>]*\/ebc\/file\/get(?:Thumbnail)?Data(?:ByOid)?\?[^\s"'\\<>]*/gi;
+const ebcFileOid = (u) => { let d = u; try { d = decodeURIComponent(u); } catch { /* as it is */ } return /fileOid"?\s*[:=]\s*"?([0-9a-f]{24})/i.exec(d)?.[1]?.toLowerCase(); };
 const IMAGE_ATTR = /\b(?:src|image|imageSrc|img|binary|fileOid)=(\\*)["']([0-9a-f]{24})\1["']/gi;
 
 /** The ids of the pictures a document refers to (attachments of uuManagementKit: `<UuContentKit.Images.Image src="<fileOid>"/>`), each once. */
 export function imageRefs(raw, max = 40) {
   const out = new Set();
-  for (const x of raw) for (const m of String(x).matchAll(IMAGE_ATTR)) { out.add(m[2].toLowerCase()); if (out.size >= max) return [...out]; }
+  for (const x of raw) {
+    for (const m of String(x).matchAll(IMAGE_ATTR)) { out.add(m[2].toLowerCase()); if (out.size >= max) return [...out]; }
+    for (const [u] of String(x).matchAll(EBC_URL)) { const oid = ebcFileOid(u); if (oid) out.add(oid); if (out.size >= max) return [...out]; }
+  }
   return [...out];
 }
 
@@ -413,5 +458,6 @@ export function localizeImages(raw, images) {
       const q = `${m[1]}"`;
       return `<img src=${q}${img.path}${q} alt=${q}${escHtml(img.name)}${q} className=${q}uu5mock-picture${q}/>`; // a style string would break React
     })
-    .replace(IMAGE_ATTR, (all, esc, oid) => { const img = known(oid); return img ? all.replace(oid, img.path) : all; }));
+    .replace(IMAGE_ATTR, (all, esc, oid) => { const img = known(oid); return img ? all.replace(oid, img.path) : all; })
+    .replace(EBC_URL, (u) => { const oid = ebcFileOid(u); const img = oid && known(oid); return img ? img.path : u; }));
 }
