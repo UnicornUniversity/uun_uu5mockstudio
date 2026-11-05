@@ -1,6 +1,6 @@
 # 3. Renderer modules (`src/renderer`)
 
-`index.html` holds the static markup (dialogs are hidden elements), `app.css` and `glass.css` the styles (`glass.css` overrides for the Glass Effect via `body[data-glass]`), `theme.js` runs before the first paint to avoid a flash.
+`index.html` holds the static markup (dialogs are hidden elements), `app.css` and `glass.css` the styles (`glass.css` overrides for the Glass Effect via `body[data-glass]`: a small set of material tokens on `:root` for light and dark, `--glass-sidebar` / `--glass-thin` / `--glass-regular` / `--glass-thick` with their blur, rim, highlight, shadow and scrim tokens, used by every surface instead of ad-hoc colours; `prefers-reduced-transparency` makes them solid; window vibrancy is deliberately not used, because Chromium leaves stale frames in the translucent areas of a clear window), `theme.js` runs before the first paint to avoid a flash.
 
 `renderer.js` is the orchestrator: it creates the other modules, keeps the **chat entries**, the open project and the selection, handles menu actions (`onMenuAction`) and wires the keyboard. It is long on purpose: it is the one place where modules meet.
 

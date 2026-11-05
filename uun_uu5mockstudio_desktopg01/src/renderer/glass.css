@@ -1,94 +1,178 @@
 /*
- * Glass Effect (macOS, View > Appearance > Glass Effect): translucent, blurred panels over the canvas, in the spirit of macOS Liquid Glass.
- * Everything here is scoped by body[data-glass]; without it the app looks as before. It is switched off by macOS "Reduce transparency".
+ * Glass Effect (macOS, View > Appearance > Glass Effect): translucent, blurred materials in the spirit of macOS Liquid Glass.
+ * Everything that changes the look is scoped by body[data-glass]; without it the app looks as before. macOS "Reduce transparency"
+ * switches the effect off (main process), and prefers-reduced-transparency makes the materials opaque as a second guard.
+ * The page background is a soft colour wash (--glass-wash); the sidebars (docked chat, dashboard navigation) are a tint over it and
+ * the bars, menus, dialogs and cards are glass over whatever is behind them (canvas, screens, the wash).
+ * (Window vibrancy, setVibrancy + a clear page, was tried and dropped: Chromium then leaves stale frames in the translucent areas.)
  * The toolbar and the description strip float over the canvas (the canvas reserves their height, see --glass-top).
+ *
+ * Materials (use these tokens, not ad-hoc colours):
+ *   --glass-sidebar  tint of the sidebars over the page wash (docked chat, dashboard sidebar)
+ *   --glass-wash     the colour wash of the page behind everything (body, dashboard pane)
+ *   --glass-thin     cards and chips lying on another surface (dashboard cards, chat bubbles, segmented controls)
+ *   --glass-regular  bars and panels over the canvas (toolbar, description strip, inspector, floating chat, selection bar)
+ *   --glass-thick    things you read on top of everything (menus, popovers, dialogs, toasts)
+ *   --glass-blur / --glass-blur-thin / --glass-blur-thick   the backdrop filter of each
+ *   --glass-edge (light rim), --glass-hi (top highlight), --glass-sep (separator inside glass), --glass-hover,
+ *   --glass-stroke (outline of a field or chip that must stay visible on a light surface), --glass-hairline (outer definition line)
+ *   --glass-shadow-sm / -md / -lg (elevation), --glass-scrim (behind dialogs)
  */
-body[data-glass]{--g-fill:rgba(255,255,255,.42);--g-fill-strong:rgba(255,255,255,.62);--g-edge:rgba(255,255,255,.78);--g-hi:rgba(255,255,255,.95);--g-lo:rgba(255,255,255,.3);--g-shadow:rgba(25,35,80,.28);--g-blur:blur(28px) saturate(185%);--g-scrim:rgba(225,231,245,.35)}
-:root[data-theme="dark"] body[data-glass]{--g-fill:rgba(36,38,50,.46);--g-fill-strong:rgba(48,50,64,.66);--g-edge:rgba(255,255,255,.17);--g-hi:rgba(255,255,255,.2);--g-lo:rgba(255,255,255,.05);--g-shadow:rgba(0,0,0,.55);--g-scrim:rgba(8,10,18,.45)}
+:root{
+  --glass-sidebar:rgba(244,246,250,.52);--glass-thin:rgba(255,255,255,.5);--glass-regular:rgba(255,255,255,.62);--glass-thick:rgba(255,255,255,.86);
+  --glass-blur-thin:blur(14px) saturate(160%);--glass-blur:blur(28px) saturate(185%);--glass-blur-thick:blur(40px) saturate(190%);
+  --glass-edge:rgba(255,255,255,.8);--glass-hi:rgba(255,255,255,.95);--glass-sep:rgba(20,30,60,.08);--glass-hover:rgba(20,30,60,.06);--glass-stroke:rgba(20,30,60,.13);--glass-hairline:rgba(20,30,60,.1);
+  --glass-shadow-sm:0 1px 3px rgba(25,35,80,.12);--glass-shadow-md:0 8px 26px rgba(25,35,80,.16);--glass-shadow-lg:0 24px 70px rgba(25,35,80,.26);
+  --glass-scrim:rgba(225,231,245,.35);
+  --glass-accent:linear-gradient(180deg,#5b8cff,#3b6cf0);
+  --glass-wash:radial-gradient(900px 520px at 12% -8%,rgba(120,160,255,.22),transparent 60%),radial-gradient(760px 520px at 100% 10%,rgba(190,150,255,.16),transparent 60%),radial-gradient(900px 600px at 60% 110%,rgba(90,200,250,.14),transparent 60%);
+}
+:root[data-theme="dark"]{
+  --glass-sidebar:rgba(26,27,34,.5);--glass-thin:rgba(255,255,255,.055);--glass-regular:rgba(36,38,50,.6);--glass-thick:rgba(40,42,56,.88);
+  --glass-edge:rgba(255,255,255,.15);--glass-hi:rgba(255,255,255,.16);--glass-sep:rgba(255,255,255,.07);--glass-hover:rgba(255,255,255,.07);--glass-stroke:rgba(255,255,255,.14);--glass-hairline:rgba(0,0,0,.5);
+  --glass-shadow-sm:0 1px 3px rgba(0,0,0,.4);--glass-shadow-md:0 10px 30px rgba(0,0,0,.45);--glass-shadow-lg:0 30px 80px rgba(0,0,0,.6);
+  --glass-scrim:rgba(8,10,18,.45);
+  --glass-wash:radial-gradient(900px 520px at 12% -8%,rgba(80,120,255,.2),transparent 60%),radial-gradient(760px 520px at 100% 10%,rgba(150,100,255,.14),transparent 60%),radial-gradient(900px 600px at 60% 110%,rgba(40,160,220,.1),transparent 60%);
+}
+/* Reduce transparency: the same shapes, solid materials, no blur */
+@media (prefers-reduced-transparency:reduce){
+  :root,:root[data-theme="dark"]{--glass-sidebar:var(--bg);--glass-thin:var(--bg);--glass-regular:var(--panel);--glass-thick:var(--panel);--glass-blur-thin:none;--glass-blur:none;--glass-blur-thick:none;--glass-scrim:var(--scrim);--glass-wash:none}
+}
+/* the older names, still used by a few rules in app.css */
+body[data-glass]{--g-fill:var(--glass-regular);--g-fill-strong:var(--glass-thick);--g-edge:var(--glass-edge);--g-hi:var(--glass-hi);--g-lo:var(--glass-sep);--g-blur:var(--glass-blur);--g-scrim:var(--glass-scrim);--g-menu:var(--glass-thick);--g-shadow:rgba(25,35,80,.28)}
+:root[data-theme="dark"] body[data-glass]{--g-shadow:rgba(0,0,0,.55)}
 
-/* panels */
-body[data-glass][data-chat="float"] #chat,
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#toast,#selbar){
-  background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important;
-  box-shadow:0 18px 50px var(--g-shadow),inset 0 1px 0 var(--g-hi),inset 0 -1px 0 var(--g-lo)!important}
-body[data-glass][data-chat="float"] #chat{border-radius:24px!important}
-body[data-glass] #selbar{border-radius:999px!important}
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions){border-radius:16px!important}
+/* ---------- the page: a soft colour wash behind the sidebars ---------- */
+body[data-glass]{background:var(--glass-wash),var(--bg)}
+body[data-glass] > main{position:relative;background:var(--canvas)}
+
+/* ---------- material recipes ---------- */
+/* regular: bars and panels over the canvas */
+body[data-glass][data-chat="float"] #chat:not(.collapsed),
+body[data-glass] :is(#bar,#descstrip,#inspector,#selbar,#previewbar,#fsctl){
+  background:var(--glass-regular)!important;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+/* thick: menus, popovers, toasts */
+body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#toast,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip,.catalog-drag-ghost){
+  background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);
+  border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
+body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip){border-radius:14px!important}
+body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#devmenu,.pm-pop,.rc-sugg) :is(button,.item,[role=menuitem]):hover{background:var(--glass-hover)}
 body[data-glass] #toast{border-radius:999px!important}
-body[data-glass][data-chat="float"] #chat header{background:transparent!important;border-bottom:1px solid var(--g-lo)!important}
-body[data-glass] #chat :is(#log,#working){background:transparent!important;border-color:var(--g-lo)!important}
-/* the input area is its own frosted sheet, so the chat history does not run into the chips, hints and the prompt */
-body[data-glass] #chat #form{background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-top:1px solid var(--g-edge)!important;box-shadow:0 -10px 24px -12px var(--g-shadow)}
-body[data-glass] #chat #prompt{background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:16px}
-body[data-glass] #chat :is(.ai,.plan){background:var(--g-fill-strong);border-color:var(--g-edge)}
 
-/* dialogs: the scrim blurs what is behind, the card is glass */
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg){background:var(--g-scrim)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg) .card{
-  background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important;border-radius:24px!important;
-  box-shadow:0 30px 80px var(--g-shadow),inset 0 1px 0 var(--g-hi)!important}
+/* floating panels get a rim, a top highlight and elevation */
+body[data-glass][data-chat="float"] #chat:not(.collapsed),body[data-glass] :is(#selbar,#previewbar){
+  border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-lg),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-sep)!important}
+body[data-glass][data-chat="float"] #chat{border-radius:24px!important}
+body[data-glass] :is(#selbar,#previewbar){border-radius:999px!important}
 
-/* controls become capsules */
-body[data-glass] :is(#bar,#selbar,#chat header,#chat #form) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item),select){background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:999px!important;box-shadow:0 1px 3px var(--g-shadow)}
+/* ---------- docked chat: a sidebar over the page wash ---------- */
+body[data-glass][data-chat="dock"] #chat,body[data-glass]:not([data-chat]) #chat{background:var(--glass-sidebar)!important;border-right:1px solid var(--glass-sep)!important}
+body[data-glass] #chat header{background:transparent!important;border-bottom:1px solid var(--glass-sep)!important}
+body[data-glass] #chat :is(#log,#working,#ptabs,#repostrip,#libpane){background:transparent!important;border-color:var(--glass-sep)!important}
+body[data-glass] #chat #repostrip button:hover{background:var(--glass-hover)}
+body[data-glass] #chat #updatestrip{background:var(--glass-thin)!important;border-color:var(--glass-sep)!important}
+body[data-glass] #chat #appupdate{background:color-mix(in srgb,var(--acc) 12%,var(--glass-thin))!important;border-color:var(--glass-sep)!important}
+/* chat content: bubbles are thin glass cards */
+body[data-glass] #chat :is(.ai,.plan,details.steps,.chip,#ctxwarn){background:var(--glass-thin)!important;border-color:var(--glass-edge)!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #chat .ai pre{background:color-mix(in srgb,var(--pre) 70%,transparent);border-color:var(--glass-sep)}
+body[data-glass] #chat .user{background:var(--glass-accent);box-shadow:0 2px 8px rgba(59,108,240,.25),inset 0 1px 0 rgba(255,255,255,.3)}
+
+/* ---------- dialogs: the scrim blurs what is behind, the card is thick glass ---------- */
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,.tsdbox,.docprev){background:var(--glass-scrim)!important;-webkit-backdrop-filter:blur(10px) saturate(120%);backdrop-filter:blur(10px) saturate(120%)}
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,.tsdbox,.docprev) .card{
+  background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);border:1px solid var(--glass-edge)!important;border-radius:24px!important;
+  box-shadow:var(--glass-shadow-lg),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
+/* insets inside a dialog (source tiles, lists, previews) are thin glass, not opaque boxes */
+body[data-glass] :is(#tplbox,.tsdbox,#libbox,#about,#setup,#actbox,#rules,#descdlg) .card :is(.tp-src,.lb-item:hover,.ae-item:hover,pre,.pv,.ae-src){background:var(--glass-thin)!important;border-color:var(--glass-stroke)!important}
+body[data-glass] :is(#jsonbox,#dialog,#sizebox,#setup,#iconbox,#libbox,#tplbox,.tsdbox,#actbox,#rules,#descdlg) .card :is(input:not([type=checkbox]):not([type=radio]),textarea,select){background:color-mix(in srgb,var(--panel) 70%,transparent);border-color:var(--glass-sep)}
+body[data-glass] .docprev .docprev-body.shot{background:#fff}
+
+/* ---------- controls become capsules ---------- */
+body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item),select){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item)):hover{background:var(--glass-thick)!important}
+body[data-glass] #previewbar .primary{background:var(--glass-accent)!important;color:#fff;border-color:rgba(255,255,255,.5)!important}
 body[data-glass] #chat #stop{background:linear-gradient(180deg,#f06a6e,#e5484d)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;color:#fff;box-shadow:0 4px 14px rgba(229,72,77,.4),inset 0 1px 0 rgba(255,255,255,.5)}
-body[data-glass] #chat #send{background:linear-gradient(180deg,#5b8cff,#3b6cf0)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;box-shadow:0 4px 14px rgba(59,108,240,.45),inset 0 1px 0 rgba(255,255,255,.5)}
-
-/* the toolbar and the description strip float over the canvas, which reserves their height */
-body[data-glass] main{position:relative}
-body[data-glass] #bar{position:absolute;top:0;left:0;right:0;z-index:25;background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-bottom:1px solid var(--g-edge)!important}
-body[data-glass] #descstrip{position:absolute;top:var(--glass-bar,46px);left:0;right:0;z-index:24;width:auto;background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-bottom:1px solid var(--g-edge)!important}
-body[data-glass] main > #updates{position:absolute;top:var(--glass-updates,46px);left:0;right:0;z-index:24}
-body[data-glass] main > #updates > div{-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur)}
-body[data-glass] #inspector{background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-left:1px solid var(--g-edge)!important;padding-top:calc(var(--glass-top,0px) + 14px)}
-
+body[data-glass] #chat #send{background:var(--glass-accent)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;box-shadow:0 4px 14px rgba(59,108,240,.45),inset 0 1px 0 rgba(255,255,255,.5)}
 /* the project name is a title, not a button: no capsule, only a soft highlight on hover */
 body[data-glass] #chat header #projbtn{background:transparent!important;border-color:transparent!important;box-shadow:none!important;border-radius:12px!important}
-body[data-glass] #chat header #projbtn:hover{background:var(--g-fill)!important}
+body[data-glass] #chat header #projbtn:hover{background:var(--glass-hover)!important}
+/* an active toggle (inspector, component picker, the inspector switch above a screen) stays blue: a white capsule would hide its white icon */
+body[data-glass] :is(#bar,#chat #form,#selbar) button.on:not(#x1):not(#x2):not(#x3):not(#x4){background:var(--glass-accent)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
+/* open tabs on the toolbar */
+body[data-glass] #bar .tab{border-radius:999px}
+body[data-glass] #bar .tab.on{background:var(--glass-thick);border-color:var(--glass-edge);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
 
+/* ---------- toolbar, description strip, update notices: float over the canvas, which reserves their height ---------- */
+body[data-glass] #bar{position:absolute;top:0;left:0;right:0;z-index:25;border-bottom:1px solid var(--glass-sep)!important;box-shadow:inset 0 -1px 0 var(--glass-hi)}
+body[data-glass] #descstrip{position:absolute;top:var(--glass-bar,46px);left:0;right:0;z-index:24;width:auto;border-bottom:1px solid var(--glass-sep)!important}
+body[data-glass] #descstrip button:hover{background:var(--glass-hover)}
+body[data-glass] main > #updates{position:absolute;top:var(--glass-updates,46px);left:0;right:0;z-index:24}
+body[data-glass] :is(main,#dash) #updates > div{background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-color:var(--glass-edge)!important;border-radius:16px!important;box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #inspector{border-left:1px solid var(--glass-edge)!important;box-shadow:-8px 0 30px -14px rgba(25,35,80,.25);padding-top:calc(var(--glass-top,0px) + 14px)}
 /* the selection bar of a screen sits below the floating toolbar and description strip, not behind them */
 body[data-glass] #selbar{top:calc(var(--glass-top,0px) + 12px)}
+/* the zoom pill is one capsule with plain buttons in it (not a capsule per button) */
+body[data-glass] #bar #zoompill{background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);padding:2px}
+body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3){background:none!important;border:0!important;box-shadow:none!important;border-radius:999px!important;padding:3px 9px}
+body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3):hover{background:var(--glass-hover)!important}
+body[data-glass] #bar #zoompill .zsep{margin:6px 1px;background:var(--glass-edge)}
+/* presenting: the corner controls are glass buttons */
+body[data-glass] #fsctl{background:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
+body[data-glass] :is(#fsclose,#fsdevbtn){background:var(--glass-regular);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);color:var(--fg);border:1px solid var(--glass-edge);border-radius:999px;box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] :is(#fsclose,#fsdevbtn)::after{background:var(--glass-thick);color:var(--fg);-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);border:1px solid var(--glass-edge)}
 
-/* an active toolbar toggle (inspector, component picker) stays blue: the white capsule above would hide its white icon */
-body[data-glass] #bar button.on:not(#x1):not(#x2):not(#x3):not(#x4),body[data-glass] #chat #form button.on:not(#x1):not(#x2):not(#x3):not(#x4){background:linear-gradient(180deg,#5b8cff,#3b6cf0)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
+/* ---------- screens on the canvas: the title bar controls are small glass capsules ---------- */
+body[data-glass] .ftitle :is(.fdevbtn,select){background:var(--glass-thin);border-color:var(--glass-edge);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
 
-/* drop-down menus are nearly opaque: inside the frosted chat a second blur does not hide the text behind them */
-body[data-glass]{--g-menu:rgba(255,255,255,.92)}
-:root[data-theme="dark"] body[data-glass]{--g-menu:rgba(34,36,48,.94)}
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions){background:var(--g-menu)!important}
-
-/* the inspector switch on the bar above a screen stays blue while it is on (the capsule rule above would make it white with a white icon) */
-body[data-glass] #selbar #selinspect.on:not(#x1):not(#x2):not(#x3):not(#x4){background:linear-gradient(180deg,#5b8cff,#3b6cf0)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
-body[data-glass] #modemenu{background:var(--g-fill-strong,var(--panel))!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--g-edge,var(--line))}
-body[data-glass] #chat #form .row :is(#modebtn,#model,#ecobtn){background:none!important;border:0!important;box-shadow:none!important}
-body[data-glass] #chat .inputbox{background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:20px;box-shadow:0 6px 24px var(--g-shadow),inset 0 1px 0 rgba(255,255,255,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-body[data-glass] #chat .inputbox:focus-within{border-color:var(--acc)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 25%,transparent),0 8px 28px var(--g-shadow)}
+/* ---------- composer (chat input): a quiet lens; the strip around it is clear ---------- */
+body[data-glass] #chat #form{background:transparent!important;-webkit-backdrop-filter:none;backdrop-filter:none;border-top:0!important;box-shadow:none}
+body[data-glass] #chat #prompt{background:var(--glass-thick)!important;border:1px solid var(--glass-edge)!important;border-radius:16px}
+body[data-glass] #chat .inputbox:not(#x){background:var(--glass-thick)!important;border:1px solid var(--glass-edge)!important;border-radius:20px;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
+body[data-glass] #chat .inputbox:not(#x):focus-within{border-color:color-mix(in srgb,var(--acc) 70%,#fff)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent),var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}
 body[data-glass] #chat .inputbox #prompt{background:transparent!important;border:0!important;border-radius:20px!important;box-shadow:none!important}
 body[data-glass] #chat .inputbox :is(#attach,#pickcomp,#libbtn){background:none!important;border:0!important;box-shadow:none!important}
-body[data-glass] #chat .inputbox :is(#attach,#pickcomp,#libbtn):hover{background:var(--g-fill)!important}
-body[data-glass] #chat #form .row #modebtn:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
-/* Glass composer: a quiet lens: the strip around it is clear, the box is a little brighter than the glass, with a thin edge and a soft shadow */
-body[data-glass] #chat #form{background:transparent!important;-webkit-backdrop-filter:none;backdrop-filter:none;border-top:0!important;box-shadow:none}
-body[data-glass] #chat .inputbox:not(#x){background:rgba(255,255,255,.72)!important;border:1px solid rgba(255,255,255,.9)!important;border-radius:20px;box-shadow:0 4px 14px rgba(25,35,80,.14),inset 0 1px 0 #fff}
-body[data-glass] #chat .inputbox:not(#x):focus-within{border-color:color-mix(in srgb,var(--acc) 70%,#fff)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 22%,transparent),0 4px 14px rgba(25,35,80,.14),inset 0 1px 0 #fff}
-:root[data-theme="dark"] body[data-glass] #chat .inputbox:not(#x){background:rgba(58,61,80,.6)!important;border-color:rgba(255,255,255,.2)!important;box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.14)}
+body[data-glass] #chat .inputbox :is(#attach,#pickcomp,#libbtn):hover{background:var(--glass-hover)!important}
 body[data-glass] #chat .inputbox #send:not(#x){box-shadow:0 2px 6px rgba(59,108,240,.28),inset 0 1px 0 rgba(255,255,255,.4)!important}
-body[data-glass] #chat #form .row #modebtn:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
-body[data-glass] #chat #form #modemenu .mm-item:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;color:var(--fg)!important;border-radius:10px!important}
-body[data-glass] #chat #form #modemenu .mm-item.on:not(#a):not(#b):not(#c):not(#d){background:color-mix(in srgb,var(--acc) 14%,transparent)!important}
-body[data-glass] #chat #form #modemenu .mm-item:hover:not(#a):not(#b):not(#c):not(#d){background:var(--g-fill)!important}
-body[data-glass] #chat #form #modemenu{background:rgba(255,255,255,.88)!important}
-:root[data-theme="dark"] body[data-glass] #chat #form #modemenu{background:rgba(44,46,62,.9)!important}
-body[data-glass] #previewbar{background:var(--g-fill-strong)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:1px solid var(--g-edge)!important}
-body[data-glass][data-chat="float"] #chat.collapsed{background:transparent!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-body[data-glass][data-chat="float"] #chat.collapsed #chatbubble{background:linear-gradient(180deg,#5b8cff,#3b6cf0);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 24px rgba(59,108,240,.5),inset 0 1px 0 rgba(255,255,255,.5)}
-body[data-glass] #devmenu{background:rgba(255,255,255,.88)!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--g-edge)}:root[data-theme="dark"] body[data-glass] #devmenu{background:rgba(44,46,62,.92)!important}
-
-/* the zoom pill is one capsule with plain buttons in it (not a capsule per button) */
-body[data-glass] #bar #zoompill{background:var(--g-fill-strong)!important;border:1px solid var(--g-edge)!important;border-radius:999px;box-shadow:0 1px 3px var(--g-shadow);padding:2px}
-body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3){background:none!important;border:0!important;box-shadow:none!important;border-radius:999px!important;padding:3px 9px}
-body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3):hover{background:color-mix(in srgb,var(--fg) 10%,transparent)!important}
-body[data-glass] #bar #zoompill .zsep{margin:6px 1px;background:var(--g-edge)}
-
-body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none;color:var(--mute)!important}
+body[data-glass] #chat #form .row :is(#modebtn,#model,#ecobtn):not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
+body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d){color:var(--mute)!important}
 body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d):hover{color:var(--fg)!important}
 body[data-glass] #chat #form .row #ecobtn.on:not(#a):not(#b):not(#c):not(#d){color:#2f8f49!important}
+body[data-glass] #chat #form #modemenu .mm-item:not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;color:var(--fg)!important;border-radius:10px!important}
+body[data-glass] #chat #form #modemenu .mm-item.on:not(#a):not(#b):not(#c):not(#d){background:color-mix(in srgb,var(--acc) 14%,transparent)!important}
+body[data-glass] #chat #form #modemenu .mm-item:hover:not(#a):not(#b):not(#c):not(#d){background:var(--glass-hover)!important}
+/* the collapsed floating chat is just the bubble */
+body[data-glass][data-chat="float"] #chat.collapsed{background:transparent!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body[data-glass][data-chat="float"] #chat.collapsed #chatbubble{background:var(--glass-accent);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 24px rgba(59,108,240,.5),inset 0 1px 0 rgba(255,255,255,.5)}
+
+/* ---------- dashboard: a sidebar over the wash, the pane is a lighter wash with glass cards on it ---------- */
+body[data-glass] #dash{background:transparent}
+/* the project view under the dashboard would show through its sidebar; the toast (inside the canvas) stays visible */
+body[data-glass][data-noproject] > :is(main,#chat){visibility:hidden}body[data-glass][data-noproject] #toast{visibility:visible}
+body[data-glass] #dash-side{background:var(--glass-sidebar);border-right:1px solid var(--glass-sep)}
+body[data-glass] #dash-nav button:hover{background:var(--glass-hover)}
+body[data-glass] #dash-nav button.on{background:var(--glass-thin);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #dash-where{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:14px;box-shadow:inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #dash-where button{background:var(--glass-thick);border-color:var(--glass-edge);border-radius:999px}
+body[data-glass] #dash-pane{background:var(--glass-wash),var(--panel)}
+body[data-glass] :is(#dash-levels,#dash-views){background:var(--glass-thin);border:1px solid var(--glass-stroke);border-radius:999px;box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-shadow-sm);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
+body[data-glass] :is(#dash-levels,#dash-views) button{border-radius:999px}
+body[data-glass] :is(#dash-levels,#dash-views) button.on{background:var(--glass-thick);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #dash-tpl{border-radius:999px}body[data-glass] #dash-tpl:hover{background:var(--glass-thin)}
+body[data-glass] .idea{background:var(--glass-thin);border-color:var(--glass-stroke);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
+body[data-glass] .idea:hover{background:var(--glass-thick)}
+body[data-glass] .idea.on{border-color:var(--fg);box-shadow:0 0 0 1px var(--fg),var(--glass-shadow-sm)}
+body[data-glass] .dash-box{background:var(--glass-regular);border-color:var(--glass-edge);border-radius:24px;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+body[data-glass] #dash-mode button.on{background:var(--glass-thin);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);border-radius:999px}
+body[data-glass] :is(#dash-badge,#dash-search){background:var(--glass-thin);border-color:var(--glass-stroke);border-radius:999px;-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
+body[data-glass] #dash-top .icon{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #dash-newbtn{border-radius:999px;box-shadow:var(--glass-shadow-md),inset 0 1px 0 rgba(255,255,255,.25)}
+body[data-glass] .dc{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:20px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+body[data-glass] .dc:hover,body[data-glass] .dc:focus-visible{border-color:var(--glass-edge);box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi);transform:translateY(-1px)}
+body[data-glass] .dc{transition:box-shadow .15s,transform .15s}
+body[data-glass] .dc-pic{background:color-mix(in srgb,var(--canvas) 55%,transparent);border-color:var(--glass-sep)}
+body[data-glass] .dc-initial{background:var(--glass-thick);border-color:var(--glass-edge)}
+body[data-glass] .dc-del{background:var(--glass-thick);border-color:var(--glass-edge);border-radius:999px}
+body[data-glass] #dash-grid.list .dc{border-radius:16px}
+body[data-glass] #dash-grid.list .dc-pic{border-color:var(--glass-sep)}
+body[data-glass] .tp-src{border-radius:14px;box-shadow:inset 0 1px 0 var(--glass-hi)}
+body[data-glass] .tp-item{border-color:var(--glass-sep)!important}
