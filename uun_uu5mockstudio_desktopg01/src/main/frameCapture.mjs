@@ -17,82 +17,109 @@ export const PICKER = `(() => {
   const bar = document.createElement("div"); bar.id = "__uu5mock_bar";
   bar.style.cssText = "position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:420px;padding:10px 14px;border-radius:10px;background:#1b1b1b;color:#fff;font:14px/1.4 system-ui;box-shadow:0 2px 10px rgba(0,0,0,.4)";
   const btn = 'padding:8px 14px;border:0;border-radius:8px;color:#fff;font:600 14px system-ui;cursor:pointer;margin:8px 8px 0 0';
-  bar.innerHTML = '<div id="__uu5mock_msg"></div><button id="__uu5mock_mode" style="' + btn + ';background:#455a64"></button><button id="__uu5mock_up" title="Larger area (wheel up, arrow up)" style="' + btn + ';background:#455a64">▲ Larger</button><button id="__uu5mock_use" title="Choose the highlighted area (Enter)" style="' + btn + ';background:#2e7d32">✓ Use this</button><button id="__uu5mock_down" title="Smaller area (wheel down, arrow down)" style="' + btn + ';background:#455a64">▼ Smaller</button><button id="__uu5mock_ok" disabled style="' + btn + ';background:#1976d2;opacity:.5">Save as frame</button>';
+  bar.innerHTML = '<div id="__uu5mock_msg"></div><button id="__uu5mock_mode" style="' + btn + ';background:#455a64"></button><button id="__uu5mock_add" title="Choose another part: the content area is the smallest rectangle around all the parts (Shift + click does it too)" style="' + btn + ';background:#455a64">＋ Add part</button><button id="__uu5mock_up" title="Larger area (wheel up, arrow up)" style="' + btn + ';background:#455a64">▲ Larger</button><button id="__uu5mock_use" title="Choose the highlighted area (Enter)" style="' + btn + ';background:#2e7d32">✓ Use this</button><button id="__uu5mock_down" title="Smaller area (wheel down, arrow down)" style="' + btn + ';background:#455a64">▼ Smaller</button><button id="__uu5mock_ok" disabled style="' + btn + ';background:#1976d2;opacity:.5">Save as frame</button>';
   document.documentElement.append(box, bar);
   const $ = (id) => document.getElementById(id);
-  let pick = false, hover = null, base = null, up = 0, chosen = null, drag = null, moved = false, dragged = false;
-  window.__uu5mockRect = null;
+  // parts = what was chosen: { el } (an element) or { rect } (a drawn rectangle); the content area is the smallest rectangle around all of them
+  let pick = false, multi = false, hover = null, base = null, up = 0, drag = null, moved = false, dragged = false;
+  const parts = [], marks = [];
+  window.__uu5mockRect = null; window.__uu5mockRects = [];
   const mine = (el) => el && (el === box || bar.contains(el));
-  const show = (el) => { const r = el.getBoundingClientRect(); Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" }); const tag = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\\s+/)[0] : ""); lbl.textContent = tag + "  " + Math.round(r.width) + "×" + Math.round(r.height); lbl.style.display = pick ? "block" : "none"; };
+  // a drawn rectangle is kept in the coordinates of the page, so that it scrolls with the page it was drawn on
+  const view = (r) => ({ left: r.left - scrollX, top: r.top - scrollY, right: r.right - scrollX, bottom: r.bottom - scrollY });
+  const doc = (r) => ({ left: r.left + scrollX, top: r.top + scrollY, right: r.right + scrollX, bottom: r.bottom + scrollY });
+  const rectOf = (p) => (p.el ? p.el.getBoundingClientRect() : view(p.rect));
+  const paint = () => { if (window.__uu5mockDone) return; // (the extraction has taken the picker down)
+    // the chosen parts in green, with a dashed line round them all when there are more
+    window.__uu5mockRects = parts.filter((p) => p.rect).map((p) => p.rect); // in the coordinates of the page: the extraction takes them from the top of the page
+    marks.splice(0).forEach((m) => m.remove());
+    if (!parts.length) return;
+    const rs = parts.map(rectOf);
+    const mk = (r, css) => { const d = document.createElement("div"); d.className = "__uu5mock_mark"; d.style.cssText = "position:fixed;z-index:2147483646;pointer-events:none;box-sizing:border-box;" + css; Object.assign(d.style, { left: r.left + "px", top: r.top + "px", width: (r.right - r.left) + "px", height: (r.bottom - r.top) + "px" }); document.documentElement.append(d); marks.push(d); };
+    if (rs.length > 1) mk({ left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)) }, "border:2px dashed #2e7d32");
+    for (const r of rs) mk(r, "border:2px solid #2e7d32;background:rgba(46,125,50,.18)");
+  };
+  const sync = () => { // what the extraction reads: the marked elements and the drawn rectangles
+    document.querySelectorAll("[data-uu5mock-slot]").forEach((x) => x.removeAttribute("data-uu5mock-slot"));
+    for (const p of parts) if (p.el) p.el.setAttribute("data-uu5mock-slot", "");
+    paint(); ui();
+    if (parts.length) console.log("${SLOT_MESSAGE}");
+  };
   const lbl = document.createElement("div"); lbl.style.cssText = "position:fixed;z-index:2147483647;top:8px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:6px;background:#1b1b1b;color:#fff;font:12px/1.3 system-ui;pointer-events:none;display:none"; document.documentElement.append(lbl);
+  const show = (el) => { const r = el.getBoundingClientRect(); Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" }); const tag = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\\s+/)[0] : ""); lbl.textContent = tag + "  " + Math.round(r.width) + "×" + Math.round(r.height); lbl.style.display = pick ? "block" : "none"; };
   // the element under the mouse, or its ancestor "up" levels higher (the whole white area under a header is rarely what lies directly under the pointer)
   const current = () => { let el = base; for (let i = 0; i < up && el.parentElement && el.parentElement !== document.documentElement; i++) el = el.parentElement; return el; };
   const move = (d) => { if (!base) return; up = Math.max(0, up + d); const el = current(); const cap = (() => { let e = base, n = 0; while (e.parentElement && e.parentElement !== document.documentElement) { e = e.parentElement; n++; } return n; })(); if (up > cap) up = cap; hover = current(); show(hover); };
-  const ui = () => {
+  function ui() {
+    const chosen = parts.length > 0;
     for (const id of ["__uu5mock_up", "__uu5mock_down", "__uu5mock_use"]) $(id).style.display = pick ? "inline-block" : "none";
+    $("__uu5mock_add").style.display = !pick && chosen ? "inline-block" : "none";
     $("__uu5mock_mode").textContent = pick ? "Back to browsing" : (chosen ? "Choose again" : "Choose content area");
-    $("__uu5mock_msg").textContent = pick ? "Click an element (wheel or ▲ ▼ make it larger or smaller; the label above shows its size), or drag a rectangle over the area where the content goes. The rest becomes the frame." : chosen ? "Content area chosen. Save it, or choose again." : "Browse and sign in as needed. Open the page you want, then choose the content area.";
+    $("__uu5mock_msg").textContent = pick ? "Click an element (wheel or ▲ ▼ make it larger or smaller; the label above shows its size), or drag a rectangle over the area where the content goes. Hold Shift to add more parts: the content area is the smallest rectangle around all of them" + (parts.length ? " (" + parts.length + " chosen so far; Enter or a click without Shift finishes)." : ".") : chosen ? (parts.length > 1 ? parts.length + " parts chosen: the content area is the rectangle around them all. Save it, add a part, or choose again." : "Content area chosen. Save it, add another part, or choose again.") : "Browse and sign in as needed. Open the page you want, then choose the content area.";
     const ok = $("__uu5mock_ok"); ok.disabled = !chosen; ok.style.opacity = chosen ? "1" : ".5";
-    if (!pick) lbl.style.display = "none";
-    if (!pick && !chosen) box.style.display = "none";
-  };
-  $("__uu5mock_mode").onclick = () => { pick = !pick; if (pick && chosen) { document.querySelectorAll("[data-uu5mock-slot]").forEach((x) => x.removeAttribute("data-uu5mock-slot")); window.__uu5mockRect = null; chosen = null; box.style.borderColor = "#1976d2"; box.style.background = "rgba(25,118,210,.18)"; } ui(); };
+    if (!pick) { lbl.style.display = "none"; box.style.display = "none"; }
+  }
+  $("__uu5mock_mode").onclick = () => { pick = !pick; if (pick) { multi = false; if (parts.length) { parts.length = 0; sync(); } } ui(); };
+  $("__uu5mock_add").onclick = () => { pick = true; multi = true; ui(); };
+  addEventListener("scroll", paint, true); addEventListener("resize", paint);
   addEventListener("mousemove", (e) => {
     if (pick && drag && e.buttons) { if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 8) moved = true; if (moved) { const l = Math.min(drag.x, e.clientX), t = Math.min(drag.y, e.clientY), w = Math.abs(e.clientX - drag.x), h = Math.abs(e.clientY - drag.y); Object.assign(box.style, { display: "block", left: l + "px", top: t + "px", width: w + "px", height: h + "px" }); lbl.textContent = "area  " + Math.round(w) + "×" + Math.round(h); lbl.style.display = "block"; } return; }
     if (!pick) return; const el = document.elementFromPoint(e.clientX, e.clientY); if (el && !mine(el) && el !== base) { base = el; up = 0; hover = el; show(el); } }, true);
   $("__uu5mock_up").onclick = () => move(1); $("__uu5mock_down").onclick = () => move(-1);
   addEventListener("wheel", (e) => { if (!pick || mine(e.target)) return; e.preventDefault(); e.stopPropagation(); move(e.deltaY < 0 ? 1 : -1); }, { capture: true, passive: false });
-  const chooseEl = () => {
-    if (!hover) return;
-    document.querySelectorAll("[data-uu5mock-slot]").forEach((x) => x.removeAttribute("data-uu5mock-slot"));
-    chosen = hover; chosen.setAttribute("data-uu5mock-slot", ""); window.__uu5mockRect = null; pick = false;
-    show(chosen); box.style.borderColor = "#2e7d32"; box.style.background = "rgba(46,125,50,.18)";
-    ui(); console.log("${SLOT_MESSAGE}");
+  // a part is chosen: with Shift it is added (or taken away again when it is there) and the choosing goes on; without Shift it ends the choosing
+  // (it replaces what was chosen, unless parts were being added: then it is the last one)
+  const addPart = (part, more) => {
+    if (!more && !multi) parts.length = 0;
+    const at = parts.findIndex((p) => (part.el ? p.el === part.el : false));
+    if (at >= 0) { if (more) parts.splice(at, 1); } else parts.push(part);
+    if (more) multi = true; else pick = false;
+    sync();
   };
-  $("__uu5mock_use").onclick = chooseEl;
+  const chooseEl = (more) => { if (hover) addPart({ el: hover }, more); };
+  $("__uu5mock_use").onclick = () => chooseEl(false);
   addEventListener("click", (e) => {
     if (!pick || mine(e.target)) return; // browsing: clicks reach the page (sign-in, menus)
     if (dragged) { dragged = false; e.preventDefault(); e.stopPropagation(); return; } // the click that ends a drag
     e.preventDefault(); e.stopPropagation();
-    if (!hover) return;
-    chooseEl();
+    chooseEl(e.shiftKey);
   }, true);
   addEventListener("mousedown", (e) => { if (pick && !mine(e.target)) { drag = { x: e.clientX, y: e.clientY }; moved = false; e.preventDefault(); e.stopPropagation(); } }, true);
   addEventListener("mouseup", (e) => {
     if (!pick || mine(e.target)) return;
     e.preventDefault(); e.stopPropagation();
-    if (drag && moved) { // a drawn rectangle is the area
+    if (drag && moved) { // a drawn rectangle is a part
       const l = Math.min(drag.x, e.clientX), t = Math.min(drag.y, e.clientY), r = Math.max(drag.x, e.clientX), b = Math.max(drag.y, e.clientY);
-      document.querySelectorAll("[data-uu5mock-slot]").forEach((x) => x.removeAttribute("data-uu5mock-slot"));
-      window.__uu5mockRect = { left: l, top: t, right: r, bottom: b }; chosen = "rect"; pick = false; dragged = true;
-      Object.assign(box.style, { display: "block", left: l + "px", top: t + "px", width: r - l + "px", height: b - t + "px", borderColor: "#2e7d32", background: "rgba(46,125,50,.18)" });
-      ui(); console.log("${SLOT_MESSAGE}");
+      dragged = true; addPart({ rect: doc({ left: l, top: t, right: r, bottom: b }) }, e.shiftKey);
     }
     drag = null; moved = false;
   }, true);
   for (const t of ["pointerdown", "pointerup"]) addEventListener(t, (e) => { if (pick && !mine(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
-  addEventListener("keydown", (e) => { if (!pick) return; if (e.key === "Escape") { pick = false; ui(); } else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); chooseEl(); } else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); move(e.key === "ArrowUp" ? 1 : -1); } }, true);
+  addEventListener("keydown", (e) => { if (!pick) return; if (e.key === "Escape") { pick = false; ui(); } else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (hover) chooseEl(e.shiftKey); else if (parts.length) { pick = false; ui(); } } else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); move(e.key === "ArrowUp" ? 1 : -1); } }, true);
   $("__uu5mock_ok").onclick = () => console.log("${SAVE_MESSAGE}");
   ui();
   // editing a frame: the area it has now is chosen from the start (offsets from the edges of the window)
   const pre = window.__uu5mockPreset;
   if (pre) {
     const l = pre.left, t = pre.top, r = innerWidth - pre.right, b = pre.bottom ? innerHeight - pre.bottom : innerHeight;
-    window.__uu5mockRect = { left: l, top: t, right: r, bottom: b }; chosen = "rect"; pick = false;
-    Object.assign(box.style, { display: "block", left: l + "px", top: t + "px", width: Math.max(0, r - l) + "px", height: Math.max(0, b - t) + "px", borderColor: "#2e7d32", background: "rgba(46,125,50,.18)" });
-    ui(); $("__uu5mock_msg").textContent = "The area the frame has now is chosen. Save to keep it, or choose again.";
-    console.log("${SLOT_MESSAGE}");
+    parts.push({ rect: doc({ left: l, top: t, right: r, bottom: b }) }); sync();
+    $("__uu5mock_msg").textContent = "The area the frame has now is chosen. Save to keep it, add a part, or choose again.";
   }
 })()`;
 
 export const EXTRACT = `(async () => {
-  const slot = document.querySelector("[data-uu5mock-slot]"), drawn = window.__uu5mockRect;
-  if (!slot && !drawn) return null;
-  document.getElementById("__uu5mock_hl")?.remove(); document.getElementById("__uu5mock_bar")?.remove();
-  const vw = innerWidth, vh = innerHeight, sr = slot ? slot.getBoundingClientRect() : (() => { // a rectangle that reaches the bottom of the window means "to the end of the page" (the content is longer than the window)
-    const bottom = drawn.bottom >= vh - 2 ? Math.max(drawn.bottom, Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) - scrollY) : drawn.bottom;
-    return { left: drawn.left, top: drawn.top, right: drawn.right, bottom, width: drawn.right - drawn.left, height: bottom - drawn.top };
-  })();
+  const slots = [], drawn0 = window.__uu5mockRects ?? [];
+  if (!document.querySelector("[data-uu5mock-slot]") && !drawn0.length) return null;
+  window.__uu5mockDone = true; document.getElementById("__uu5mock_hl")?.remove(); document.getElementById("__uu5mock_bar")?.remove(); document.querySelectorAll(".__uu5mock_mark").forEach((x) => x.remove());
+  // the frame is the page as it is at its top: a part chosen after scrolling down must not make what was scrolled out of the window (a header) drop out of the frame
+  if (scrollX || scrollY) { scrollTo(0, 0); await new Promise((r) => setTimeout(r, 250)); }
+  slots.push(...document.querySelectorAll("[data-uu5mock-slot]"));
+  const drawn = drawn0.map((d) => ({ left: d.left - scrollX, top: d.top - scrollY, right: d.right - scrollX, bottom: d.bottom - scrollY }));
+  const vw = innerWidth, vh = innerHeight, pageBottom = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) - scrollY;
+  // the content area: the smallest rectangle around all the parts chosen (elements and drawn rectangles); a rectangle that reaches the bottom of the window means "to the end of the page" (the content is longer than the window)
+  const rs = [...slots.map((el) => el.getBoundingClientRect()), ...drawn.map((d) => ({ left: d.left, top: d.top, right: d.right, bottom: d.bottom >= vh - 2 ? Math.max(d.bottom, pageBottom) : d.bottom }))];
+  const sr = { left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)) };
+  sr.width = sr.right - sr.left; sr.height = sr.bottom - sr.top;
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const attr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   const KEEP = ["color", "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "text-align", "text-transform", "text-decoration-line", "white-space",
@@ -102,12 +129,12 @@ export const EXTRACT = `(async () => {
   const out = [], rasters = [], bgRefs = []; let n = 0, visited = 0;
   // a background picture (also a blob: one, which only this page can read) is fetched here and saved with the frame; the style names a file instead
   const bgOf = (value, k0) => value.replace(/url\\((["']?)(.*?)\\1\\)/g, (m, q, u) => { bgRefs.push({ k: bgRefs.length, url: u }); return "url(frame-img/bg" + (bgRefs.length - 1) + ".IMG)"; });
-  const skip = (el) => ["SCRIPT", "STYLE", "NOSCRIPT", "LINK", "META", "TEMPLATE"].includes(el.tagName) || el.id === "__uu5mock_hl" || el.id === "__uu5mock_bar";
+  const skip = (el) => ["SCRIPT", "STYLE", "NOSCRIPT", "LINK", "META", "TEMPLATE"].includes(el.tagName) || el.id === "__uu5mock_hl" || el.id === "__uu5mock_bar" || el.classList?.contains("__uu5mock_mark");
   // how much of the element lies in the area (el), and how much of the area the element covers (slot); a sidebar that only touches the area by its padding or border has little of both
   const overlap = (r) => { const w = Math.min(r.right, sr.right) - Math.max(r.left, sr.left), h = Math.min(r.bottom, sr.bottom) - Math.max(r.top, sr.top); if (w <= 0 || h <= 0) return { el: 0, slot: 0 }; const x = w * h; return { el: x / (r.width * r.height), slot: x / Math.max(1, (sr.right - sr.left) * (sr.bottom - sr.top)) }; };
   const walk = (el, clip, posClip) => {
-    if (n > 1500 || visited++ > 20000 || skip(el) || el === slot) return;
-    if (slot && el.contains(slot)) { for (const c of el.children) walk(c, clip, posClip); return; }
+    if (n > 1500 || visited++ > 20000 || skip(el) || slots.includes(el)) return;
+    if (slots.some((x) => el.contains(x))) { for (const c of el.children) walk(c, clip, posClip); return; }
     const cs = getComputedStyle(el), r = el.getBoundingClientRect();
     // overflow cuts only what it contains: a fixed box is cut by no parent, an absolute one by the clip of its nearest positioned parent
     if (cs.position === "fixed") clip = null; else if (cs.position === "absolute") clip = posClip;

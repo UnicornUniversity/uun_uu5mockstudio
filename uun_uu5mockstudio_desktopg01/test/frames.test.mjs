@@ -53,6 +53,10 @@ test("the capture scripts are valid JavaScript", async () => {
   const { PICKER, EXTRACT } = await import("../src/main/frameCapture.mjs");
   assert.doesNotThrow(() => new Function(PICKER));
   assert.doesNotThrow(() => new Function(`return ${EXTRACT}`));
+  // several parts (Shift): the picker keeps a list of them and the extraction takes the rectangle around them all
+  assert.match(PICKER, /e\.shiftKey/);
+  assert.match(EXTRACT, /querySelectorAll\("\[data-uu5mock-slot\]"\)/);
+  assert.match(EXTRACT, /__uu5mockRects/);
 });
 
 test("updateFrame changes the given parts and keeps the rest", async () => {
