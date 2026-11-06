@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readdir, readFile, rm, cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -223,6 +223,35 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
   }
 
   return { fetchDoc, status, login, loginFor, close };
+}
+
+/** The hidden folder (in the projects folder, never listed) where documents pasted on the dashboard are read: no project is open there yet. */
+export const STAGING = ".dash-docs";
+
+/**
+ * Moves the documents read on the dashboard (<root>/.dash-docs) into the project made for them: the snapshots and pictures are copied to
+ * <project>/.studio/sources and the paths inside them (the absolute ones of the .md, the ones of the preview server in the .html) point
+ * to the project. { from, to }: the folder prefix the cards of the dashboard have to replace; null when there was nothing to move.
+ */
+export async function adoptStaging(root, projectName) {
+  const from = path.join(root, STAGING), to = path.join(root, projectName);
+  const src = path.join(from, SOURCES_DIR), dest = path.join(to, SOURCES_DIR);
+  if (!existsSync(src)) return null;
+  await mkdir(dest, { recursive: true });
+  await cp(src, dest, { recursive: true, force: true });
+  const fix = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) { await fix(f); continue; }
+      if (!/\.(md|html|json)$/.test(e.name)) continue;
+      const text = await readFile(f, "utf8");
+      const next = text.split(from + path.sep).join(to + path.sep).split(`/${encodeURIComponent(STAGING)}/`).join(`/${encodeURIComponent(projectName)}/`);
+      if (next !== text) await writeFile(f, next);
+    }
+  };
+  await fix(dest);
+  await rm(from, { recursive: true, force: true });
+  return { from: from + path.sep, to: to + path.sep };
 }
 
 /** The snapshots of a project: [{ file, title, url, kind }] (newest first). */

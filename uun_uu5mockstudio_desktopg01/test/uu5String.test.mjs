@@ -108,3 +108,35 @@ test("icons newer than the Material Design Icons of documents are noted", () => 
   assert.match(note, /mdi-rocket-launch-outline, mdi-strategy/);
   assert.doesNotMatch(note, /mdi-brain/);
 });
+
+test("descendant rules and inherited colours are resolved against the real DOM, so text keeps its colour", () => {
+  const rootDom = { computed: { color: "rgb(0, 0, 0)" }, matches: () => false };
+  const heroDom = { computed: { color: "rgb(255, 255, 255)" }, parentElement: rootDom, matches: (s) => s === ".hero" };
+  const h1Dom = { computed: { color: "rgb(255, 255, 255)", fontSize: "56px" }, parentElement: heroDom, matches: (s) => s === ".hero h1" };
+  const pDom = { computed: { color: "rgb(200, 200, 255)" }, parentElement: heroDom, matches: (s) => s === ".hero p" };
+  const root = rootOf(el("div", { className: "hero" }, el("h1", {}, "Title"), el("p", { className: "lead" }, "Text")));
+  const hero = root.child, h1 = hero.child, p = h1.sibling;
+  hero.stateNode = heroDom; h1.stateNode = h1Dom; p.stateNode = pDom;
+  const tree = collectUu5Tree({
+    rootFiber: root, computed: (d) => d.computed,
+    styleRules: [{ selector: ".hero h1", cssText: "font-size: var(--title);" }, { selector: ".hero p", cssText: "color: rgba(255,255,255,.8);" }, { selector: ".hero h1:hover", cssText: "opacity: .5;" }],
+  });
+  const { text } = toUu5String(tree);
+  assert.match(text, /<div style='<uu5json\/>\{"color":"rgb\(255, 255, 255\)"\}'>/); // inherited from nothing above: written once
+  assert.match(text, /<h1 style='<uu5json\/>\{"fontSize":"56px"\}'>Title<\/h1>/); // var() replaced by the computed value, no colour repeated
+  assert.match(text, /<p style='<uu5json\/>\{"color":"rgba\(255,255,255,.8\)"\}'>Text<\/p>/);
+  assert.deepEqual(tree.report.cssLost.sort(), [".hero h1:hover", ".lead"]);
+});
+
+test("a component of the screen that is not rendered (an inactive tab) is called for its elements; one that needs hooks is reported", () => {
+  const Item = named("Uu5Bricks.Tabs.Item");
+  const Tab = function Tab(p) { return el("div", {}, el(Text, {}, p.title), el(Inner, {})); };
+  const Inner = function Inner() { return [el("span", {}, "a"), el("span", {}, "b")]; };
+  const Hooky = function Hooky() { throw new TypeError("Cannot read properties of null (reading 'useState')"); };
+  const root = rootOf(el("div", {}, el(Item, { label: "T" }, el(Tab, { title: "Hello" })), el(Item, { label: "H" }, el(Hooky, {}))));
+  root.child.child.child = null; root.child.child.sibling.child = null; // the library did not render the content of the tabs
+  const tree = collectUu5Tree({ rootFiber: root, styleRules: [] });
+  const { text } = toUu5String(tree);
+  assert.match(text, /<Uu5Bricks\.Tabs\.Item label="T">\s*<div>\s*<Uu5Elements\.Text>Hello<\/Uu5Elements\.Text>\s*<span>a<\/span>\s*<span>b<\/span>\s*<\/div>\s*<\/Uu5Bricks\.Tabs\.Item>/);
+  assert.deepEqual(tree.report.unresolved, { Hooky: 1 });
+});

@@ -7,8 +7,10 @@ const fiberOf = (el) => { for (let n = el; n; n = n.parentElement) { const k = O
   const ordOf = (f) => { const v = f.memoizedProps ? f.memoizedProps[SRC] : undefined; return v === undefined || v === null ? null : Number(v); };
   const compAt = (el) => { for (let f = fiberOf(el); f; f = f.return) { if (ordOf(f) !== null) return f; } return null; };
   const hostNodes = (f, out = []) => { for (let c = f.child; c; c = c.sibling) { if (c.tag === 5 && c.stateNode instanceof Element) out.push(c.stateNode); else hostNodes(c, out); } return out; };
+  // a plain element (a <div>) is its own box: the union of its children would also take in the parts that stick out of it (an absolutely positioned child clipped by overflow:hidden)
   const rectOf = (f) => {
-    const rs = hostNodes(f).map((n) => n.getBoundingClientRect()).filter((r) => r.width || r.height);
+    const nodes = f.tag === 5 && f.stateNode instanceof Element ? [f.stateNode] : hostNodes(f);
+    const rs = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width || r.height);
     if (!rs.length) return null;
     const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top));
     return { left: l, top: t, width: Math.max(...rs.map((r) => r.right)) - l, height: Math.max(...rs.map((r) => r.bottom)) - t };

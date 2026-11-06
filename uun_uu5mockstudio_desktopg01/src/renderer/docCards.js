@@ -66,6 +66,7 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
       el("div", { className: "card" },
         el("header", {},
           el("div", {}, el("small", { textContent: `${kindLabel(card.kind)} · ${card.shot ? "how it looks now (rendered by the app)" : "read-only snapshot"}` }), el("h2", { textContent: card.title })),
+          el("button", { type: "button", textContent: "Load with my access…", title: "Opens the page in a window of the app: sign in to Plus4U, show the page with your permissions (data, business cards, pictures) and press “Use this page as the picture”. The full page as you see it replaces this preview (also for the agent).", onclick: async () => { const r = await studio.docPreviewLogin(card.url).catch((e) => ({ error: String(e?.message ?? e) })); if (r?.error) return toast(r.error, { err: true }); if (!r?.shot) return; close(); set(card.id, { shot: r.shot, thumb: r.thumb }); toast("The picture of the document was replaced by the page from Plus4U."); preview(cards.find((c) => c.id === card.id)); } }),
           el("button", { type: "button", textContent: "Open in Plus4U", onclick: () => studio.openExternal(card.url) }),
           el("button", { type: "button", textContent: "✕", title: "Close", onclick: close })),
         body));
@@ -117,6 +118,14 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
     /** The documents read, for the message; the cards are cleared. */
     take() { const ready = cards.filter((c) => c.state === "ready").map(({ url, kind, title, file, sections, shot, thumb }) => ({ url, kind, title, file, shot, thumb, sections: sections.length })); cards = []; onChange(); return ready; },
     preview,
+    /** The ready cards as they are (the dashboard hands them to the chat of the project it creates); the cards are cleared. */
+    takeCards() { const ready = cards.filter((c) => c.state === "ready"); cards = []; onChange(); return ready; },
+    /** Takes over cards read elsewhere; `remap` = { from, to }: the folder of their files moved (the documents of the dashboard go to the new project). */
+    adopt(list, remap) {
+      const fix = (p) => (remap && typeof p === "string" && p.startsWith(remap.from) ? remap.to + p.slice(remap.from.length) : p);
+      for (const c of list) if (!cards.some((x) => x.url === c.url)) cards.push({ ...c, id: crypto.randomUUID(), file: fix(c.file), shot: fix(c.shot) });
+      onChange();
+    },
     /** Loads again the cards that waited for a territory. */
     reloadWaiting,
   };

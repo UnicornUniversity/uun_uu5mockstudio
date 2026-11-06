@@ -17,6 +17,7 @@ import { createScreenHistory } from "./screenHistory.mjs";
 import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude } from "./claudeEnv.mjs";
 import { shouldCheck } from "./pluginUpdates.mjs";
 import { createCdnCache } from "./cdnCache.mjs";
+import { wrapPage, ENVIRONMENTS } from "./environments.mjs";
 import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
@@ -27,8 +28,8 @@ import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
 import { saveAttachments } from "./attachments.mjs";
-import { createDocFetcher } from "./docFetcher.mjs";
-import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, KINDS } from "./docSources.mjs";
+import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
+import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, snapshotName, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
 import { loadBml } from "./uuBml.mjs";
 import { checkGithub, isRepoUrl, DEFAULT_REPO } from "./githubUpdates.mjs";
@@ -71,7 +72,7 @@ app.whenReady().then(async () => {
   const listScreens = () => fs.readdirSync(dir()).filter((f) => f.endsWith(".html"));
 
   const routes = Object.fromEntries(WARMUP_GROUPS.map((g, i) => [`/__warmup/${i}.html`, warmupPage(g)]));
-  const { port } = await startMockServer(root, { routes, transformHtml: tagHtml, dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
+  const { port } = await startMockServer(root, { routes, transformHtml: (html, q) => wrapPage(tagHtml(html), q?.get("env")), dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
 
   // Record/replay cache for the plus4u CDN: mockups keep rendering offline once their libraries have been loaded.
   let offline = Boolean(loadApp().offline), warming = false;
@@ -345,6 +346,11 @@ app.whenReady().then(async () => {
     const p = state?.repo?.path; if (!p) return null;
     try { return { ...(await validateRepo(p)), view: state.repo.view ?? null, readDir: (await repoReadDir(state)) ?? p }; } catch (e) { return { path: p, name: path.basename(p), error: e.message }; }
   };
+  /** The level the open project was started on ("page" gets the environments); from the template it was made from, else guessed from its screens. */
+  const projectEnv = () => {
+    try { const t = JSON.parse(fs.readFileSync(path.join(dir(), ".studio", "template", "template.json"), "utf8")); return { level: t.level ?? null, environment: t.environment ?? null }; } catch { /* no template */ }
+    try { return { level: guessLevel(listScreens().map((n) => fs.readFileSync(path.join(dir(), n), "utf8"))), environment: null }; } catch { return { level: null, environment: null }; }
+  };
   const payload = async () => {
     const list = await projects.list();
     repoLinked = current ? Boolean((await readState(dir()))?.repo?.path) : false;
@@ -353,7 +359,7 @@ app.whenReady().then(async () => {
     if (!current) { currentChatId = null; return { ...base, screens: [], chat: [], chatId: null, chats: [], layout: null }; }
     const state = await loadChats(dir());
     currentChatId = state.currentChatId;
-    return { ...base, screens: listScreens(), chat: chats.current(state).entries, chatId: state.currentChatId, chats: chats.list(state), layout: state.layout, repo: await repoView(state), notes: screensWithNotes(dir()) };
+    return { ...base, screens: listScreens(), chat: chats.current(state).entries, chatId: state.currentChatId, chats: chats.list(state), layout: state.layout, ...projectEnv(), repo: await repoView(state), notes: screensWithNotes(dir()) };
   };
   /** Close the open project: back to the start screen, nothing runs for it any more. */
   const closeProject = async () => {
@@ -423,7 +429,7 @@ app.whenReady().then(async () => {
     if (!all.length) await templateList();
     const t = all.find((x) => x.id === id); if (!t) throw new Error("That template is not available any more.");
     const r = await applyTemplate(await readTemplate(t), dir());
-    return { ...r, screens: listScreens() };
+    return { ...r, screens: listScreens(), level: t.level, environment: t.environment ?? null };
   }));
   // ----- my templates made from screens of the open project (Screen → Save as Template…, the Templates dialog)
   const chosenScreens = (files) => [...new Set([].concat(files ?? []).map((f) => path.basename(String(f))))].filter((f) => f.endsWith(".html") && fs.existsSync(path.join(dir(), f)));
@@ -522,8 +528,80 @@ app.whenReady().then(async () => {
    * A picture of a rendered document (<project>/<rel>, served by the preview server): a hidden window 1280 px wide waits until the uu5
    * libraries have painted the text, then the whole page is captured. { full: JPEG for the agent and the preview, thumb: data URL for the card }.
    */
+  // the pictures of documents are made in a session of their own (cookies kept between runs) in which the user can sign in to Plus4U (docs:previewLogin):
+  // the data and pictures that need a signed-in user (business cards, files of the document) then load as in the browser. The token of the MCP proxy is not used for it.
+  const PREVIEW_PARTITION = "persist:plus4u-preview";
+  // Environments of a Page (see environments.mjs): the list, and whether the live Top can be used (a Plus4U sign-in in the preview session)
+  ipcMain.handle("env:list", guard(() => ({ environments: ENVIRONMENTS })));
+  // The window shows the real page of the document. A button in it ("Use this page as the picture") takes the picture from what the signed-in user sees: that replaces the picture of the card and the one the agent gets.
+  ipcMain.handle("docs:previewLogin", guard((_e, url) => new Promise((resolve) => {
+    const doc = parseDocUrl(String(url ?? ""));
+    if (!doc || !/^https:\/\/uuapp\.plus4u\.net\//.test(doc.url)) throw new Error("This is not a link to a Plus4U document.");
+    const home = docHome();
+    const w = new BrowserWindow({ width: 1280, height: 900, title: "Plus4U: sign in, open the page the way it should look, then press “Use this page as the picture”", webPreferences: { partition: PREVIEW_PARTITION } });
+    w.setTitle("Plus4U: sign in, open the page as it should look, then press “Use this page as the picture”");
+    w.webContents.on("page-title-updated", (e) => e.preventDefault());
+    w.webContents.setWindowOpenHandler(({ url: u }) => { if (/^https:\/\//.test(u)) w.loadURL(u); return { action: "deny" }; });
+    const BUTTON = `(() => { if (document.getElementById("__uu5mock_cap")) return; const b = document.createElement("button"); b.id = "__uu5mock_cap"; b.textContent = "Use this page as the picture"; b.style.cssText = "position:fixed;z-index:2147483647;right:16px;bottom:16px;padding:10px 16px;border-radius:10px;border:0;background:#1976d2;color:#fff;font:600 14px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.35);cursor:pointer"; b.onclick = () => console.log("__uu5mock_capture__"); document.documentElement.append(b); })()`;
+    let busy = false, result = { ok: true }; // busy: the picture is being taken, the button must stay out of it
+    const inject = () => (busy || w.isDestroyed() ? undefined : w.webContents.executeJavaScript(BUTTON).catch(() => {}));
+    w.webContents.on("dom-ready", inject);
+    const timer = setInterval(inject, 1500); // the page rebuilds its content now and then
+    w.webContents.on("console-message", async (...a) => {
+      const msg = typeof a[0]?.message === "string" ? a[0].message : a[2];
+      if (msg !== "__uu5mock_capture__" || busy) return;
+      busy = true;
+      try {
+        await w.webContents.executeJavaScript(`document.getElementById("__uu5mock_cap")?.remove()`).catch(() => {});
+        const pic = await pictureOf(w.webContents);
+        if (!pic) throw new Error("The picture could not be taken.");
+        const dir = path.join(home.dir, ".studio", "sources"), name = snapshotName(doc), shot = path.join(dir, `${name}.jpg`);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(shot, pic.full);
+        const metaFile = path.join(dir, `${name}.json`);
+        const meta = JSON.parse(await fs.promises.readFile(metaFile, "utf8").catch(() => "null"));
+        if (meta) await fs.promises.writeFile(metaFile, JSON.stringify({ ...meta, shot: `${name}.jpg` }, null, 2));
+        result = { ok: true, shot, thumb: pic.thumb };
+        w.destroy();
+      } catch (e) { busy = false; w.isDestroyed() || inject(); dialog.showErrorBox("The picture could not be taken", String(e?.message ?? e)); }
+    });
+    w.on("closed", () => { clearInterval(timer); resolve(result); });
+    w.loadURL(doc.url);
+  })));
+  /**
+   * The whole page of a window as a picture 1280 px wide: { full: JPEG for the agent and the preview, thumb: data URL for the card }. The viewport is stretched
+   * to the height of the page (also of a page that scrolls inside its own area), so the fixed and sticky parts (the bar of Plus4U, the header) are drawn once, at
+   * the top, instead of being repeated where the capture is stitched.
+   */
+  const pictureOf = async (wc) => {
+    const WIDTH = 1280, MAX = 8000;
+    const measure = () => wc.executeJavaScript(`(() => { const d = document.documentElement; let h = Math.max(d.scrollHeight, document.body?.scrollHeight ?? 0); for (const x of document.querySelectorAll("*")) if (x.scrollHeight > x.clientHeight + 50 && /auto|scroll/.test(getComputedStyle(x).overflowY)) h = Math.max(h, x.scrollHeight + Math.max(0, x.getBoundingClientRect().top + scrollY)); return Math.ceil(h); })()`).catch(() => 900);
+    const top = () => wc.executeJavaScript(`(() => { scrollTo(0, 0); for (const x of document.querySelectorAll("*")) if (x.scrollTop) x.scrollTop = 0; })()`).catch(() => {});
+    wc.debugger.attach("1.3");
+    try {
+      await top();
+      let height = Math.min(await measure(), MAX);
+      for (let i = 0; i < 3; i++) { // the page may grow when it gets room (100vh layouts, lists that load more)
+        await wc.debugger.sendCommand("Emulation.setDeviceMetricsOverride", { width: WIDTH, height, deviceScaleFactor: 1, mobile: false });
+        await new Promise((r) => setTimeout(r, 1200));
+        const next = Math.min(await measure(), MAX);
+        if (next <= height) break;
+        height = next;
+      }
+      await top();
+      const r = await wc.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 80 });
+      const img = nativeImage.createFromBuffer(Buffer.from(r.data, "base64"));
+      if (img.isEmpty()) return null;
+      const iw = img.getSize().width, ih = img.getSize().height;
+      const thumb = img.crop({ x: 0, y: 0, width: iw, height: Math.min(ih, Math.round(800 * iw / WIDTH)) }).resize({ width: 320, quality: "good" });
+      return { full: img.toJPEG(78), thumb: `data:image/jpeg;base64,${thumb.toJPEG(75).toString("base64")}` };
+    } finally {
+      await wc.debugger.sendCommand("Emulation.clearDeviceMetricsOverride").catch(() => {});
+      try { wc.debugger.detach(); } catch { /* closed */ }
+    }
+  };
   const captureSource = async (projectName, rel) => {
-    const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, offscreen: false } });
+    const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, offscreen: false, partition: PREVIEW_PARTITION } });
     try {
       await w.loadURL(`http://127.0.0.1:${port}/${encodeURIComponent(projectName)}/${rel.split(path.sep).map(encodeURIComponent).join("/")}`);
       let ready = 0;
@@ -532,26 +610,29 @@ app.whenReady().then(async () => {
         const n = await w.webContents.executeJavaScript(`(document.getElementById("uu5")?.innerText || "").trim().length`).catch(() => 0);
         ready = n >= 20 ? ready + 1 : 0;
       }
-      await new Promise((r) => setTimeout(r, 1500)); // pictures and icons
-      const wc = w.webContents;
-      wc.debugger.attach("1.3");
-      try {
-        const m = await wc.debugger.sendCommand("Page.getLayoutMetrics");
-        const size = m.cssContentSize ?? m.contentSize;
-        const height = Math.min(Math.ceil(size.height), 8000), width = 1280;
-        const r = await wc.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 80, captureBeyondViewport: true, clip: { x: 0, y: 0, width, height, scale: 1 } });
-        const img = nativeImage.createFromBuffer(Buffer.from(r.data, "base64"));
-        if (img.isEmpty()) return null;
-        const top = img.crop({ x: 0, y: 0, width, height: Math.min(height, 800) }).resize({ width: 320, quality: "good" });
-        return { full: img.toJPEG(78), thumb: `data:image/jpeg;base64,${top.toJPEG(75).toString("base64")}` };
-      } finally { try { wc.debugger.detach(); } catch { /* closed */ } }
+      // data and pictures come later than the text: wait (at most 12 s: what needs the Plus4U sign-in never loads here, a longer wait only turns its "log in" into an error) until the page is quiet: every picture finished loading, no spinner, and the same height and number of pictures on three looks in a row
+      const look = `(() => { const im = [...document.images]; const busy = im.filter((i) => !i.complete).length + document.querySelectorAll('[class*="pending" i],[class*="loading" i],[class*="spinner" i],[class*="skeleton" i]').length; return { busy, n: im.length, h: document.documentElement.scrollHeight }; })()`;
+      let last = "", same = 0;
+      for (let t = 0; t < 24 && same < 3; t++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const v = await w.webContents.executeJavaScript(look).catch(() => null);
+        const key = v ? `${v.n}/${v.h}` : "";
+        same = v && !v.busy && key === last ? same + 1 : 0;
+        last = key;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+      return await pictureOf(w.webContents);
     } finally { w.destroy(); }
   };
   ipcMain.handle("docs:login", guard((_e, url) => docFetcher.loginFor(String(url ?? ""))));
-  ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const name = current; return docFetcher.fetchDoc(dir(), String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(name, rel) }); }));
+  // on the dashboard no project is open: the documents are read into a hidden staging folder and moved into the project made for them (docs:adopt)
+  const docHome = () => (current ? { name: current, dir: projects.dirOf(current) } : { name: STAGING, dir: path.join(root, STAGING) });
+  fs.promises.rm(path.join(root, STAGING), { recursive: true, force: true }).catch(() => {}); // what an earlier run left behind
+  ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const home = docHome(); return docFetcher.fetchDoc(home.dir, String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(home.name, rel) }); }));
+  ipcMain.handle("docs:adopt", guard(() => { if (!current) throw new Error("No project is open."); return adoptStaging(root, current); }));
   // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
   ipcMain.handle("docs:shot", guard(async (_e, file) => {
-    const base = path.join(dir(), ".studio", "sources"), abs = path.resolve(String(file ?? ""));
+    const base = path.join(docHome().dir, ".studio", "sources"), abs = path.resolve(String(file ?? ""));
     if (path.dirname(abs) !== base || !/\.jpg$/.test(abs)) throw new Error("Not a picture of a document.");
     return { url: `data:image/jpeg;base64,${(await fs.promises.readFile(abs)).toString("base64")}` };
   }));

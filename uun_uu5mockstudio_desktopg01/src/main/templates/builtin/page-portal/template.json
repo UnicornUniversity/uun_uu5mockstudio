@@ -2,11 +2,12 @@
   "id": "page-portal",
   "title": "Portal",
   "level": "page",
-  "description": "A hub page: tiles that lead to applications and documents, news and contacts.",
+  "description": "A hub page for uuManagementKit: tiles that lead to applications and documents, news and contacts. Shown in the shell of uuManagementKit.",
   "prompt": "A portal page that leads the team to its applications and documents, with news and contacts",
   "order": 10,
   "kind": "portal",
   "icon": "portal",
+  "environment": "managementkit",
   "tags": [
     "uu5Bricks",
     "uu5String"

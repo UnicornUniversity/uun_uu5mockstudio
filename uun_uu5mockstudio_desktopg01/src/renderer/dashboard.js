@@ -57,12 +57,12 @@ export function projectNameFromTitle(title, taken = []) {
  * The first view of the app: write what to design (a project is made for it and the chat goes on there) or open a project from the recent ones.
  * `api` = window.studio (projectThumb, projectsFolder); the callbacks do the work in the renderer.
  */
-export function createDashboard({ api, onStart, onOpen, onNew, onFolder, onDelete, onTemplates }) {
+export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
   let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null;
   try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; } catch { /* default */ }
 
-  const refreshSend = () => { $("dash-send").disabled = !prompt.value.trim(); };
+  const refreshSend = () => { $("dash-send").disabled = !prompt.value.trim() && !docs?.count(); };
   function setPlan(on) {
     plan = on;
     for (const b of root.querySelectorAll("#dash-mode button")) { const o = (b.dataset.mode === "plan") === on; b.classList.toggle("on", o); b.setAttribute("aria-checked", String(o)); }
@@ -79,8 +79,12 @@ export function createDashboard({ api, onStart, onOpen, onNew, onFolder, onDelet
     paint();
   }
   function submit() {
-    const text = prompt.value.trim(); if (!text) return;
-    onStart({ text, plan, model: $("dash-model").value, template: selected?.id ?? null, templateLevel: selected?.level ?? null });
+    let text = prompt.value.trim();
+    if (docs && (docs.scan(text) || docs.busy())) return toast("The documents are still loading, one moment.");
+    if (docs?.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
+    if (!text && !docs?.count()) return;
+    if (!text) text = "Use the attached document.";
+    onStart({ docs: docs ? docs.takeCards() : [], text, plan, model: $("dash-model").value, template: selected?.id ?? null, templateLevel: selected?.level ?? null });
   }
   async function loadThumbs(shown, my) {
     for (const p of shown) { // one after another: the main process paints them one at a time anyway
@@ -115,7 +119,8 @@ export function createDashboard({ api, onStart, onOpen, onNew, onFolder, onDelet
     if (r?.path) { $("dash-path").textContent = r.path.split(/[\\/]/).filter(Boolean).pop() ?? r.path; $("dash-path").title = r.path; $("dash-change").disabled = Boolean(r.locked); }
   }
 
-  prompt.addEventListener("input", refreshSend);
+  prompt.addEventListener("input", () => { docs?.sync(prompt.value); refreshSend(); }); // a link deleted from the text takes its card away
+  prompt.addEventListener("paste", (e) => { docs?.scan(e.clipboardData?.getData("text") ?? ""); }); // a link to a uuBookKit / uuManagementKit document gets a card with its preview
   prompt.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
   $("dash-form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
   for (const b of root.querySelectorAll("#dash-mode button")) b.onclick = () => setPlan(b.dataset.mode === "plan");
@@ -164,7 +169,7 @@ export function createDashboard({ api, onStart, onOpen, onNew, onFolder, onDelet
   return {
     show(list, { plan: p } = {}) { projects = list ?? []; root.hidden = false; loadTemplates(); if (typeof p === "boolean") setPlan(p); search.value = ""; showFolder(); setSection(section); },
     hide() { root.hidden = true; seq++; },
-    reset() { prompt.value = ""; selected = null; refreshSend(); paintTemplates(); },
+    reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },
     focus() { prompt.focus(); },
   };
 }

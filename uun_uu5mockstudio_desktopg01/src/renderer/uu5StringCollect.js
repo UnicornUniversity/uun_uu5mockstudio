@@ -59,6 +59,8 @@ export function collectUu5Tree(opts = {}) {
     flush(); return out;
   };
   const classRules = { plain: {}, other: {} }; // class -> declarations; class -> selectors that cannot be inlined (:hover, descendants, …)
+  const matchable = []; // rules with a selector beyond `.name` that the real element can be tested against (`.hero h1`, `.grid > .card`)
+  const DYNAMIC = /::|:(hover|focus|focus-within|focus-visible|active|visited|before|after|first-line|first-letter|placeholder)/;
   const rules = opts.styleRules || (() => {
     const list = [];
     const walk = (rs) => { for (const r of rs) { if (r.selectorText !== undefined && r.style) list.push({ selector: r.selectorText, cssText: r.style.cssText }); else if (r.cssRules && !r.media) walk(r.cssRules); } };
@@ -69,16 +71,31 @@ export function collectUu5Tree(opts = {}) {
     for (const sel of String(r.selector).split(",").map((x) => x.trim())) {
       const m = sel.match(/^\.([\w-]+)$/);
       if (m) { classRules.plain[m[1]] = Object.assign(classRules.plain[m[1]] || {}, declarations(r.cssText)); continue; }
+      if (!DYNAMIC.test(sel)) matchable.push({ selector: sel, style: declarations(r.cssText) });
       for (const c of sel.match(/\.[\w-]+/g) || []) (classRules.other[c.slice(1)] = classRules.other[c.slice(1)] || []).push(sel);
     }
   }
-  const styleOfClasses = (className) => {
-    if (typeof className !== "string") return null;
+  const getComputed = opts.computed || ((d) => getComputedStyle(d));
+  const hasDom = (d) => Boolean(d && typeof d.matches === "function");
+  /** Style of a host element: its plain classes, then (with the real element at hand) the other rules that match it, `var()` replaced by the computed value, and a colour that differs from the parent's because it is inherited. */
+  const styleOfClasses = (className, dom) => {
     let style = null;
-    for (const c of className.split(/\s+/).filter(Boolean)) {
-      if (classRules.plain[c]) { style = Object.assign(style || {}, classRules.plain[c]); report.cssClasses++; }
-      for (const sel of classRules.other[c] || []) report.cssLost[sel] = true;
-      if (!classRules.plain[c] && !classRules.other[c]) report.cssLost["." + c] = true;
+    if (typeof className === "string") {
+      for (const c of className.split(/\s+/).filter(Boolean)) {
+        if (classRules.plain[c]) { style = Object.assign(style || {}, classRules.plain[c]); report.cssClasses++; }
+        for (const sel of classRules.other[c] || []) if (!hasDom(dom) || DYNAMIC.test(sel)) report.cssLost[sel] = true;
+        if (!classRules.plain[c] && !classRules.other[c]) report.cssLost["." + c] = true;
+      }
+    }
+    if (!hasDom(dom)) return style;
+    const matched = {};
+    for (const r of matchable) { let ok = false; try { ok = dom.matches(r.selector); } catch { /* a selector this engine does not know */ } if (ok) Object.assign(matched, r.style); }
+    if (Object.keys(matched).length) { style = Object.assign(style || {}, matched); report.cssClasses++; }
+    let cs = null; try { cs = getComputed(dom); } catch { /* detached */ }
+    if (cs) {
+      for (const k of Object.keys(style || {})) if (typeof style[k] === "string" && style[k].includes("var(") && cs[k]) style[k] = cs[k];
+      const parent = dom.parentElement;
+      if (parent && !(style && style.color)) { let ps = null; try { ps = getComputed(parent); } catch { /* detached */ } if (ps && cs.color && cs.color !== ps.color) style = Object.assign(style || {}, { color: cs.color }); }
     }
     return style;
   };
@@ -129,7 +146,7 @@ export function collectUu5Tree(opts = {}) {
     visit(children);
     return list;
   }
-  function hostNode(tag, props, children) {
+  function hostNode(tag, props, children, dom) {
     if (++count > MAX_NODES) { report.truncated = true; return null; }
     const p = {};
     for (const k of Object.keys(props)) {
@@ -138,7 +155,7 @@ export function collectUu5Tree(opts = {}) {
       if (typeof v === "function") { if (/^on[A-Z]/.test(k)) bump(report.fn, k); continue; }
       if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") p[k] = v;
     }
-    withStyle(props, styleOfClasses(props.className), p);
+    withStyle(props, styleOfClasses(props.className, dom), p);
     if (!children.length && !Object.keys(p).length && !/^(br|hr|img)$/.test(tag)) return null;
     return { t: "el", name: tag, host: true, props: p, children };
   }
@@ -164,13 +181,14 @@ export function collectUu5Tree(opts = {}) {
     const props = f.memoizedProps || {};
     if (f.tag === 5) {
       const own = typeof props.children === "string" || typeof props.children === "number" ? [{ t: "text", v: String(props.children) }] : childFibers(f);
-      return hostNode(f.type, props, own);
+      return hostNode(f.type, props, own, f.stateNode);
     }
     const name = COMPONENT_TAGS.includes(f.tag) ? pub(f.type) : null;
     if (name) return compNode(name, props, f.type);
     return childFibers(f); // a component of the screen, a context, a fragment, a portal: only what it rendered
   }
   function childFibers(f) { const list = []; for (let c = f.child; c; c = c.sibling) push(list, ofFiber(c)); return list; }
+  let depth = 0;
   function ofElement(el) {
     const f = byProps.get(el.props);
     if (f) return ofFiber(f);
@@ -179,7 +197,16 @@ export function collectUu5Tree(opts = {}) {
     if (typeof t === "string") return hostNode(t, el.props, ofChildren(el.props.children));
     const name = pub(t);
     if (name) return compNode(name, el.props, t);
-    bump(report.unresolved, tname(t) || "anonymous"); // a component of the screen that is not rendered (in a closed dialog, a hidden tab, …)
+    // a component of the screen that is not rendered (a hidden tab, …): a plain function component is called for the elements it returns;
+    // one that needs hooks or context throws outside React, and is reported
+    if (typeof t === "function" && !(t.prototype && t.prototype.isReactComponent) && depth < 40) {
+      let out, ok = false;
+      depth++;
+      try { out = t({ ...(t.defaultProps || {}), ...el.props }); ok = out !== undefined; } catch { /* needs hooks or context */ }
+      try { if (ok) return ofChildren(out); } finally { depth--; }
+      if (!ok) depth--;
+    }
+    bump(report.unresolved, tname(t) || "anonymous");
     return null;
   }
 

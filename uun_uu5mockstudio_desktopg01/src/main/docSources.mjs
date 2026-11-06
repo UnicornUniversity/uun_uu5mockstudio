@@ -182,7 +182,7 @@ export function resultData(result) {
 const LSI_ITEM = /<((?:Uu5Bricks|UU5\.Bricks)\.Lsi\.Item)\s+language="([\w-]+)"\s*>([\s\S]*?)<\/\1>/g;
 
 /** A multilingual uu5String (`Lsi` with an item per language) in one language: `lang`, else English, else the first one. */
-export function oneLanguage(s, lang = "cs") {
+export function oneLanguage(s, lang = "en") {
   const items = [...String(s ?? "").matchAll(LSI_ITEM)].map((m) => m[2]);
   if (new Set(items).size < 2) return String(s ?? "");
   const keep = items.includes(lang) ? lang : items.includes("en") ? "en" : items[0];
@@ -214,7 +214,7 @@ const unescape = (v) => v.slice(1, -1).replace(/\\(.)/g, "$1");
  * Readable text of a uu5String (one language): tags and uu5json data removed, the visible header / title / label attributes and the
  * nested uu5Strings of attributes (escaped, as rich text blocks hold them) kept as text, entities decoded, whitespace folded.
  */
-export function uu5Text(s, lang = "cs", depth = 0) {
+export function uu5Text(s, lang = "en", depth = 0) {
   return stripUu5Json(oneLanguage(s, lang))
     .replace(/<uu5string\s*\/>/g, "")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -341,6 +341,44 @@ export function sourcesPrompt(sources, servers = []) {
 
 // ---------- the document as a screen ----------
 
+const AUTH_TAG = /<(\/?)Uu5Bricks\.Authorization(\.Item)?(?=[\s>/])([^>]*?)(\/?)>/g;
+
+/**
+ * Uu5Bricks.Authorization shows, by the profile of the signed-in user, the first item that fits (the content of a profile, or "pending" while
+ * the profile is read). The preview does not know the user's profiles, so each group is replaced by its first item of a profile (or of
+ * any signed-in user): the content a reader sees, instead of a blank place.
+ */
+export function openAuthorization(s) {
+  const str = String(s ?? "");
+  const open = /<Uu5Bricks\.Authorization(?=[\s>])[^>]*[^/>]>|<Uu5Bricks\.Authorization>/.exec(str);
+  if (!open) return str;
+  // the end of the group: the closing tag that balances it
+  const tag = new RegExp(AUTH_TAG.source, "g");
+  tag.lastIndex = open.index + open[0].length;
+  let depth = 1, close = null;
+  for (let m; depth && (m = tag.exec(str));) {
+    if (m[2] || m[4] === "/") continue; // an item, or a group closed in place
+    depth += m[1] ? -1 : 1;
+    if (!depth) close = m;
+  }
+  if (!close) return str.slice(0, open.index + open[0].length) + openAuthorization(str.slice(open.index + open[0].length)); // not closed: left as it is
+  const inner = str.slice(open.index + open[0].length, close.index);
+  // the direct items of the group
+  const items = [];
+  let d = 0, cur = null;
+  const it = new RegExp(AUTH_TAG.source, "g");
+  for (let m; (m = it.exec(inner));) {
+    if (!m[2]) continue;
+    if (m[1]) { if (--d === 0 && cur) { items.push({ attrs: cur.attrs, body: inner.slice(cur.from, m.index) }); cur = null; } }
+    else if (m[4] !== "/") { if (d++ === 0) cur = { attrs: m[3], from: m.index + m[0].length }; }
+  }
+  const type = (x) => /\btype="(\w+)"/.exec(x.attrs)?.[1] ?? "";
+  const pick = items.find((x) => type(x) === "authorizedProfile") ?? items.find((x) => type(x) === "authenticated") ?? items.find((x) => !["pending", "notAuthenticated", "notAuthorizedProfile", "unauthenticated"].includes(type(x)));
+  return str.slice(0, open.index) + (pick ? openAuthorization(pick.body) : "") + openAuthorization(str.slice(close.index + close[0].length));
+}
+
+
+
 const escHtml = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 /** The libraries the bricks of documents come from (uu5String finds the components by their namespace). */
 export const SOURCE_LIBS = { uu5bricksg01: "1.x", uu5richtextg01: "3.x", uu5g04: "1.x", "uu5g04-bricks": "1.x" };
@@ -350,8 +388,8 @@ export const SOURCE_LIBS = { uu5bricksg01: "1.x", uu5richtextg01: "3.x", uu5g04:
  * with the uu5 libraries of the mockups and the bricks, in one language. Pictures from the binary store of the document cannot be loaded
  * outside of it. The content goes in as JSON (no markup of the document is interpreted as HTML of the page).
  */
-export function sourcePage({ title, url, kind, raw = [] }, { lang = "cs" } = {}) {
-  const sections = JSON.stringify(raw.map((x) => (/^\s*<uu5string\s*\/>/.test(x) ? x : `<uu5string/>${x}`))).replace(/</g, "\\u003c").replace(/\u2028|\u2029/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
+export function sourcePage({ title, url, kind, raw = [] }, { lang = "en" } = {}) {
+  const sections = JSON.stringify(raw.map(openAuthorization).map((x) => (/^\s*<uu5string\s*\/>/.test(x) ? x : `<uu5string/>${x}`))).replace(/</g, "\\u003c").replace(/\u2028|\u2029/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
   return `<!doctype html>
 <html lang="${escHtml(lang)}">
   <head>

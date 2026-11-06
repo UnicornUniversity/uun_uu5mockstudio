@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isEnvironment } from "./environments.mjs";
 
 /**
  * Templates for a new project: App (uu5Uve), Route (uu5Route), Component (form, list, detail, dashboard, ...) or Page (a content page
@@ -40,7 +41,7 @@ export async function parseTemplate(dir, source = "mine") {
       id, source, dir, level: manifest.level, kind: manifest.kind ? clip(manifest.kind, 40) : null, title: clip(manifest.title, 80),
       description: clip(manifest.description, 300), icon: manifest.icon ? clip(manifest.icon, 40) : null, prompt: clip(manifest.prompt, 400),
       order: Number.isFinite(manifest.order) ? manifest.order : 50, tags: Array.isArray(manifest.tags) ? manifest.tags.slice(0, 12).map((t) => clip(t, 30)) : [],
-      files: names, hasInstructions,
+      files: names, hasInstructions, ...(isEnvironment(manifest.environment) && manifest.environment !== "none" ? { environment: manifest.environment } : {}),
     },
   };
 }

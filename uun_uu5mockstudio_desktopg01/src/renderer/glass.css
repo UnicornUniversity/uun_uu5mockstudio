@@ -177,3 +177,11 @@ body[data-glass] #dash-grid.list .dc{border-radius:16px}
 body[data-glass] #dash-grid.list .dc-pic{border-color:var(--glass-sep)}
 body[data-glass] .tp-src{border-radius:14px;box-shadow:inset 0 1px 0 var(--glass-hi)}
 body[data-glass] .tp-item{border-color:var(--glass-sep)!important}
+
+/* hover of icon buttons: the glass fills above out-rank the plain hover rules, so the colour got lost (white icon on a white capsule) */
+body[data-glass] .dc-del:hover,body[data-glass] .dc-del:focus-visible{background:#e5484d;border-color:#e5484d;color:#fff}
+body[data-glass] #selmenu .fmt-tiles .fmt-tile:hover{background:var(--glass-hover);color:var(--fg)}
+body[data-glass] #selmenu .fmt-tiles .fmt-tile:hover .ico{color:var(--fg)}
+body[data-glass] #selmenu .fmt-tiles .fmt-tile.on:hover .ico{color:var(--acc)}
+body[data-glass] #selmenu .fmt-acts button:not(.primary):hover{background:var(--glass-hover);border-color:var(--glass-stroke);color:var(--fg)}
+body[data-glass] #selmenu .fmt-acts button.primary:hover{background:var(--acc);color:#fff}

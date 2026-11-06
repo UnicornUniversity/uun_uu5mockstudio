@@ -170,12 +170,13 @@ test("toSnapshot reads the ECC output of uuManagementKit (pageName, contentUu5St
   };
   const snap = toSnapshot(parseDocUrl(ECC), data);
   assert.equal(snap.title, "Odborné praxe");
-  assert.deepEqual(snap.sections, [{ title: "O praxích", text: "O praxích" }, { title: "V kostce", text: "V kostce\nDélka 550 hodin." }]);
+  assert.deepEqual(snap.sections, [{ title: "About", text: "About" }, { title: "V kostce", text: "V kostce\nDélka 550 hodin." }]);
 });
 
-test("oneLanguage keeps Czech, else English; stripUu5Json removes the data", () => {
+test("oneLanguage keeps English (or the asked language), else the first; stripUu5Json removes the data", () => {
   const lsi = (l) => `<Uu5Bricks.Lsi.Item language="${l}">${l}</Uu5Bricks.Lsi.Item>`;
-  assert.equal(oneLanguage(`<Uu5Bricks.Lsi>${lsi("en")}${lsi("cs")}</Uu5Bricks.Lsi>`), "<Uu5Bricks.Lsi>cs</Uu5Bricks.Lsi>");
+  assert.equal(oneLanguage(`<Uu5Bricks.Lsi>${lsi("en")}${lsi("cs")}</Uu5Bricks.Lsi>`), "<Uu5Bricks.Lsi>en</Uu5Bricks.Lsi>");
+  assert.equal(oneLanguage(`<Uu5Bricks.Lsi>${lsi("en")}${lsi("cs")}</Uu5Bricks.Lsi>`, "cs"), "<Uu5Bricks.Lsi>cs</Uu5Bricks.Lsi>");
   assert.equal(oneLanguage(`${lsi("de")}${lsi("en")}`), "en");
   assert.equal(stripUu5Json('a style="<uu5json/>{"x": {"y": [1]}}" b'), 'a style="" b');
 });
@@ -231,4 +232,15 @@ test("imageRefs and localizeImages also take links to the document's file store 
   const out = localizeImages(raw, { [a]: { path: "/P/.studio/sources/assets/a.png", name: "a.png" }, [b]: { path: "/P/.studio/sources/assets/b.png", name: "b.png" } });
   assert.equal(out[0], '<Uu5ImagingBricks.Image src="/P/.studio/sources/assets/a.png"/>');
   assert.equal(out[1], '<Uu5ImagingBricks.Image src=\\"/P/.studio/sources/assets/b.png\\"/>');
+});
+
+import { openAuthorization } from "../src/main/docSources.mjs";
+test("openAuthorization: a group of Uu5Bricks.Authorization becomes the content of its first profile item, nested groups too", () => {
+  const it = (a, body) => `<Uu5Bricks.Authorization.Item ${a}>${body}</Uu5Bricks.Authorization.Item>`;
+  const g = (...items) => `<Uu5Bricks.Authorization>${items.join("")}</Uu5Bricks.Authorization>`;
+  assert.equal(openAuthorization("<p>x</p>"), "<p>x</p>");
+  assert.equal(openAuthorization(`A${g(it('type="pending"', "<Pending/>"), it('_name="R" type="authorizedProfile" artifactUri="u"', "ONE"), it('type="authorizedProfile"', "TWO"))}B`), "AONEB");
+  assert.equal(openAuthorization(g(it('type="pending"', "P"), it('type="authorizedProfile"', `<Tabs>${g(it('type="authorizedProfile"', "IN"))}</Tabs>`))), "<Tabs>IN</Tabs>");
+  assert.equal(openAuthorization(`${g(it('type="authorizedProfile"', "a"))}-${g(it('type="authorizedProfile"', "b"))}`), "a-b");
+  assert.equal(openAuthorization(g(it('type="pending"', "P"))), "");
 });

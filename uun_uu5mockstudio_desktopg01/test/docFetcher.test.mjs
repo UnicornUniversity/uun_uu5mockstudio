@@ -139,3 +139,26 @@ test("loginFor signs in for the kind of the link", async (t) => {
   assert.deepEqual(await f.loginFor(ECC), { ok: true });
   assert.match((await f.loginFor("https://example.com/x")).error, /not a link/);
 });
+
+import { adoptStaging, STAGING } from "../src/main/docFetcher.mjs";
+import { mkdtemp as mkt, mkdir as mkd, writeFile as wf, readFile as rf } from "node:fs/promises";
+import { tmpdir as td } from "node:os";
+import { join as jn, sep as sp } from "node:path";
+
+test("adoptStaging moves the documents read on the dashboard into the project and repoints their paths", async () => {
+  const root = await mkt(jn(td(), "adopt-"));
+  const src = jn(root, STAGING, ".studio", "sources");
+  await mkd(jn(src, "assets"), { recursive: true });
+  await wf(jn(src, "doc.md"), `see ${jn(src, "assets", "a.png")}`);
+  await wf(jn(src, "doc.html"), `<img src="/${STAGING}/.studio/sources/assets/a.png">`);
+  await wf(jn(src, "assets", "a.png"), "x");
+  await mkd(jn(root, "Proj"));
+  const r = await adoptStaging(root, "Proj");
+  assert.equal(r.from, jn(root, STAGING) + sp);
+  assert.equal(r.to, jn(root, "Proj") + sp);
+  const dest = jn(root, "Proj", ".studio", "sources");
+  assert.equal(await rf(jn(dest, "doc.md"), "utf8"), `see ${jn(dest, "assets", "a.png")}`);
+  assert.equal(await rf(jn(dest, "doc.html"), "utf8"), `<img src="/Proj/.studio/sources/assets/a.png">`);
+  assert.equal(await rf(jn(dest, "assets", "a.png"), "utf8"), "x");
+  assert.equal(await adoptStaging(root, "Proj"), null); // the staging folder is gone
+});

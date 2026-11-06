@@ -390,6 +390,9 @@ window.__feed = onAgentEvent; // lets automated checks play events of the agent 
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
 let saveLayoutTimer, savedLayout = {}, rules = null, desc = null;
+// environments (uuManagementKit around the content): offered on every screen
+let projectLevel = null, defaultEnv = null, envInfo = null;
+async function refreshEnvs() { const r = await window.studio.envList(); if (!r.error) { envInfo = r; for (const f of canvas.all()) f.syncEnv?.(); } }
 const persistLayout = () => {
   if (loading || !project) return;
   const p = project, layout = { frames: canvas.layout(), camera: canvas.camera() };
@@ -520,7 +523,7 @@ async function askAgentToDelete({ file, name, ordinal, reason }) {
 }
 const inspector = createInspector({ onPick: showPick, onEscape: () => escapeEdit(), onMove: moveInScreen, onDelete: deleteInScreen, onDuplicate: duplicateInScreen, onText: editTextInScreen, onItemMove: moveItemInScreen });
 const canvas = createCanvas({
-  root: $("canvas"), world: $("world"), preloadUrl: () => webviewPreload, urlFor: (f) => `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(f)}`,
+  root: $("canvas"), world: $("world"), preloadUrl: () => webviewPreload, urlFor: (f, env) => `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(f)}${env ? `?env=${encodeURIComponent(env)}` : ""}`, getEnvs: () => (envInfo ? { ...envInfo, refresh: refreshEnvs } : null),
   onReady: (file, id) => window.studio.registerView(file, id),
   onDelete: (file) => deleteScreen(file),
   onFullscreen: (file) => toggleFullscreen(file),
@@ -546,7 +549,7 @@ const canvas = createCanvas({
 });
 function syncFrames(screens) {
   for (const f of screens) if (!canvas.get(f)) {
-    const fr = canvas.addFrame(f, savedLayout[f]);
+    const fr = canvas.addFrame(f, savedLayout[f] ?? (defaultEnv ? { env: defaultEnv } : undefined));
     fr.view.addEventListener("console-message", (e) => inspector.handleConsole(f, e.message));
   }
   for (const f of canvas.files()) if (!screens.includes(f)) canvas.removeFrame(f);
@@ -860,7 +863,8 @@ async function openFullscreen(file) {
   fsView = document.createElement("webview");
   fsView.setAttribute("preload", webviewPreload); fsView.setAttribute("webpreferences", "backgroundThrottling=no");
   fsView.addEventListener("ipc-message", (e) => { if (e.channel === "studio-fullscreen") closeFullscreen(); else if (e.channel === "studio-escape") { if (!$("fsdevmenu").hidden) closeFsDevMenu(); else closeFullscreen(); } });
-  fsView.src = `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(file)}`;
+  const vw = canvas.viewOf(file);
+  fsView.src = vw?.url ?? `http://127.0.0.1:${port}/${encodeURIComponent(project)}/${encodeURIComponent(file)}`;
   fsWrap = Object.assign(document.createElement("div"), { className: "fswrap" }); fsWrap.append(fsView); fsFreeze = attachFreeze(fsView, fsWrap);
   $("fsstage").replaceChildren(fsWrap); $("fs").hidden = false; layoutFullscreen();
   await window.studio.setFullScreen(true);
@@ -1417,6 +1421,7 @@ function loadProject(info) {
   entries = info.chat ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
   log.replaceChildren(); entries.forEach(paint); ctxNow = 0; updateCtxWarn();
+  projectLevel = info.level ?? null; defaultEnv = info.environment ?? null; refreshEnvs();
   canvas.removeAll(); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
   showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); memory.setNotes(info.notes); memory.loadTexts();
@@ -1449,8 +1454,9 @@ const templatesDialog = createTemplatesDialog({
   confirm: (text) => askConfirm({ title: "Delete template?", detail: text }),
 });
 let autoNamed = null, autoLevel = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
+const dashDocs = createDocCards({ onChange: () => { const box = $("dash-attachments"); box.replaceChildren(); dashDocs.renderInto(box); box.hidden = !dashDocs.count(); $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count(); }, toast }); // Plus4U documents pasted on the dashboard
 const dashboard = createDashboard({
-  api: window.studio,
+  api: window.studio, docs: dashDocs, toast,
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
   onNew: () => newProjectFlow(),
   onDelete: async (name) => {
@@ -1459,12 +1465,13 @@ const dashboard = createDashboard({
   },
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
   onTemplates: () => templatesDialog.open(),
-  onStart: async ({ text, plan, model, template, templateLevel }) => {
+  onStart: async ({ text, plan, model, template, templateLevel, docs = [] }) => {
     if (!ready) return toast("Claude Code is not ready.", { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
     if (!project || r?.error) return;
-    if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); }
+    if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); else { projectLevel = a.level ?? null; defaultEnv = a.environment ?? null; } }
     autoNamed = project; autoLevel = templateLevel; // once the agent has made a screen, the project is renamed after it
+    if (docs.length) docCards.adopt(docs, await window.studio.docAdopt().catch(() => null)); // the documents read on the dashboard move into the new project
     dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
     $("form").requestSubmit();
   },

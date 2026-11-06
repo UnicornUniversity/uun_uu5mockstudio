@@ -15,15 +15,27 @@ const GAP = 120, TITLE_H = 34, MIN_Z = 0.1, MAX_Z = 2;
 /** The menu of the device sizes of a screen: a normal-sized popover on the page (not inside the scaled title bar of the frame). */
 let devMenu = null;
 function closeDevMenu() { if (!devMenu) return; removeEventListener("pointerdown", devMenu.away, true); removeEventListener("keydown", devMenu.key, true); devMenu.el.remove(); devMenu = null; }
-function openDevMenu(f, anchor) {
+function openDevMenu(f, anchor, envs, mode = "size") {
   const was = devMenu?.anchor === anchor; closeDevMenu(); if (was) return;
   const m = document.createElement("div"); m.id = "devmenu"; m.setAttribute("role", "menu");
-  for (const o of f.devSel.options) {
-    const b = Object.assign(document.createElement("button"), { type: "button", textContent: o.textContent, className: o.value === f.devSel.value ? "on" : "" });
-    b.setAttribute("role", "menuitemradio"); b.setAttribute("aria-checked", String(o.value === f.devSel.value));
-    b.onclick = () => { closeDevMenu(); f.devSel.value = o.value; f.devSel.dispatchEvent(new Event("change")); };
-    m.append(b);
-  }
+  const item = (text, on, role, fn, { disabled = false, title = "" } = {}) => {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: text, className: on ? "on" : "", disabled, title });
+    b.setAttribute("role", role); b.setAttribute("aria-checked", String(Boolean(on)));
+    if (disabled) b.setAttribute("aria-disabled", "true"); else b.onclick = () => { closeDevMenu(); fn(); };
+    return b;
+  };
+  const fill = () => {
+    m.replaceChildren();
+    if (mode === "size") for (const o of f.devSel.options) m.append(item(o.textContent, o.value === f.devSel.value, "menuitemradio", () => { f.devSel.value = o.value; f.devSel.dispatchEvent(new Event("change")); }));
+    // the title bar of a narrow frame has no room for the environment button: its menu then carries the environments too
+    const info = mode === "env" || Number(f.el.dataset.compact) >= 2 ? envs?.() : null;
+    if (!info) return;
+    const sep = (t) => { const d = document.createElement("div"); d.className = "dm-sep"; d.textContent = t; d.setAttribute("role", "separator"); return d; };
+    m.append(sep("Shown in"));
+    for (const e of info.environments) m.append(item(e.label, (f.env ?? "none") === e.id, "menuitemradio", () => f.setEnv(e.id)));
+  };
+  fill();
+  if (mode === "env") envs?.()?.refresh?.().then(() => { if (devMenu?.el === m) fill(); });
   document.body.append(m);
   const r = anchor.getBoundingClientRect();
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; m.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8)) + "px";
@@ -32,7 +44,8 @@ function openDevMenu(f, anchor) {
   setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
 }
 
-export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset }) {
+export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs }) {
+  const envsFor = () => getEnvs?.() ?? null; // { environments, refresh } or null
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
   let cam = { x: 40, y: 40, z: 0.5 };
@@ -149,9 +162,9 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
   function addFrame(file, saved = {}) {
     if (frames.has(file)) return frames.get(file);
     const right = [...frames.values()].reduce((m, f) => Math.max(m, f.x + size(f).w), -GAP);
-    const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h };
+    const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h, env: saved.env === "managementkit" ? "managementkit" : null }; // (a layout saved with the removed live environment starts as content only)
     const el = document.createElement("div"); el.className = "frame";
-    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="ftpl" title="Save as template…" aria-label="Save as template"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
+    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button type="button" class="fenvbtn" aria-haspopup="menu" title="What the page is shown in: content only, uuManagementKit, iPhone frame"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="ftpl" title="Save as template…" aria-label="Save as template"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
     const fname = el.querySelector(".fname"); fname.textContent = file.replace(/\.html$/, ""); fname.title = file; // full name on hover
     const devSel = el.querySelector(".fdev");
     devSel.innerHTML = Object.entries(DEVICES).map(([k, d]) => `<option value="${k}">${d.label} ${d.w}×${d.h}</option>`).join("") + `<option value="custom">Custom size…</option>`;
@@ -159,13 +172,13 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     const devBtn = el.querySelector(".fdevbtn");
     const syncDev = () => { devBtn.textContent = `${devSel.selectedOptions[0]?.textContent ?? ""} ▾`; };
     devBtn.onpointerdown = (e) => e.stopPropagation();
-    devBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, devBtn); };
+    devBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, devBtn, envsFor); };
     const body = el.querySelector(".fbody");
     const newWebview = () => {
       const v = document.createElement("webview");
       v.setAttribute("webpreferences", "backgroundThrottling=no");
       const pre = preloadUrl?.(); if (pre) v.setAttribute("preload", pre); // must be set before src
-      v.src = urlFor(file);
+      v.src = urlFor(file, f.env);
       return v;
     };
     const view = newWebview();
@@ -177,6 +190,12 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     el.append(desc);
     Object.assign(f, { el, body, view, shield, desc, devSel, syncDev, customOpt: devSel.querySelector('option[value="custom"]') });
     syncDev();
+    f.setEnv = (id) => { f.env = id === "none" ? null : id; f.syncEnv?.(); onChange?.("layout"); f.reloadSoft(); };
+    const envBtn = el.querySelector(".fenvbtn");
+    f.syncEnv = () => { const label = getEnvs?.()?.environments?.find((e) => e.id === (f.env ?? "none"))?.label ?? (f.env ? "uuManagementKit" : "Content only"); envBtn.textContent = `${label} ▾`; envBtn.classList.toggle("on", Boolean(f.env)); };
+    envBtn.onpointerdown = (e) => e.stopPropagation();
+    envBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, envBtn, envsFor, "env"); };
+    f.syncEnv();
     const wire = (v) => {
     v.addEventListener("ipc-message", (e) => {
       if (e.channel === "studio-contextmenu") {
@@ -316,6 +335,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
   return {
     files: () => [...frames.keys()],
     get: (file) => frames.get(file),
+    /** The address and session of a screen with its environment, for a second view of it (full screen). */
+    viewOf: (file) => { const f = frames.get(file); return f ? { url: urlFor(file, f.env) } : null; },
     all: () => [...frames.values()],
     addFrame, removeFrame, select,
     removeAll: () => { for (const f of [...frames.keys()]) removeFrame(f); },
@@ -362,8 +383,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     },
     setWorking: (file) => { workingFile = file; for (const f of frames.values()) f.el.classList.toggle("working", f.file === file); },
     /** The menu of the device sizes of one screen at a point (the title bar of a narrow frame has no room for its own button). */
-    openDeviceMenu: (file, x, y) => { const f = frames.get(file); if (f) openDevMenu(f, { getBoundingClientRect: () => ({ left: x, bottom: y }) }); },
+    openDeviceMenu: (file, x, y) => { const f = frames.get(file); if (f) openDevMenu(f, { getBoundingClientRect: () => ({ left: x, bottom: y }) }, envsFor); },
     setDeviceAll: (device) => { for (const f of frames.values()) { f.device = device; layoutFrame(f); } onChange?.("layout"); },
-    layout: () => Object.fromEntries([...frames.values()].map((f) => [f.file, { x: f.x, y: f.y, device: f.device, ...(f.device === "custom" ? { w: f.w, h: f.h } : {}), ...(Object.keys(f.notePos).some((id) => f.noteEls.has(id)) ? { notes: Object.fromEntries(Object.entries(f.notePos).filter(([id]) => f.noteEls.has(id))) } : {}) }])),
+    layout: () => Object.fromEntries([...frames.values()].map((f) => [f.file, { x: f.x, y: f.y, device: f.device, ...(f.device === "custom" ? { w: f.w, h: f.h } : {}), ...(f.env ? { env: f.env } : {}), ...(Object.keys(f.notePos).some((id) => f.noteEls.has(id)) ? { notes: Object.fromEntries(Object.entries(f.notePos).filter(([id]) => f.noteEls.has(id))) } : {}) }])),
   };
 }
