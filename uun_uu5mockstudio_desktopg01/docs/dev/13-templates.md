@@ -73,3 +73,11 @@ The catalogue (library browser, `@` suggestions, plan checks, drop snippets) rea
 ## Not done yet
 
 Replacing the screens of one of my templates (save it again under the same id), adding a Route / Component template to an existing project, generated previews of the templates, an editor.
+
+## Custom frames (environments from a real page)
+
+An environment is what a page is drawn in (`environments.mjs`). Besides the built-in `managementkit`, the user can make **custom frames** from any page: Screen title bar → "Shown in" → "New frame from a link…".
+
+- `frames.mjs`: a frame is a folder `frame.json` (label, url, content-slot `offset`), `frame.html` (the shell with `{{title}}`, `{{breadcrumb}}`, `{{parents}}`), `frame.css`. Project frames live in `<project>/.studio/frames/`, global ones in `<userData>/frames/`. The environment id is `custom:<scope>:<id>`; `wrapPage(html, env, resolveFrame)` draws it the same way as the built-in shell (fixed, `data-uu5mock-shell`, so it never reaches uu5String or the agent's files).
+- `frameCapture.mjs`: `PICKER` (choose the content slot by a click) and `EXTRACT` (everything outside the slot becomes flat, absolutely placed boxes) run in the preview window opened by `frames:capture` (session `persist:plus4u-preview`, so the Plus4U sign-in is kept). The draft is written to `<project>/.studio/frames-draft/`; `frames:saveDraft` stores it as a frame. Optionally Claude tidies the saved frame up through the chat (`tidyPrompt` in `frameDialog.js`).
+- IPC: `env:list` (built-in + frames), `frames:capture`, `frames:saveDraft`, `frames:save`, `frames:remove`. Tests: `test/frames.test.mjs`.

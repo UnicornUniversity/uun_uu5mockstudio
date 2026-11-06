@@ -29,7 +29,7 @@ export function startMockServer(root, { routes = {}, transformHtml, dynamic } = 
       if (rel.split("/").some((seg) => seg.startsWith(".") && seg.length > 1) && !SOURCE_PAGE.test(rel)) throw new Error("hidden"); // keeps .studio/ state private (only the rendered Plus4U documents are served)
       const data = await readFile(file);
       res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
-      res.end(transformHtml && path.extname(file) === ".html" ? transformHtml(data.toString("utf8"), url.searchParams) : data);
+      res.end(transformHtml && path.extname(file) === ".html" ? transformHtml(data.toString("utf8"), url.searchParams, rel) : data);
     } catch {
       res.writeHead(404).end("Not found");
     }

@@ -32,7 +32,20 @@ function openDevMenu(f, anchor, envs, mode = "size") {
     if (!info) return;
     const sep = (t) => { const d = document.createElement("div"); d.className = "dm-sep"; d.textContent = t; d.setAttribute("role", "separator"); return d; };
     m.append(sep("Shown in"));
-    for (const e of info.environments) m.append(item(e.label, (f.env ?? "none") === e.id, "menuitemradio", () => f.setEnv(e.id)));
+    for (const e of info.environments) {
+      const row = item(e.scope ? `${e.label} (${e.scope})` : e.label, (f.env ?? "none") === e.id, "menuitemradio", () => f.setEnv(e.id));
+      if (!e.scope) { m.append(row); continue; }
+      // a frame of mine: a small trash button asks the app to delete it
+      const del = Object.assign(document.createElement("button"), { type: "button", className: "dm-del", title: `Delete the frame “${e.label}”`, textContent: "🗑" });
+      del.setAttribute("aria-label", `Delete the frame ${e.label}`);
+      del.onclick = () => { closeDevMenu(); document.dispatchEvent(new CustomEvent("uu5mock:delete-frame", { detail: { env: e.id, label: e.label, scope: e.scope } })); };
+      const wrap = Object.assign(document.createElement("div"), { className: "dm-row" });
+      const edit = Object.assign(document.createElement("button"), { type: "button", className: "dm-del", title: `Edit the frame “${e.label}”`, textContent: "✎" });
+      edit.setAttribute("aria-label", `Edit the frame ${e.label}`);
+      edit.onclick = () => { closeDevMenu(); document.dispatchEvent(new CustomEvent("uu5mock:edit-frame", { detail: { env: e.id, label: e.label, scope: e.scope } })); };
+      wrap.append(row, edit, del); m.append(wrap);
+    }
+    m.append(item("New frame from a link…", false, "menuitem", () => document.dispatchEvent(new CustomEvent("uu5mock:new-frame"))));
   };
   fill();
   if (mode === "env") envs?.()?.refresh?.().then(() => { if (devMenu?.el === m) fill(); });
@@ -162,7 +175,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
   function addFrame(file, saved = {}) {
     if (frames.has(file)) return frames.get(file);
     const right = [...frames.values()].reduce((m, f) => Math.max(m, f.x + size(f).w), -GAP);
-    const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h, env: saved.env === "managementkit" ? "managementkit" : null }; // (a layout saved with the removed live environment starts as content only)
+    const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h, env: saved.env === "managementkit" || /^custom:(project|global):[a-z0-9-]+$/.test(saved.env ?? "") ? saved.env : null }; // (a layout saved with the removed live environment starts as content only)
     const el = document.createElement("div"); el.className = "frame";
     el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button type="button" class="fenvbtn" aria-haspopup="menu" title="What the page is shown in: content only, uuManagementKit, iPhone frame"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="ftpl" title="Save as template…" aria-label="Save as template"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
     const fname = el.querySelector(".fname"); fname.textContent = file.replace(/\.html$/, ""); fname.title = file; // full name on hover
@@ -192,7 +205,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     syncDev();
     f.setEnv = (id) => { f.env = id === "none" ? null : id; f.syncEnv?.(); onChange?.("layout"); f.reloadSoft(); };
     const envBtn = el.querySelector(".fenvbtn");
-    f.syncEnv = () => { const label = getEnvs?.()?.environments?.find((e) => e.id === (f.env ?? "none"))?.label ?? (f.env ? "uuManagementKit" : "Content only"); envBtn.textContent = `${label} ▾`; envBtn.classList.toggle("on", Boolean(f.env)); };
+    f.syncEnv = () => { const label = getEnvs?.()?.environments?.find((e) => e.id === (f.env ?? "none"))?.label ?? (f.env === "managementkit" ? "uuApp default" : f.env ? "Frame" : "Content only"); envBtn.textContent = `${label} ▾`; envBtn.classList.toggle("on", Boolean(f.env)); };
     envBtn.onpointerdown = (e) => e.stopPropagation();
     envBtn.onclick = (e) => { e.stopPropagation(); openDevMenu(f, envBtn, envsFor, "env"); };
     f.syncEnv();

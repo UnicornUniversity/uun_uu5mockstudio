@@ -15,6 +15,7 @@ import { attachFreeze } from "./freeze.js";
 import { usageDelta, usageLabel, usageTitle, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
 import { openTemplateSave } from "./templateSaveDialog.js";
+import { openFrameDialog } from "./frameDialog.js";
 import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
@@ -1446,6 +1447,42 @@ const saveAsTemplate = async (file) => {
   if (!project || !f) return toast("Open a project with a screen first.", { err: true });
   await openTemplateSave({ api: window.studio, files: [f], toast });
 };
+// the frame is written after the dialog has closed: the screens it concerns pulse until it is done
+const framing = (fs, on) => { for (const f of fs) f?.el.classList.toggle("framing", on); };
+document.addEventListener("uu5mock:new-frame", async () => {
+  if (!project) return toast("Open a project first.", { err: true });
+  const r = await openFrameDialog({ api: window.studio, toast, send: (message) => window.studio.send(message, sentModel || undefined, { plan: false, economy }) });
+  if (!r?.saving) return;
+  const f = canvas.get(canvas.selected() ?? canvas.files()[0]); // the frame goes onto the screen it was made from
+  framing([f], true);
+  const env = await r.saving.catch(() => null);
+  framing([f], false);
+  if (env) { await refreshEnvs(); f?.setEnv(env); }
+});
+document.addEventListener("uu5mock:edit-frame", async (e) => {
+  const { env, label } = e.detail;
+  const d = await window.studio.frameGet(env); // the stored link
+  if (d?.error) return toast(d.error, { err: true });
+  const r = await openFrameDialog({ api: window.studio, toast, send: (message) => window.studio.send(message, sentModel || undefined, { plan: false, economy }), edit: { env, label: d.label ?? label, url: d.url ?? "", scope: d.scope } });
+  if (!r?.saving) return;
+  const using = canvas.files().map((file) => canvas.get(file)).filter((f) => f?.env === env);
+  framing(using, true);
+  const now = await r.saving.catch(() => null); // the id of the frame afterwards (a changed visibility gives it a new one)
+  framing(using, false);
+  if (!now) return;
+  await refreshEnvs();
+  for (const f of using) { if (now !== env) f.setEnv(now); else f.reloadSoft(); }
+});
+document.addEventListener("uu5mock:delete-frame", async (e) => {
+  const { env, label, scope } = e.detail;
+  const ok = await askConfirm({ title: `Delete the frame “${label}”?`, detail: scope === "global" ? "It is available in all projects: it will be gone from all of them (screens that use it show the content only). It is moved to the trash, so you can restore it." : "Screens of this project that use it show the content only. It is moved to the trash, so you can restore it.", ok: "Delete frame" });
+  if (!ok) return;
+  const r = await window.studio.frameRemove(env);
+  if (r?.error) return toast(r.error, { err: true });
+  for (const file of canvas.files()) { const f = canvas.get(file); if (f?.env === env) f.setEnv("none"); }
+  await refreshEnvs();
+  toast(`Frame “${label}” deleted.`);
+});
 const templatesDialog = createTemplatesDialog({
   api: window.studio, toast,
   canNew: () => Boolean(project && canvas.files().length),

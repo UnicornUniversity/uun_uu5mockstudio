@@ -18,6 +18,8 @@ import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerC
 import { shouldCheck } from "./pluginUpdates.mjs";
 import { createCdnCache } from "./cdnCache.mjs";
 import { wrapPage, ENVIRONMENTS } from "./environments.mjs";
+import { PICKER, EXTRACT, SLOT_MESSAGE, SAVE_MESSAGE } from "./frameCapture.mjs";
+import { loadFrame, listFrames, saveFrame, updateFrame, readFrame, parseFrameEnv, frameEnv, SCOPES } from "./frames.mjs";
 import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
@@ -71,8 +73,10 @@ app.whenReady().then(async () => {
   const dir = () => { if (!current) throw new Error("No project is open."); return projects.dirOf(current); };
   const listScreens = () => fs.readdirSync(dir()).filter((f) => f.endsWith(".html"));
 
+  // custom frames (frames.mjs): per project in <project>/.studio/frames, global in <userData>/frames
+  const frameBase = (scope, project) => (scope === "global" ? path.join(app.getPath("userData"), "frames") : project && !project.startsWith(".") ? path.join(root, project, ".studio", "frames") : null);
   const routes = Object.fromEntries(WARMUP_GROUPS.map((g, i) => [`/__warmup/${i}.html`, warmupPage(g)]));
-  const { port } = await startMockServer(root, { routes, transformHtml: (html, q) => wrapPage(tagHtml(html), q?.get("env")), dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
+  const { port } = await startMockServer(root, { routes, transformHtml: (html, q, rel) => wrapPage(tagHtml(html), q?.get("env"), (env) => loadFrame((scope) => frameBase(scope, String(rel ?? "").split("/")[1]), env)), dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
 
   // Record/replay cache for the plus4u CDN: mockups keep rendering offline once their libraries have been loaded.
   let offline = Boolean(loadApp().offline), warming = false;
@@ -532,7 +536,24 @@ app.whenReady().then(async () => {
   // the data and pictures that need a signed-in user (business cards, files of the document) then load as in the browser. The token of the MCP proxy is not used for it.
   const PREVIEW_PARTITION = "persist:plus4u-preview";
   // Environments of a Page (see environments.mjs): the list, and whether the live Top can be used (a Plus4U sign-in in the preview session)
-  ipcMain.handle("env:list", guard(() => ({ environments: ENVIRONMENTS })));
+  ipcMain.handle("env:list", guard(() => ({ environments: [...ENVIRONMENTS, ...listFrames((scope) => frameBase(scope, current))] })));
+  ipcMain.handle("frames:save", guard((_e, scope, frame) => { const base = frameBase(scope, current); if (!base) throw new Error("No project is open."); return saveFrame(base, scope, frame ?? {}); }));
+  // the draft taken by frames:capture becomes a frame of the open project or a global one
+  ipcMain.handle("frames:saveDraft", guard(async (_e, scope, label) => {
+    const base = frameBase(scope, current); if (!base) throw new Error("No project is open.");
+    const draftDir = path.join(dir(), ".studio", "frames-draft");
+    const read = (n) => fs.promises.readFile(path.join(draftDir, n), "utf8");
+    let meta; try { meta = JSON.parse(await read("draft.json")); } catch { throw new Error("There is no captured page yet."); }
+    const saved = saveFrame(base, scope, { label, url: meta.url, html: await read("frame.html"), css: await read("frame.css").catch(() => ""), offset: meta.offset });
+    await fs.promises.cp(path.join(draftDir, "img"), path.join(base, saved.id, "img"), { recursive: true }).catch(() => {}); // the pictures of icons
+    return { ...saved, dir: path.join(base, saved.id) };
+  }));
+  ipcMain.handle("frames:remove", guard(async (_e, env) => { // moved to the trash, so it can be restored
+    const p = parseFrameEnv(env); if (!p) throw new Error("Unknown frame.");
+    const base = frameBase(p.scope, current), folder = base && path.join(base, p.id);
+    if (!folder || !fs.existsSync(folder)) throw new Error("The frame is already gone.");
+    await shell.trashItem(folder); return true;
+  }));
   // The window shows the real page of the document. A button in it ("Use this page as the picture") takes the picture from what the signed-in user sees: that replaces the picture of the card and the one the agent gets.
   ipcMain.handle("docs:previewLogin", guard((_e, url) => new Promise((resolve) => {
     const doc = parseDocUrl(String(url ?? ""));
@@ -568,6 +589,95 @@ app.whenReady().then(async () => {
     w.on("closed", () => { clearInterval(timer); resolve(result); });
     w.loadURL(doc.url);
   })));
+  // Custom frames: the window shows a real page (any https page; the Plus4U sign-in of the preview session is kept); the user chooses the content slot and the rest is taken as a draft frame.
+  // The draft goes to <project>/.studio/frames-draft/ (frame.html, frame.css, draft.json, shot.jpg) for Claude to tidy up; frames:save then stores the finished frame.
+  const captureFrame = (url, preset = null) => new Promise((resolve) => {
+    const u = String(url ?? "").trim();
+    if (!/^https:\/\//i.test(u)) throw new Error("Paste a link that starts with https://");
+    if (!current) throw new Error("Open a project first.");
+    const outDir = path.join(dir(), ".studio", "frames-draft");
+    const w = new BrowserWindow({ width: 1440, height: 900, webPreferences: { partition: PREVIEW_PARTITION } });
+    w.setTitle("Sign in and open the page, then “Choose content area” and “Save as frame”");
+    w.webContents.on("page-title-updated", (e) => e.preventDefault());
+    let busy = false, saving = false, result = { ok: false, cancelled: true };
+    const presetJs = preset ? `window.__uu5mockPreset = ${JSON.stringify(preset)};` : "";
+    const inject = () => (busy || w.isDestroyed() ? undefined : w.webContents.executeJavaScript(presetJs + PICKER).catch(() => {}));
+    w.webContents.on("dom-ready", inject);
+    const timer = setInterval(inject, 1500);
+    w.webContents.on("console-message", async (...a) => {
+      const msg = typeof a[0]?.message === "string" ? a[0].message : a[2];
+      if (msg !== SAVE_MESSAGE || busy) return;
+      busy = true;
+      try {
+        const draft = await w.webContents.executeJavaScript(EXTRACT);
+        if (!draft) throw new Error("Choose the content area first.");
+        // one picture of the window (the page is as the user left it), every icon is cut out of it: a capture per icon was slow
+        const view = await w.webContents.capturePage();
+        const pageUrl = w.webContents.getURL();
+        saving = true;
+        w.destroy(); // the window is gone at once: the rest is only writing files
+        const { width: vw, height: vh } = view.getSize(), scale = vw / (draft.width || vw);
+        await fs.promises.rm(outDir, { recursive: true, force: true });
+        await fs.promises.mkdir(path.join(outDir, "img"), { recursive: true });
+        for (const im of draft.images ?? []) { // background pictures read in the page
+          const m = /^data:[^;]+;base64,(.*)$/s.exec(im.data ?? ""); if (m && /^bg\d+\.(png|jpg|webp|svg|gif)$/.test(im.name)) await fs.promises.writeFile(path.join(outDir, "img", im.name), Buffer.from(m[1], "base64"));
+        }
+        for (const [k, r] of (draft.rasters ?? []).entries()) {
+          const x = Math.max(0, Math.min(vw - 1, Math.round(r.left * scale))), y = Math.max(0, Math.min(vh - 1, Math.round(r.top * scale)));
+          const cw = Math.max(1, Math.min(vw - x, Math.ceil(r.width * scale))), ch = Math.max(1, Math.min(vh - y, Math.ceil(r.height * scale)));
+          const img = view.crop({ x, y, width: cw, height: ch });
+          if (!img.isEmpty()) await fs.promises.writeFile(path.join(outDir, "img", `r${k}.png`), img.toPNG());
+        }
+        await fs.promises.writeFile(path.join(outDir, "frame.html"), draft.html);
+        await fs.promises.writeFile(path.join(outDir, "frame.css"), draft.css);
+        await fs.promises.writeFile(path.join(outDir, "shot.jpg"), view.toJPEG(82)); // the page as it was, for Claude to compare with
+        await fs.promises.writeFile(path.join(outDir, "draft.json"), JSON.stringify({ url: pageUrl, title: draft.title, offset: draft.offset, width: draft.width, height: draft.height, boxes: draft.boxes }, null, 2));
+        resolve({ ok: true, dir: outDir, url: pageUrl, title: draft.title, offset: draft.offset, boxes: draft.boxes, shot: path.join(outDir, "shot.jpg") });
+      } catch (e) {
+        if (saving) return resolve({ error: String(e?.message ?? e) });
+        busy = false; w.isDestroyed() || inject(); dialog.showErrorBox("The frame could not be taken", String(e?.message ?? e));
+      }
+    });
+    w.on("closed", () => { clearInterval(timer); if (!saving) resolve(result); });
+    w.loadURL(u);
+  });
+  ipcMain.handle("frames:capture", guard((_e, url, env) => { // with env (editing a frame) the area it has now is chosen from the start
+    let preset = null; if (env) { const p = parseFrameEnv(env), base = p && frameBase(p.scope, current), fr = base && readFrame(base, p.id); if (fr) preset = fr.offset; }
+    return captureFrame(url, preset);
+  }));
+  // editing a frame of mine: read it, change name / offsets / html / css, or take it again from its page (the new capture replaces its parts, the name stays)
+  const frameOf = (env) => { const p = parseFrameEnv(env); if (!p) throw new Error("Unknown frame."); const base = frameBase(p.scope, current); if (!base) throw new Error("No project is open."); return { ...p, base, dir: path.join(base, p.id) }; };
+  ipcMain.handle("frames:get", guard((_e, env) => { const f = frameOf(env), fr = readFrame(f.base, f.id); if (!fr) throw new Error("The frame is gone."); return { env, scope: f.scope, dir: f.dir, label: fr.label, url: fr.url, offset: fr.offset, html: fr.html, css: fr.css }; }));
+  // changes who sees a frame: this project only <-> all projects (the folder is moved; the id gets a number if the other side has one of that name)
+  ipcMain.handle("frames:move", guard(async (_e, env, scope) => {
+    const f = frameOf(env);
+    if (!SCOPES.includes(scope)) throw new Error("Unknown visibility.");
+    if (scope === f.scope) return { env, dir: f.dir };
+    const toBase = frameBase(scope, current); if (!toBase) throw new Error("No project is open.");
+    await fs.promises.mkdir(toBase, { recursive: true });
+    let id = f.id, n = 2; while (fs.existsSync(path.join(toBase, id))) id = `${f.id}-${n++}`;
+    const target = path.join(toBase, id);
+    await fs.promises.cp(f.dir, target, { recursive: true });
+    await fs.promises.rm(f.dir, { recursive: true, force: true });
+    return { env: frameEnv(scope, id), dir: target };
+  }));
+  ipcMain.handle("frames:update", guard((_e, env, change) => { const f = frameOf(env); updateFrame(f.base, f.id, { label: change?.label, offset: change?.offset, html: change?.html, css: change?.css }); return true; }));
+  // the captured draft replaces the parts of a frame of mine (html, css, pictures, offsets, link); the name stays unless a new one is given
+  const applyDraftTo = async (f, label) => {
+    const draft = path.join(dir(), ".studio", "frames-draft");
+    const read = (n) => fs.promises.readFile(path.join(draft, n), "utf8");
+    let meta; try { meta = JSON.parse(await read("draft.json")); } catch { throw new Error("There is no captured page yet."); }
+    updateFrame(f.base, f.id, { label: label || undefined, url: meta.url, offset: meta.offset, html: await read("frame.html"), css: await read("frame.css").catch(() => "") });
+    await fs.promises.rm(path.join(f.dir, "img"), { recursive: true, force: true });
+    await fs.promises.cp(path.join(draft, "img"), path.join(f.dir, "img"), { recursive: true }).catch(() => {});
+    return { ok: true, dir: f.dir, url: meta.url, boxes: meta.boxes };
+  };
+  ipcMain.handle("frames:applyDraft", guard((_e, env, label) => applyDraftTo(frameOf(env), String(label ?? "").trim())));
+  ipcMain.handle("frames:recapture", guard(async (_e, env, url) => {
+    const f = frameOf(env), fr = readFrame(f.base, f.id); if (!fr) throw new Error("The frame is gone.");
+    const r = await captureFrame(String(url || fr.url || ""), fr.offset);
+    return r?.ok ? applyDraftTo(f, "") : r;
+  }));
   /**
    * The whole page of a window as a picture 1280 px wide: { full: JPEG for the agent and the preview, thumb: data URL for the card }. The viewport is stretched
    * to the height of the page (also of a page that scrolls inside its own area), so the fixed and sticky parts (the bar of Plus4U, the header) are drawn once, at

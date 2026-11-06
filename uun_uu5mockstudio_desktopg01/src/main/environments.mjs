@@ -3,12 +3,14 @@
  * the environment is drawn around it when the preview server serves the page (`?env=<id>`), never written into the file. So the export of
  * an image shows it, while "Copy as uu5String" and the agent's files stay clean.
  *   none               the content alone
- *   managementkit      the shell of uuManagementKit, simulated: top bar, left menu, route header (breadcrumb, title, buttons) - all fixed
+ *   managementkit      "uuApp default": the shell of a uuApp as in uuManagementKit (the id stays, saved screens and templates use it), simulated: top bar, left menu, route header (breadcrumb, title, buttons) - all fixed
  */
+
+import { parseFrameEnv, renderFrame } from "./frames.mjs";
 
 export const ENVIRONMENTS = [
   { id: "none", label: "Content only" },
-  { id: "managementkit", label: "uuManagementKit" },
+  { id: "managementkit", label: "uuApp default" },
 ];
 export const DEFAULT_ENVIRONMENT = "none";
 export const LOGO_URL = "https://cdn.plus4u.net/uun-decorationg01/1.0.0/assets/icon.svg";
@@ -65,9 +67,14 @@ export function shellHtml({ title, parents }) {
 <div class="mk-act"><span class="mk-b">Stránka ${CARET}</span><span class="mk-b">Dokument ${CARET}</span><span class="mk-b">0</span><span class="mk-b">0</span><span class="mk-b mk-explore">Prozkoumat</span><span class="mk-dot"></span></div></div>`;
 }
 
-/** The page served with an environment around it; `html` unchanged for "none" or an unknown id. */
-export function wrapPage(html, env) {
-  if (env !== "managementkit") return html;
-  const shell = shellHtml(pageHead(html));
+/**
+ * The page served with an environment around it; `html` unchanged for "none" or an unknown id.
+ * `resolveFrame(env)` gives the custom frame (see frames.mjs) an id like "custom:project:x" names, or null.
+ */
+export function wrapPage(html, env, resolveFrame) {
+  let shell;
+  if (env === "managementkit") shell = shellHtml(pageHead(html));
+  else if (parseFrameEnv(env)) { const frame = resolveFrame?.(env); if (frame) shell = renderFrame(frame, pageHead(html)); }
+  if (!shell) return html;
   return /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, (m) => m + shell) : shell + html;
 }
