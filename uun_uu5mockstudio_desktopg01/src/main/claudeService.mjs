@@ -121,6 +121,7 @@ export class ClaudeService {
   }
 
   async send(prompt, model, { plan = false, economy = false } = {}) {
+    let bin; try { bin = requireClaude(); } catch { return this.onEvent({ type: "app_error", message: "Claude Code was not found. Install and sign in to Claude Code (Help), or pick a Codex model." }); } // not installed: the chat reports it, nothing breaks
     this.abort = new AbortController();
     const repoDir = this.repoDir;
     const { instructions, globalFile, docs } = await agentInstructions(this, { plan, economy });
@@ -128,7 +129,7 @@ export class ClaudeService {
       prompt,
       options: {
         cwd: this.cwd,
-        pathToClaudeCodeExecutable: requireClaude(),
+        pathToClaudeCodeExecutable: bin,
         settingSources: ["user", "project"],
         permissionMode: "acceptEdits",
         disallowedTools: disallowedTools(plan),

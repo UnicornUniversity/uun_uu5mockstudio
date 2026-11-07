@@ -32,6 +32,7 @@ import { kindLabel } from "./docLinks.js";
 const $ = (id) => document.getElementById(id);
 
 const log = $("log");
+const NO_AI = "Chat is not available: neither Claude Code nor Codex is installed and signed in (see Help)."; // the rest of the app works without it
 let port, webviewPreload = "", chatId = null, chatList = [], project = "", projectList = [], loading = false, ready = false, busy = false, setup = null;
 /** Persisted chat: {kind:"user"|"ai"|"err"|"note", text} | {kind:"steps", steps:[{id,label,status}]} */
 let entries = [];
@@ -128,7 +129,14 @@ function renderModels(agents) {
   }
   try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 }
-const refreshAgents = (refresh) => window.studio.agents(refresh).then(renderModels).catch(() => {});
+/** Chat works when Claude Code is ready or Codex is usable; without both only the chat is off, the rest of the app stays. */
+let claudeReady = false, codexUsable = false;
+function updateChatReady() {
+  ready = claudeReady || codexUsable;
+  $("send").disabled = busy || !ready || !project;
+  $("send").title = ready ? "" : NO_AI;
+}
+const refreshAgents = (refresh) => window.studio.agents(refresh).then((agents) => { renderModels(agents); codexUsable = agents.some((a) => a.provider === "codex"); updateChatReady(); }).catch(() => { codexUsable = false; updateChatReady(); });
 let sentModel = "";
 // ---------- Economy: less thinking and the smallest change that does what was asked (a cheaper request)
 const ECO_KEY = "uu5studio.economy";
@@ -235,7 +243,7 @@ const planCtx = {
 };
 /** The answers to the questions go back to the agent, still in Plan mode: it returns an updated plan; the old one is marked as replaced. */
 async function answerPlan(e) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const message = ["My answers to your questions:", answersText(e.questions, e.answers),
     ...(e.tree ? ["", "Update the plan with them. This is the current component tree, including my edits; keep them unless the answers change it:", "```uu5-tree", serializeTree(e.tree), "```"] : [])].join("\n");
   e.state = "superseded"; e.editing = false; paint(e); persist();
@@ -246,7 +254,7 @@ async function answerPlan(e) {
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
 }
 async function buildPlan(e) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   setPlanMode(false); // building is the agent's work: the message field goes back to Agent
   const message = approvalMessage({ text: e.text, tree: e.tree, original: e.original, questions: e.questions, answers: e.answers });
   e.state = "approved"; e.editing = false; paint(e); persist();
@@ -401,7 +409,7 @@ const persistLayout = () => {
 };
 /** What the file cannot do by itself (a move into a condition, a list, another component) is given to the agent with both places named. */
 async function askAgentToMove({ file, name, ordinal, target, position, reason }) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const info = async (o) => (await window.studio.jsxInspect(file, [o]).catch(() => null))?.element;
   const [from, to] = await Promise.all([info(ordinal), info(target)]);
   const desc = (e, fallback) => (e ? `${e.name} (in the JSX: ${e.snippet})` : fallback);
@@ -485,7 +493,7 @@ async function editTextInScreen({ file, ordinal, old, value }) {
   toast(`Text changed in ${file.replace(/\.html$/, "")}.`, { action: { label: "Undo", run: () => stepScreen(file, "undo") } });
 }
 async function askAgentToEditText({ file, ordinal, old, value, reason }) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
   push({ kind: "user", text: `Change the text “${old}” to “${value}” in ${file}.` });
   setBusy(true); sentModel = $("model").value; planPending = false;
@@ -516,7 +524,7 @@ async function deleteInScreen({ file, items }) {
   if (firstBad) toast(`${done ? `Removed ${what}, but ` : ""}${label(firstBad.name)} was not removed: ${firstBad.reason}${/\.$/.test(firstBad.reason) ? "" : "."}`, { err: true, action: { label: "Ask the agent", run: () => askAgentToDelete({ file, name: firstBad.name, ordinal: firstBad.ordinal, reason: firstBad.reason }) } });
 }
 async function askAgentToDelete({ file, name, ordinal, reason }) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
   push({ kind: "user", text: `Remove ${name ?? "the component"} from ${file}.` });
   setBusy(true); sentModel = $("model").value; planPending = false;
@@ -657,7 +665,7 @@ const structureDialog = createStructureDialog({ api: {
    * What cannot be moved there goes to the agent only after "Keep".
    */
   regenerate: async (file, original, tree, ops, part) => {
-    if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+    if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
     const name = file.replace(/\.html$/, "");
     const r = await window.studio.jsxMoves(file, ops ?? []).catch((e) => ({ error: String(e?.message ?? e) }));
     if (r?.error) return toast(r.error, { err: true });
@@ -954,7 +962,7 @@ function insertMention(name) {
 // app has code for it (jsx:insert); otherwise the toast offers to give the drop to the agent, with the documentation of the component.
 const ZONE_TEXT = { before: "before", after: "after", inside: "inside" };
 async function askAgentToAdd({ file, name, ordinal, zone, reason }) {
-  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : "Claude Code is not ready.", { err: true });
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const target = await window.studio.jsxInspect(file, [ordinal]).catch(() => null);
   const where = target?.element ? `${ZONE_TEXT[zone]} the component ${target.element.name} (in the JSX: ${target.element.snippet})` : `${ZONE_TEXT[zone]} a component`;
   const libBlock = (await window.studio.docsDescribe([name]).catch(() => null))?.text ?? "";
@@ -1505,7 +1513,7 @@ const dashboard = createDashboard({
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
   onTemplates: () => templatesDialog.open(),
   onStart: async ({ text, plan, model, template, templateLevel, docs = [] }) => {
-    if (!ready) return toast("Claude Code is not ready.", { err: true });
+    if (!ready) return toast(NO_AI, { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
     if (!project || r?.error) return;
     if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); else { projectLevel = a.level ?? null; defaultEnv = a.environment ?? null; } }
@@ -1675,10 +1683,10 @@ function maybeTour() {
 setup = createSetup({
   api: window.studio, toast, isBusy: () => busy,
   onStatus: (st) => {
-    ready = st.state === "ready";
+    claudeReady = st.state === "ready";
     maybeTour();
-    $("send").disabled = busy || !ready || !project;
-    if (ready) $("model").title = `Claude Code ${st.version} · ${st.email ?? ""}`;
+    updateChatReady();
+    if (claudeReady) $("model").title = `Claude Code ${st.version} · ${st.email ?? ""}`;
   },
 });
 const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgents(refresh); return st; }); // the usable providers and their models follow the setup

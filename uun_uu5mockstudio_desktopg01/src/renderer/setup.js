@@ -7,7 +7,7 @@ const STATE_MARK = { ok: "✓", disabled: "⚠", outdated: "⚠", missing: "✕"
  * and any time from the Help menu to see the state. Plugin updates are only ever offered (strip under the chat header), never applied silently.
  */
 export function createSetup({ api, toast, isBusy, onStatus }) {
-  let status = null, manual = false, working = false, poll = null, logLines = [], mode = "claude"; // the same dialog shows the state of Claude Code or of Codex
+  let status = null, manual = false, dismissed = false, working = false, poll = null, logLines = [], mode = "claude"; // the same dialog shows the state of Claude Code or of Codex
   const box = $("setup");
   const clearPoll = () => { clearInterval(poll); poll = null; };
 
@@ -33,7 +33,7 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
 
     const title = $("setup-title"), text = $("setup-text"), action = $("setup-action"), copy = $("setup-copy"), code = $("setup-code"), link = $("setup-link"), more = $("setup-more");
     code.hidden = true; copy.hidden = true; link.hidden = true; more.hidden = true; action.hidden = false; action.disabled = working; $("setup-cancel").hidden = !working; $("setup-recheck").disabled = working;
-    $("setup-close").hidden = Boolean(active) && !manual; $("setup-updates").hidden = Boolean(active) || !manual;
+    $("setup-close").hidden = false; $("setup-close").textContent = active && !manual ? "Continue without chat" : "Close"; $("setup-updates").hidden = Boolean(active) || !manual;
     if (active === "claude") {
       const info = await api.claudeInstallerInfo();
       title.textContent = "Claude Code is needed"; text.textContent = "uu5Mock Studio works through Claude Code installed on this computer, with your own sign-in. Install it here, then continue with signing in.";
@@ -59,11 +59,12 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
     status = await api.claudeStatus(refresh);
     onStatus?.(status);
     const needs = status.state !== "ready";
+    const codexOk = needs && !show && (await api.agents(refresh).catch(() => [])).some((a) => a.provider === "codex"); // Codex works: Claude Code is not pushed on the user
     if (needs) mode = "claude"; // Claude Code is missing: its wizard takes over
     else if (mode === "codex") return status; // the dialog of Codex stays as it is
     manual = show && !needs ? true : manual && !needs ? manual : false;
     if (show) manual = true;
-    box.hidden = !needs && !manual;
+    box.hidden = (!needs || codexOk || (dismissed && !show)) && !manual; // closed by the user: the wizard does not come back by itself, the chat stays off
     if (!box.hidden) await render();
     if (!needs) { manual = manual && !box.hidden; }
     return status;
@@ -155,11 +156,11 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
   };
   $("setup-cancel").onclick = async () => { await api.claudeCancel("install"); await api.claudeCancel("login"); clearPoll(); say("Cancelled."); };
   $("setup-recheck").onclick = () => (mode === "codex" ? openCodex() : check(true, { show: manual }));
-  $("setup-close").onclick = () => { manual = false; box.hidden = true; mode = "claude"; };
+  $("setup-close").onclick = () => { dismissed = true; manual = false; box.hidden = true; mode = "claude"; };
   $("setup-link").onclick = (e) => api.openExternal(e.currentTarget.dataset.href);
   $("setup-copy").onclick = async () => { try { await navigator.clipboard.writeText($("setup-copy").dataset.text ?? ""); toast("Command copied."); } catch { toast("Could not copy.", { err: true }); } };
   $("setup-updates").onclick = () => (mode === "codex" ? (working ? undefined : checkCodexUpdates()) : checkUpdates(true, { fromWizard: true }));
-  box.addEventListener("keydown", (e) => { if (e.key === "Escape" && manual) { e.stopPropagation(); $("setup-close").click(); } });
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); $("setup-close").click(); } });
   api.onClaudeProgress((p) => {
     if (p.kind === "install" && p.line) { logLines.push(p.line); paintLog(); }
     else if (p.kind === "plugins") { if (p.state === "run") say(`${p.label}… (${p.index + 1}/${p.total})`); logLines.push(`${p.state === "ok" ? "✓" : p.state === "bad" ? "✕" : "…"} ${p.label}`); paintLog(); }

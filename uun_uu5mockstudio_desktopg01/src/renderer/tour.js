@@ -54,6 +54,21 @@ const CARDS = [
       <rect x="304" y="140" width="110" height="20" rx="6" class="t-accent"/>`),
   },
   {
+    title: "Frames from a real page",
+    text: "Show a screen inside the surroundings of an existing application. Make a frame from a link: open the live page, choose the content area (click, widen or narrow, or drag a rectangle; Shift adds more parts) and the rest, with its icons and background pictures, becomes the frame. Keep it for this project or for all projects, then pick it in the environment menu of any screen.",
+    art: S(`${frame(14, 14, 412, 162)}<rect x="14" y="14" width="412" height="26" rx="8" class="t-fill"/>${line(28, 24, 60, "t-line s")}
+      <rect x="14" y="40" width="70" height="136" class="t-fill" opacity=".5"/>${[56, 74, 92].map((y) => line(24, y, 50, "t-line s")).join("")}
+      <rect x="100" y="54" width="312" height="108" rx="6" class="t-card t-sel" stroke-dasharray="6 4"/>${line(116, 72, 110)}<rect x="116" y="90" width="280" height="14" rx="4" class="t-fill"/>${line(116, 116, 240, "t-line s")}${line(116, 132, 180, "t-line s")}`),
+  },
+  {
+    title: "Start from existing content",
+    text: "Paste a link into the message and it gets a card with a preview: a page of a uuBookKit book, a uuManagementKit document (read-only, through the uuAiChat MCP server) or any other web page. Claude takes the text and the look as input, so you can rebuild, extend or restyle a page that already exists.",
+    art: S(`${frame(14, 20, 190, 150)}${line(28, 38, 90)}<rect x="28" y="56" width="162" height="40" rx="5" class="t-fill"/>${line(28, 108, 120, "t-line s")}${line(28, 124, 140, "t-line s")}
+      <rect x="28" y="140" width="52" height="16" rx="8" class="t-accent"/><rect x="86" y="140" width="62" height="16" rx="8" class="t-orange" fill="none"/>
+      <path d="M216 95h40" class="t-arrow"/><path d="M248 86l10 9-10 9" class="t-arrow"/>
+      ${frame(270, 20, 156, 150, "t-card t-sel")}${line(284, 38, 70)}<rect x="284" y="56" width="128" height="14" rx="4" class="t-fill"/>${[82, 100, 118, 136].map((y) => line(284, y, 128, "t-line s")).join("")}`),
+  },
+  {
     title: "Project memory",
     text: "Link a git repository: Claude reads it, never writes to it, and any branch works as a read-only snapshot. Business rules, project and screen descriptions and notes live in the project folder, so every request builds on them.",
     art: S(`${frame(14, 14, 412, 34)}<circle cx="34" cy="31" r="5" class="t-accent"/>${line(48, 28, 90)}<rect x="320" y="24" width="86" height="14" rx="7" class="t-fill"/>
