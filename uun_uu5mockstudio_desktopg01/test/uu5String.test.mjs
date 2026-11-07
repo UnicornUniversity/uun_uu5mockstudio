@@ -34,8 +34,23 @@ test("a component of the screen is transparent, library components keep the prop
   const tree = collectUu5Tree({ rootFiber: root, styleRules: [{ selector: ".card", cssText: "background: rgb(255, 255, 255); border-radius: 24px;" }, { selector: ".card:hover", cssText: "transform: translateY(-4px);" }] });
   const { text, notes } = toUu5String(tree);
   assert.equal(text, `<uu5string/>\n<div style='<uu5json/>{"background":"rgb(255, 255, 255)","borderRadius":"24px","padding":24}'>\n  <Uu5Elements.Text type="h4">Ahoj</Uu5Elements.Text>\n</div>\n`);
-  assert.deepEqual(tree.report.cssLost, [".card:hover"]);
-  assert.match(notes.join(" "), /\.card:hover/);
+  assert.deepEqual(tree.report.cssLost, []);
+  assert.equal(tree.report.hover, 1);
+  assert.match(notes.join(" "), /hover style/);
+});
+
+test("rules inside a matching @media win over the base rule (!important keeps its weight), a non-matching one is ignored", () => {
+  const root = rootOf(el("div", { className: "links" }, "a"));
+  const styleRules = [
+    { selector: ".links", cssText: "display: none !important;" },
+    { selector: ".links", cssText: "display: flex !important;", media: "(min-width: 1100px)" },
+    { selector: ".links", cssText: "gap: 4px;", media: "(max-width: 600px)" },
+  ];
+  const wide = toUu5String(collectUu5Tree({ rootFiber: root, styleRules, mediaMatches: (t) => t.includes("min-width") })).text;
+  assert.match(wide, /"display":"flex"/);
+  assert.doesNotMatch(wide, /gap/);
+  const narrow = toUu5String(collectUu5Tree({ rootFiber: root, styleRules, mediaMatches: () => false })).text;
+  assert.match(narrow, /"display":"none"/);
 });
 
 test("functions are left out and reported, a closed modal is skipped, JSX in a prop becomes a nested uu5String", () => {

@@ -404,6 +404,14 @@ body:not([data-chat="float"]) #chat header .tools #chatmin{display:none}
 /* attached screenshots */
 #attachments{display:flex;flex-wrap:wrap;gap:8px}
 #attachments .att{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--bg)}
+#attachments .att:not(.doc){width:128px;height:auto;display:flex;flex-direction:column}
+#attachments .att:not(.doc) img{width:100%;height:84px;object-fit:contain;background:repeating-conic-gradient(rgba(128,128,128,.18) 0 25%,transparent 0 50%) 0 0/12px 12px}
+#attachments .att .att-mode{display:flex;border-top:1px solid var(--line)}
+#attachments .att .att-mode button{position:static;flex:1;width:auto;height:auto;padding:5px 2px;border-radius:0;border:0;background:var(--bg);color:var(--mute);font-size:11px;line-height:1.2;cursor:pointer;display:block}
+#attachments .att .att-mode button:hover:not(:disabled):not(.on){color:var(--fg,inherit)}
+#attachments .att .att-mode button.on{background:var(--acc);color:#fff;font-weight:600}
+#attachments .att .att-mode button:disabled:not(.on){opacity:.35;cursor:not-allowed}
+#attachments .att.asset{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 #attachments .att img{width:100%;height:100%;object-fit:cover;display:block}
 #attachments .att button{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:11px;line-height:1;display:grid;place-items:center}
 #dash-attachments{display:flex;flex-wrap:wrap;gap:8px}#dash-attachments[hidden]{display:none}

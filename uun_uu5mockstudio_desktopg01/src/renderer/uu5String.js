@@ -98,7 +98,8 @@ export function notesOf(report, stats = {}, missing = []) {
   const unresolved = times(report.unresolved);
   if (unresolved.length) notes.push(`Not rendered, so left out: ${list(unresolved)}.`);
   if (report.renderProp) notes.push(`Left out ${report.renderProp} child render function${report.renderProp > 1 ? "s" : ""}.`);
-  if (report.cssLost?.length) notes.push(`CSS that cannot be written inline (hover, nested selectors, missing rules): ${list(report.cssLost)}.`);
+  if (report.cssLost?.length) notes.push(`CSS that cannot be written inline (hover on components, nested selectors, missing rules): ${list(report.cssLost)}.`);
+  if (report.hover) notes.push(`${report.hover} element${report.hover > 1 ? "s have" : " has"} a hover style (shadow, lift, …) that was left out: a uu5String cannot hold :hover. Use a component that has hover itself (Button, Link) or add it in the document.`);
   const newIcons = (stats.icons ?? []).filter((i) => !MDI_BASELINE.has(i.slice(4)));
   if (newIcons.length) notes.push(`Icons that a document may not show (not in Material Design Icons ${MDI_BASELINE_VERSION}, which documents may still load): ${list(newIcons)}. Pick older icons in the screen if they stay empty.`);
   if (stats.jsxInData) notes.push(`${stats.jsxInData} piece${stats.jsxInData > 1 ? "s" : ""} of JSX inside data written as nested uu5String; it may show as text.`);
@@ -125,8 +126,8 @@ export function mergeTrees(trees) {
     missing: [...m.missing, ...(t.missing ?? [])],
     report: {
       fn: add(m.report.fn, t.report?.fn), closed: add(m.report.closed, t.report?.closed), unresolved: add(m.report.unresolved, t.report?.unresolved), skipped: add(m.report.skipped, t.report?.skipped),
-      renderProp: m.report.renderProp + (t.report?.renderProp ?? 0), cssClasses: m.report.cssClasses + (t.report?.cssClasses ?? 0),
+      renderProp: m.report.renderProp + (t.report?.renderProp ?? 0), hover: (m.report.hover ?? 0) + (t.report?.hover ?? 0), cssClasses: m.report.cssClasses + (t.report?.cssClasses ?? 0),
       cssLost: [...new Set([...m.report.cssLost, ...(t.report?.cssLost ?? [])])], truncated: m.report.truncated || Boolean(t.report?.truncated),
     },
-  }), { nodes: [], missing: [], report: { fn: {}, closed: {}, unresolved: {}, skipped: {}, renderProp: 0, cssClasses: 0, cssLost: [], truncated: false } });
+  }), { nodes: [], missing: [], report: { fn: {}, closed: {}, unresolved: {}, skipped: {}, renderProp: 0, hover: 0, cssClasses: 0, cssLost: [], truncated: false } });
 }

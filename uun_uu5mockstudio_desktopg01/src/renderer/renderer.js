@@ -1239,12 +1239,14 @@ async function prepareDrag(kind) {
   if (r?.error) { if (el()) delete el().dataset.state; drags.delete(kind); return toast(r.error, { err: true }); }
   drags.set(kind, { file, path: r.path, at: Date.now() }); if (el()) el().dataset.state = "ready";
 }
+const LAZY_DRAG = new Set(["png", "zip"]); // rendering them is costly (the picture makes the screen flicker): prepared on hover of Drag
 const DRAG_NAMES = { png: "image", html: "HTML file", uu5: "uu5String file", zip: "project ZIP" };
 function dragEntry(kind) {
   const what = DRAG_NAMES[kind] ?? "file";
   const btn = Object.assign(document.createElement("button"), { className: "dragrow", draggable: true, title: `Drag the ${what} (press, hold and move) into a chat, a mail or a folder` });
   btn.innerHTML = '<span class="grip" aria-hidden="true">⠿</span><span>Drag</span>';
   btn.dataset.drag = kind;
+  if (LAZY_DRAG.has(kind)) { btn.addEventListener("pointerenter", () => prepareDrag(kind)); btn.addEventListener("pointerdown", () => prepareDrag(kind)); }
   btn.onclick = (e) => { e.stopPropagation(); toast("Press, hold and drag this into a chat, a mail or a folder."); };
   btn.addEventListener("dragstart", (e) => {
     e.preventDefault();
@@ -1288,7 +1290,7 @@ $("selbar").onclick = (e) => {
       return a;
     }), dragEntry(f.id));
     m.replaceChildren(tiles, hint, document.createElement("hr"), acts);
-    prepareDrag(f.id); // the file is ready when the user takes it
+    if (!LAZY_DRAG.has(f.id)) prepareDrag(f.id); // the cheap files are ready when the user takes it; a picture or a ZIP only when the pointer reaches Drag (opening the menu must not take a snapshot)
   };
   render();
   const cr = $("canvas").getBoundingClientRect(), br = b.getBoundingClientRect();
@@ -1703,8 +1705,14 @@ async function prepareImage(file) {
 function renderAttachments() {
   const box = $("attachments"); box.replaceChildren();
   for (const im of pending) {
-    const d = Object.assign(document.createElement("div"), { className: "att", title: im.name });
+    const d = Object.assign(document.createElement("div"), { className: `att${im.asset ? " asset" : ""}`, title: im.name });
     d.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name }));
+    // two modes: a reference (the agent only looks at it) or a picture that goes into the design itself (logo...)
+    const isSvg = im.mime === "image/svg+xml", seg = Object.assign(document.createElement("div"), { className: "att-mode" });
+    for (const [asset, label, tip] of [[false, "Reference", "The agent only looks at this picture."], [true, "In design", "This picture is placed into the design as it is (saved in the project’s assets folder): a logo, a specific image."]]) {
+      seg.append(Object.assign(document.createElement("button"), { type: "button", textContent: label, className: !!im.asset === asset ? "on" : "", disabled: isSvg && !asset, title: isSvg && !asset ? "An SVG can only be used in the design." : tip, onclick: () => { im.asset = asset; renderAttachments(); } }));
+    }
+    d.append(seg);
     d.append(Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: "Remove attachment", onclick: () => { pending = pending.filter((x) => x.id !== im.id); renderAttachments(); } }));
     box.append(d);
   }
@@ -1712,13 +1720,19 @@ function renderAttachments() {
   docCards.renderInto(box);
   box.hidden = !pending.length && !preparing && !docCards.count();
 }
+/** An SVG is not rasterised: it goes as it is (only as a picture for the design) and the thumbnail is the drawing itself. */
+async function prepareSvg(file) {
+  const buf = await file.arrayBuffer();
+  const data = await blobToBase64(new Blob([buf]));
+  return { id: crypto.randomUUID(), name: file.name || "image.svg", mime: "image/svg+xml", data, thumb: `data:image/svg+xml;base64,${data}`, asset: true };
+}
 async function addImages(files) {
   const imgs = [...files].filter((f) => f.type.startsWith("image/"));
   if (!imgs.length) return;
   if (pending.length + preparing + imgs.length > MAX_IMAGES) { toast(`You can attach at most ${MAX_IMAGES} images at a time.`, { err: true }); imgs.splice(Math.max(0, MAX_IMAGES - pending.length - preparing)); }
   preparing += imgs.length; renderAttachments();
   for (const f of imgs) {
-    try { pending.push(await prepareImage(f)); } catch { toast(`The image “${f.name || "from the clipboard"}” could not be loaded.`, { err: true }); }
+    try { pending.push(f.type === "image/svg+xml" ? await prepareSvg(f) : await prepareImage(f)); } catch { toast(`The image “${f.name || "from the clipboard"}” could not be loaded.`, { err: true }); }
     preparing--; renderAttachments();
   }
   $("prompt").focus();
@@ -1751,17 +1765,23 @@ $("form").onsubmit = async (e) => {
   if (docCards.scan(prompt) || docCards.busy()) return toast("The documents are still loading, one moment.");
   if (docCards.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
   if (!prompt && !imgs.length && !docCards.count()) return;
-  if (!prompt) prompt = docCards.count() ? "Use the attached document." : "Attaching a screenshot, see the attachment.";
+  if (!prompt) prompt = docCards.count() ? "Use the attached document." : imgs.some((i) => i.asset) ? "Use the attached picture in the design." : "Attaching a screenshot, see the attachment.";
   const docs = docCards.take();
   // attached screenshots become files in the project (hidden folder) that the agent opens with Read
-  let paths = [];
-  if (imgs.length) {
-    const r = await window.studio.saveAttachments(imgs.map(({ mime, data }) => ({ mime, data })));
+  let paths = [], assetPaths = [];
+  const refs0 = imgs.filter((i) => !i.asset), assets0 = imgs.filter((i) => i.asset);
+  if (refs0.length) {
+    const r = await window.studio.saveAttachments(refs0.map(({ mime, data }) => ({ mime, data })));
     if (!Array.isArray(r)) return toast(r?.error ?? "The attachments could not be saved.", { err: true });
     paths = r;
   }
+  if (assets0.length) { // pictures for the design itself become served files in the project (assets/)
+    const r = await window.studio.saveAssets(assets0.map(({ mime, data, name }) => ({ mime, data, name })));
+    if (!Array.isArray(r)) return toast(r?.error ?? "The pictures could not be saved.", { err: true });
+    assetPaths = r;
+  }
   const ctx = chips.length ? chips.slice() : null;
-  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name }) => ({ thumb, name })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
+  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
   $("prompt").value = ""; pending = []; renderAttachments(); setBusy(true);
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
@@ -1774,6 +1794,7 @@ $("form").onsubmit = async (e) => {
     noteBlock,
     docsContext(docs),
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
+    assetPaths.length && `Pictures to USE IN THE DESIGN (not just references; e.g. a logo): ${assetPaths.join(", ")}. They are already files in the project, so do not copy or re-create them: place each into the screen with exactly that relative path (src="${assetPaths[0]}"), at its natural proportions. Open one with the Read tool only to see what it shows.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,
     ctx && agentContext(ctx),
   ].filter(Boolean);

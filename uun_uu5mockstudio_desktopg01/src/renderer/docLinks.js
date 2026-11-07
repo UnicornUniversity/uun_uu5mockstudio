@@ -1,6 +1,6 @@
 /**
- * Links to documents of Plus4U that the app can read as input (shared by the renderer and the main process, no dependencies):
- * a page of a uuBookKit book and an ECC document of uuManagementKit.
+ * Links the app can read as input (shared by the renderer and the main process, no dependencies): a page of a uuBookKit book,
+ * an ECC document of uuManagementKit (read through MCP) and any other web page (http/https: the app opens it and takes a picture and the text).
  */
 
 const AWID = /^[0-9a-f]{32}$/i;
@@ -32,15 +32,27 @@ export function parseDocUrl(text) {
   return null;
 }
 
-/** All document links in a text (each once, in the order they appear). */
+/** Any other web page: `{ kind: "web", url, host }` for an http(s) link without a password in it, else null. */
+export function parseWebUrl(text) {
+  let u;
+  try { u = new URL(String(text ?? "").trim()); } catch { return null; }
+  if ((u.protocol !== "https:" && u.protocol !== "http:") || !u.hostname || u.username || u.password) return null;
+  u.hash = ""; // the fragment only scrolls: one page, one card
+  return { kind: "web", url: u.toString(), host: u.hostname.replace(/^www\./i, "") };
+}
+
+/** A document of Plus4U when the link is one, else any web page, else null. */
+export const parseLink = (text) => parseDocUrl(text) ?? parseWebUrl(text);
+
+/** All links in a text that can be read (each once, in the order they appear). */
 export function findDocUrls(text) {
   const seen = new Set(), out = [];
-  for (const m of String(text ?? "").matchAll(/https:\/\/[^\s<>"'`)\]]+/g)) {
-    const d = parseDocUrl(m[0].replace(/[.,;:!?]+$/, ""));
+  for (const m of String(text ?? "").matchAll(/https?:\/\/[^\s<>"'`)\]]+/g)) {
+    const d = parseLink(m[0].replace(/[.,;:!?]+$/, ""));
     if (d && !seen.has(d.url)) { seen.add(d.url); out.push(d); }
   }
   return out;
 }
 
 /** The name of the kind of a parsed link, for the UI. */
-export const kindLabel = (kind) => (kind === "bookkit" ? "uuBookKit" : kind === "mkEcc" ? "uuManagementKit" : kind);
+export const kindLabel = (kind) => (kind === "bookkit" ? "uuBookKit" : kind === "mkEcc" ? "uuManagementKit" : kind === "web" ? "Web page" : kind);

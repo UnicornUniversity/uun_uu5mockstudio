@@ -15,7 +15,7 @@ export function collectUu5Tree(opts = {}) {
   const SRC = "data-uu5-src";
   const FRAG = Symbol.for("react.fragment");
   const MAX_NODES = 20000;
-  const report = { fn: {}, closed: {}, unresolved: {}, renderProp: 0, cssLost: {}, cssClasses: 0, skipped: {}, truncated: false };
+  const report = { fn: {}, closed: {}, unresolved: {}, renderProp: 0, cssLost: {}, cssClasses: 0, hover: 0, skipped: {}, truncated: false };
   const bump = (o, k) => { o[k] = (o[k] || 0) + 1; };
   let count = 0;
 
@@ -52,25 +52,34 @@ export function collectUu5Tree(opts = {}) {
 
   // ---------- CSS classes of the page → style objects ----------
   const camel = (p) => (p.startsWith("--") ? p : p.replace(/^-ms-/, "ms-").replace(/-([a-z])/g, (m, c) => c.toUpperCase()));
-  const declarations = (cssText) => {
+  /** Declarations of a rule; `important` (a Set), when given, gets the names of those written with `!important`. */
+  const declarations = (cssText, important) => {
     const out = {}; let depth = 0, cur = "";
-    const flush = () => { const i = cur.indexOf(":"); if (i > 0) { const k = cur.slice(0, i).trim(), v = cur.slice(i + 1).replace(/!important\s*$/, "").trim(); if (k && v) out[camel(k)] = v; } cur = ""; };
+    const flush = () => { const i = cur.indexOf(":"); if (i > 0) { const k = cur.slice(0, i).trim(), raw = cur.slice(i + 1).trim(), v = raw.replace(/\s*!important\s*$/, "").trim(); if (k && v) { out[camel(k)] = v; if (important && v !== raw) important.add(camel(k)); } } cur = ""; };
     for (const ch of cssText) { if (ch === "(") depth++; else if (ch === ")") depth--; if (ch === ";" && depth === 0) flush(); else cur += ch; }
     flush(); return out;
   };
-  const classRules = { plain: {}, other: {} }; // class -> declarations; class -> selectors that cannot be inlined (:hover, descendants, …)
+  const classRules = { plain: {}, important: {}, hover: {}, other: {} }; // class -> declarations (and which of them are !important); class -> `.name:hover` declarations; class -> selectors that cannot be inlined (descendants, …)
   const matchable = []; // rules with a selector beyond `.name` that the real element can be tested against (`.hero h1`, `.grid > .card`)
   const DYNAMIC = /::|:(hover|focus|focus-within|focus-visible|active|visited|before|after|first-line|first-letter|placeholder)/;
-  const rules = opts.styleRules || (() => {
+  const mediaMatches = opts.mediaMatches || ((text) => { try { return matchMedia(text).matches; } catch { return false; } });
+  // rules in the order of the sheets; the ones inside `@media` carry its text and count only while it matches (the screen's current width)
+  const rules = (opts.styleRules || (() => {
     const list = [];
-    const walk = (rs) => { for (const r of rs) { if (r.selectorText !== undefined && r.style) list.push({ selector: r.selectorText, cssText: r.style.cssText }); else if (r.cssRules && !r.media) walk(r.cssRules); } };
-    for (const s of document.styleSheets) { try { walk(s.cssRules); } catch { /* another origin */ } }
+    const walk = (rs, media) => { for (const r of rs) { if (r.selectorText !== undefined && r.style) list.push({ selector: r.selectorText, cssText: r.style.cssText, media }); else if (r.cssRules) walk(r.cssRules, r.media ? r.media.mediaText : media); } };
+    for (const s of document.styleSheets) { try { walk(s.cssRules, null); } catch { /* another origin */ } }
     return list;
-  })();
+  })()).filter((r) => !r.media || mediaMatches(r.media));
+  const mergeClass = (c, decl, imp) => { // the later rule wins, unless the earlier one is !important and it is not
+    const target = (classRules.plain[c] = classRules.plain[c] || {}), seen = (classRules.important[c] = classRules.important[c] || new Set());
+    for (const k of Object.keys(decl)) { if (seen.has(k) && !imp.has(k)) continue; target[k] = decl[k]; if (imp.has(k)) seen.add(k); }
+  };
   for (const r of rules) {
     for (const sel of String(r.selector).split(",").map((x) => x.trim())) {
       const m = sel.match(/^\.([\w-]+)$/);
-      if (m) { classRules.plain[m[1]] = Object.assign(classRules.plain[m[1]] || {}, declarations(r.cssText)); continue; }
+      if (m) { const imp = new Set(); mergeClass(m[1], declarations(r.cssText, imp), imp); continue; }
+      const h = sel.match(/^\.([\w-]+):hover$/); // a hover style cannot be inlined or written into a uu5String; it is only counted
+      if (h) { classRules.hover[h[1]] = Object.assign(classRules.hover[h[1]] || {}, declarations(r.cssText)); continue; }
       if (!DYNAMIC.test(sel)) matchable.push({ selector: sel, style: declarations(r.cssText) });
       for (const c of sel.match(/\.[\w-]+/g) || []) (classRules.other[c.slice(1)] = classRules.other[c.slice(1)] || []).push(sel);
     }
@@ -84,7 +93,7 @@ export function collectUu5Tree(opts = {}) {
       for (const c of className.split(/\s+/).filter(Boolean)) {
         if (classRules.plain[c]) { style = Object.assign(style || {}, classRules.plain[c]); report.cssClasses++; }
         for (const sel of classRules.other[c] || []) if (!hasDom(dom) || DYNAMIC.test(sel)) report.cssLost[sel] = true;
-        if (!classRules.plain[c] && !classRules.other[c]) report.cssLost["." + c] = true;
+        if (!classRules.plain[c] && !classRules.other[c] && !classRules.hover[c]) report.cssLost["." + c] = true;
       }
     }
     if (!hasDom(dom)) return style;
@@ -98,6 +107,14 @@ export function collectUu5Tree(opts = {}) {
       if (parent && !(style && style.color)) { let ps = null; try { ps = getComputed(parent); } catch { /* detached */ } if (ps && cs.color && cs.color !== ps.color) style = Object.assign(style || {}, { color: cs.color }); }
     }
     return style;
+  };
+
+  const classesOf = (className) => (typeof className === "string" ? className.split(/\s+/).filter(Boolean) : []);
+  /** The `.name:hover` declarations of the classes of an element (shadow, lift, …), or null. They cannot be written into a uu5String. */
+  const hoverOf = (className) => {
+    let h = null;
+    for (const c of classesOf(className)) if (classRules.hover[c]) h = Object.assign(h || {}, classRules.hover[c]);
+    return h;
   };
 
   // ---------- values ----------
@@ -156,6 +173,7 @@ export function collectUu5Tree(opts = {}) {
       if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") p[k] = v;
     }
     withStyle(props, styleOfClasses(props.className, dom), p);
+    if (hoverOf(props.className)) report.hover++; // a uu5String cannot hold :hover: only counted, for the note
     if (!children.length && !Object.keys(p).length && !/^(br|hr|img)$/.test(tag)) return null;
     return { t: "el", name: tag, host: true, props: p, children };
   }
@@ -171,6 +189,7 @@ export function collectUu5Tree(opts = {}) {
       if (e !== undefined) p[k] = e;
     }
     withStyle(props, styleOfClasses(props.className), p);
+    for (const c of classesOf(props.className)) if (classRules.hover[c]) report.cssLost["." + c + ":hover"] = true; // a library component keeps its own hover; the one of the class is lost
     let children = [];
     if (typeof props.children === "function") report.renderProp++;
     else children = ofChildren(props.children);

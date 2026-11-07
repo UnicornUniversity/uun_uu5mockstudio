@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { parseDocUrl, findDocUrls, loadArgs, snapshotName, serverUrl, readTerritory, writeTerritory, presetsFor, toSnapshot, uu5Text, extractSections, agentTools, BUILTIN_PRESETS } from "../src/main/docSources.mjs";
+import { parseDocUrl, parseLink, webSnapshot, findDocUrls, loadArgs, snapshotName, serverUrl, readTerritory, writeTerritory, presetsFor, toSnapshot, uu5Text, extractSections, agentTools, BUILTIN_PRESETS } from "../src/main/docSources.mjs";
 
 const BOOK = "https://uuapp.plus4u.net/uu-bookkit-maing01/0238a88bac124b3ca828835b57144ffa/book/page?code=39741830";
 const ECC = "https://uuapp.plus4u.net/uu-managementkit-maing02/091b197154354ec2975b249b5d10831f/document/ecc?oid=6578abcd1234ef5678901234";
@@ -243,4 +243,25 @@ test("openAuthorization: a group of Uu5Bricks.Authorization becomes the content 
   assert.equal(openAuthorization(g(it('type="pending"', "P"), it('type="authorizedProfile"', `<Tabs>${g(it('type="authorizedProfile"', "IN"))}</Tabs>`))), "<Tabs>IN</Tabs>");
   assert.equal(openAuthorization(`${g(it('type="authorizedProfile"', "a"))}-${g(it('type="authorizedProfile"', "b"))}`), "a-b");
   assert.equal(openAuthorization(g(it('type="pending"', "P"))), "");
+});
+
+test("any http(s) link is a web page; passwords, other schemes and fragments are not kept", () => {
+  assert.deepEqual(parseLink("https://www.example.com/a/b?x=1#top"), { kind: "web", url: "https://www.example.com/a/b?x=1", host: "example.com" });
+  assert.equal(parseLink("http://localhost:3000/").kind, "web");
+  assert.equal(parseLink(BOOK).kind, "bookkit"); // a Plus4U document stays a document
+  for (const u of ["ftp://example.com/x", "file:///etc/passwd", "javascript:alert(1)", "https://user:pw@example.com/", "not a url"]) assert.equal(parseLink(u), null, u);
+  const found = findDocUrls(`See https://example.com/page, ${BOOK} and (http://localhost:8080/x). Again https://example.com/page#a.`);
+  assert.deepEqual(found.map((d) => d.kind), ["web", "bookkit", "web"]);
+});
+
+test("a web page has a stable file-safe snapshot name and a snapshot of its text", () => {
+  const a = parseLink("https://www.example.com/a?x=1"), b = parseLink("https://www.example.com/a?x=2");
+  assert.match(snapshotName(a), /^web-example\.com-[0-9a-f]{8}$/);
+  assert.equal(snapshotName(a), snapshotName(parseLink("https://www.example.com/a?x=1#frag")));
+  assert.notEqual(snapshotName(a), snapshotName(b));
+  const snap = webSnapshot(a, { title: "  Hello \n world ", text: "Line\n\n\n\nnext  \n" });
+  assert.equal(snap.title, "Hello world");
+  assert.match(snap.markdown, /Source: https:\/\/www\.example\.com\/a\?x=1/);
+  assert.match(snap.markdown, /Line\n\nnext/);
+  assert.equal(webSnapshot(a, { title: "", text: "" }).title, "example.com");
 });

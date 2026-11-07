@@ -45,3 +45,25 @@ test("a path in the input cannot choose where the file goes", async () => {
   const [f] = await saveAttachments(dir, [{ mime: "image/png", data: b64(PNG), name: "../../evil.png", path: "/etc/x" }]);
   assert.equal(path.dirname(f), path.join(dir, ".studio", "attachments"));
 });
+
+test("pictures for the design go to the served assets/ folder under a clean name and never overwrite", async () => {
+  const { saveAssets, assetStem } = await import("../src/main/attachments.mjs");
+  assert.equal(assetStem("Můj Logo (2).PNG"), "muj-logo-2"); assert.equal(assetStem("../../x"), "x"); assert.equal(assetStem(""), "image");
+  const dir = await tmp("att");
+  const [a] = await saveAssets(dir, [{ mime: "image/png", data: b64(PNG), name: "Logo.png" }]);
+  const [b] = await saveAssets(dir, [{ mime: "image/png", data: b64(PNG), name: "logo.png" }]);
+  assert.equal(a, "assets/logo.png"); assert.equal(b, "assets/logo-2.png");
+  assert.ok((await readFile(path.join(dir, a))).equals(PNG));
+  await assert.rejects(saveAssets(dir, [{ mime: "image/png", data: b64(Buffer.from("junk")), name: "x.png" }]), /does not match/);
+});
+
+test("an SVG is accepted only as an asset and only when it is a plain drawing", async () => {
+  const { saveAssets } = await import("../src/main/attachments.mjs");
+  const dir = await tmp("att");
+  const ok = Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h10v10z"/></svg>');
+  const [a] = await saveAssets(dir, [{ mime: "image/svg+xml", data: b64(ok), name: "Logo.svg" }]);
+  assert.equal(a, "assets/logo.svg"); assert.ok((await readFile(path.join(dir, a))).equals(ok));
+  for (const bad of ['<svg><script>alert(1)</script></svg>', '<svg onload="x()"></svg>', '<svg><a href="javascript:x()"/></svg>', '<svg><image href="https://evil/x.png"/></svg>', '<svg><foreignObject/></svg>', "<html></html>"])
+    await assert.rejects(saveAssets(dir, [{ mime: "image/svg+xml", data: b64(Buffer.from(bad)), name: "x.svg" }]), /SVG/);
+  await assert.rejects(saveAttachments(dir, [{ mime: "image/svg+xml", data: b64(ok) }]), /Unsupported/);
+});

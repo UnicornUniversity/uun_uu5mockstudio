@@ -123,6 +123,9 @@ export function parseDoc(md) {
   return { title, description, url, props };
 }
 
+/** Namespaces that are documented but not offered in the catalogue (not components to compose a screen from); the inspector still knows them. */
+const HIDDEN_LIBRARIES = new Set(["Workspace", "UuI18n"]);
+
 /**
  * `findWikiRoot()` result -> lookup for `Uu5Elements.Button` -> parsed doc (cached), plus the list / search used to pick components for the chat.
  * The components of the uu5bricks plugin (`bricksRoot`) come into the same lookup; called without arguments both plugins are looked for, with a
@@ -171,7 +174,7 @@ export function createDocs(...args) {
   function list() {
     if (summaries) return summaries;
     load();
-    summaries = [...index.keys()].sort((a, b) => a.localeCompare(b)).map((name) => ({ name, library: name.split(".")[0], description: get(name)?.description ?? "" }));
+    summaries = [...index.keys()].filter((name) => !HIDDEN_LIBRARIES.has(name.split(".")[0])).sort((a, b) => a.localeCompare(b)).map((name) => ({ name, library: name.split(".")[0], description: get(name)?.description ?? "" }));
     return summaries;
   }
   return {

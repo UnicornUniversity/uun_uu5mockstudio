@@ -29,7 +29,7 @@ import { zipSync } from "fflate";
 import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
-import { saveAttachments } from "./attachments.mjs";
+import { saveAttachments, saveAssets } from "./attachments.mjs";
 import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
 import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, snapshotName, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
@@ -525,6 +525,7 @@ app.whenReady().then(async () => {
     return chatView(st);
   }));
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
+  ipcMain.handle("assets:save", guard((_e, items) => saveAssets(dir(), items)));
   // Documents of Plus4U (uuBookKit pages, uuManagementKit ECC documents) pasted into the chat: read once through the MCP proxy, kept as a snapshot in the project
   const docFetcher = createDocFetcher();
   app.on("will-quit", () => { docFetcher.close(); });
@@ -710,6 +711,44 @@ app.whenReady().then(async () => {
       try { wc.debugger.detach(); } catch { /* closed */ }
     }
   };
+  // data and pictures come later than the text: wait (at most 12 s: what needs the Plus4U sign-in never loads here, a longer wait only turns its "log in" into an error) until the page is quiet: every picture finished loading, no spinner, and the same height and number of pictures on three looks in a row
+  const settlePage = async (w) => {
+    const look = `(() => { const im = [...document.images]; const busy = im.filter((i) => !i.complete).length + document.querySelectorAll('[class*="pending" i],[class*="loading" i],[class*="spinner" i],[class*="skeleton" i]').length; return { busy, n: im.length, h: document.documentElement.scrollHeight }; })()`;
+    let last = "", same = 0;
+    for (let t = 0; t < 24 && same < 3; t++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const v = await w.webContents.executeJavaScript(look).catch(() => null);
+      const key = v ? `${v.n}/${v.h}` : "";
+      same = v && !v.busy && key === last ? same + 1 : 0;
+      last = key;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  };
+  /**
+   * Any web page (not a document of Plus4U): a hidden window of the preview session (its sign-ins are kept) opens the link, waits until the page is quiet and
+   * gives { title, text, pic } (what the page shows and a picture 1280 px wide). Only http(s) is followed; the page cannot open other windows.
+   */
+  const readWebPage = async (url) => {
+    const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, partition: PREVIEW_PARTITION } });
+    try {
+      w.webContents.setAudioMuted(true);
+      w.webContents.setUserAgent(w.webContents.getUserAgent().replace(/\sElectron\/\S+/, ""));
+      w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      w.webContents.on("will-navigate", (e, to) => { if (!/^https?:/i.test(to)) e.preventDefault(); });
+      let status = 0;
+      w.webContents.on("did-navigate", (_e, _u, code) => { status = code; });
+      await Promise.race([
+        w.loadURL(url),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("The page did not load in 45 s.")), 45000)),
+      ]).catch((e) => { if (/ERR_ABORTED/.test(String(e?.message))) throw new Error("This link is a file to download, not a page."); throw new Error(`The page could not be opened: ${String(e?.message ?? e).replace(/^Error invoking remote method[^:]*: /, "") || "no answer"}`); });
+      await new Promise((r) => setTimeout(r, 1000));
+      await settlePage(w);
+      const read = await w.webContents.executeJavaScript(`({ title: document.title || "", text: (document.body?.innerText || "").slice(0, 200000) })`);
+      const pic = await pictureOf(w.webContents).catch(() => null);
+      if (status >= 400 && !read.text.trim()) throw new Error(`The page answered with the error ${status}.`);
+      return { ...read, pic };
+    } finally { w.destroy(); }
+  };
   const captureSource = async (projectName, rel) => {
     const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, offscreen: false, partition: PREVIEW_PARTITION } });
     try {
@@ -720,17 +759,7 @@ app.whenReady().then(async () => {
         const n = await w.webContents.executeJavaScript(`(document.getElementById("uu5")?.innerText || "").trim().length`).catch(() => 0);
         ready = n >= 20 ? ready + 1 : 0;
       }
-      // data and pictures come later than the text: wait (at most 12 s: what needs the Plus4U sign-in never loads here, a longer wait only turns its "log in" into an error) until the page is quiet: every picture finished loading, no spinner, and the same height and number of pictures on three looks in a row
-      const look = `(() => { const im = [...document.images]; const busy = im.filter((i) => !i.complete).length + document.querySelectorAll('[class*="pending" i],[class*="loading" i],[class*="spinner" i],[class*="skeleton" i]').length; return { busy, n: im.length, h: document.documentElement.scrollHeight }; })()`;
-      let last = "", same = 0;
-      for (let t = 0; t < 24 && same < 3; t++) {
-        await new Promise((r) => setTimeout(r, 500));
-        const v = await w.webContents.executeJavaScript(look).catch(() => null);
-        const key = v ? `${v.n}/${v.h}` : "";
-        same = v && !v.busy && key === last ? same + 1 : 0;
-        last = key;
-      }
-      await new Promise((r) => setTimeout(r, 500));
+      await settlePage(w);
       return await pictureOf(w.webContents);
     } finally { w.destroy(); }
   };
@@ -738,7 +767,7 @@ app.whenReady().then(async () => {
   // on the dashboard no project is open: the documents are read into a hidden staging folder and moved into the project made for them (docs:adopt)
   const docHome = () => (current ? { name: current, dir: projects.dirOf(current) } : { name: STAGING, dir: path.join(root, STAGING) });
   fs.promises.rm(path.join(root, STAGING), { recursive: true, force: true }).catch(() => {}); // what an earlier run left behind
-  ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const home = docHome(); return docFetcher.fetchDoc(home.dir, String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(home.name, rel) }); }));
+  ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const home = docHome(); return docFetcher.fetchDoc(home.dir, String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(home.name, rel), readPage: readWebPage }); }));
   ipcMain.handle("docs:adopt", guard(() => { if (!current) throw new Error("No project is open."); return adoptStaging(root, current); }));
   // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
   ipcMain.handle("docs:shot", guard(async (_e, file) => {

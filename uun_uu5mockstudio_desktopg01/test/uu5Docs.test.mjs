@@ -229,3 +229,4 @@ test("findBricksRoot finds the registry pages of an installed uu5bricks plugin",
   assert.equal(findBricksRoot({ pluginsFile: path.join(dir, "p.json") }), raw);
   assert.equal(findWikiRoot({ pluginsFile: path.join(dir, "p.json") }), null);
 });
+

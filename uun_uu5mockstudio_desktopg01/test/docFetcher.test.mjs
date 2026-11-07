@@ -40,7 +40,8 @@ test("without a token the fetch reports login, and login then lets it through", 
 test("a missing territory and a foreign link are reported", async () => {
   const f = createDocFetcher({ spec: async () => ({ error: "territory" }) });
   assert.deepEqual(await f.fetchDoc("/nowhere", BOOK), { error: "territory", kind: "bookkit" });
-  assert.match((await f.fetchDoc("/nowhere", "https://example.com/x")).error, /not a link/);
+  assert.match((await f.fetchDoc("/nowhere", "ftp://example.com/x")).error, /not a link/);
+  assert.deepEqual(await f.fetchDoc("/nowhere", "https://example.com/x"), { error: "Web pages cannot be opened here.", kind: "web" }); // any page needs the window of the app (readPage)
 });
 
 test("serverSpec builds the npx command with SERVER_URL from the preset", async () => {
@@ -137,7 +138,7 @@ test("loginFor signs in for the kind of the link", async (t) => {
   const f = createDocFetcher({ spec: spec(false) });
   t.after(() => f.close());
   assert.deepEqual(await f.loginFor(ECC), { ok: true });
-  assert.match((await f.loginFor("https://example.com/x")).error, /not a link/);
+  assert.match((await f.loginFor("https://example.com/x")).error, /Only Plus4U documents/);
 });
 
 import { adoptStaging, STAGING } from "../src/main/docFetcher.mjs";
@@ -161,4 +162,22 @@ test("adoptStaging moves the documents read on the dashboard into the project an
   assert.equal(await rf(jn(dest, "doc.html"), "utf8"), `<img src="/Proj/.studio/sources/assets/a.png">`);
   assert.equal(await rf(jn(dest, "assets", "a.png"), "utf8"), "x");
   assert.equal(await adoptStaging(root, "Proj"), null); // the staging folder is gone
+});
+
+test("a web page is read by the app itself: text and picture are kept, a failure is reported", async () => {
+  const f = createDocFetcher({ spec: async () => ({ error: "territory" }) }); // no MCP needed
+  const dir = await makeProject({});
+  const seen = [];
+  const readPage = async (u) => { seen.push(u); return { title: "Example", text: "Hello page", pic: { full: Buffer.from("jpg"), thumb: "data:image/jpeg;base64,AA==" } }; };
+  const r = await f.fetchDoc(dir, "https://example.com/start#x", { readPage });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(seen, ["https://example.com/start"]);
+  assert.equal(r.kind, "web");
+  assert.equal(r.title, "Example");
+  assert.match(await readFile(r.file, "utf8"), /Hello page/);
+  assert.equal((await readFile(r.shot)).toString(), "jpg");
+  assert.equal(JSON.parse(await readFile(r.file.replace(/\.md$/, ".json"), "utf8")).kind, "web");
+  assert.equal(await hasSources(dir), true);
+  const bad = await f.fetchDoc(dir, "https://example.com/gone", { readPage: async () => { throw new Error("The page answered with the error 404."); } });
+  assert.deepEqual(bad, { error: "The page answered with the error 404.", kind: "web" });
 });

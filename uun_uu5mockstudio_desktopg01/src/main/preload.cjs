@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("studio", {
   stop: () => invoke("chat:stop"),
   saveChat: (project, chatId, chat) => invoke("chat:save", project, chatId, chat),
   saveAttachments: (items) => invoke("attachments:save", items),
+  saveAssets: (items) => invoke("assets:save", items),
   docFetch: (url, opts) => invoke("docs:fetchSource", url, opts),
   docAdopt: () => invoke("docs:adopt"),
   envList: () => invoke("env:list"),

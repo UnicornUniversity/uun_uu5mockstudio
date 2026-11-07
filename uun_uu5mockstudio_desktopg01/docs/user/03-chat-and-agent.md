@@ -29,6 +29,10 @@ One rounded box: your text, a strip of tools under it, and the round send button
 | cube | **Components from the libraries**: search the uu5 libraries and add a component to the message (the same browser is the **Components** tab at the top of the panel) |
 | round arrow | Send. While Claude works it becomes **Stop**. |
 
+**A picture for the design itself** (a logo, a specific photo): every attached image starts as a *Reference* (the agent only looks at it). Click the label on its thumbnail to switch it to *In design*: the app then saves the picture in the project's `assets` folder and the agent places it into the screen as it is (`assets/logo.png`), without redrawing or copying it. The pictures travel in the ZIP export (`mockups/assets`); a single exported HTML file does not contain them. A logo can also be an **SVG**: it is only accepted as *In design*, is saved unchanged, and is refused when it contains script or an external reference.
+
+**Links**: paste any web address (a page of a uuBookKit book, a document of uuManagementKit, or any other http/https page) and a card appears next to the attached images: the app opens the page, keeps its text and a picture in the project, and the agent reads both when you send. Click the card for the large picture; **Load with my access…** opens the page in a window where you can sign in and show the page the way it should look. A page that cannot be opened shows the reason and does not stop the message.
+
 Under the box: the **mode** (Agent or Plan) on the left and the **model** on the right (Default is the model configured in your Claude Code). Enter sends, Shift+Enter makes a new line.
 
 ## Agent and Plan

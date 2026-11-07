@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT, truncatedSections, completeSection } from "./docSources.mjs";
+import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, parseLink, webSnapshot, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT, truncatedSections, completeSection } from "./docSources.mjs";
 
 const run = promisify(execFile);
 export const NPM_REGISTRY = "https://repo.plus4u.net/repository/public-javascript";
@@ -168,8 +168,9 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
    * a missing token is reported instead of opening the browser.
    */
   async function fetchDoc(projectDir, url, { allowLogin = false, ...opts } = {}) {
-    const doc = parseDocUrl(url);
-    if (!doc) return { error: "This is not a link to a uuBookKit page or a uuManagementKit document." };
+    const doc = parseLink(url);
+    if (!doc) return { error: "This is not a link to a web page." };
+    if (doc.kind === "web") return fetchWeb(projectDir, doc, opts);
     const k = KINDS[doc.kind];
     try {
       if (!allowLogin) {
@@ -208,6 +209,26 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     }
   }
 
+  /**
+   * Any other web page: no MCP, the app opens it itself (`opts.readPage(url)` → { title, text, pic: { full, thumb } }) and keeps the text of it
+   * (.studio/sources/<name>.md) and the picture (<name>.jpg + .json with the link). { ok, kind: "web", … } or { error: message, kind: "web" }.
+   */
+  async function fetchWeb(projectDir, doc, { readPage } = {}) {
+    if (!readPage) return { error: "Web pages cannot be opened here.", kind: "web" };
+    try {
+      const page = await readPage(doc.url);
+      const fetchedAt = new Date().toISOString();
+      const snap = webSnapshot(doc, page, { fetchedAt });
+      const dir = path.join(projectDir, SOURCES_DIR), name = snapshotName(doc), file = path.join(dir, `${name}.md`);
+      await mkdir(dir, { recursive: true });
+      await writeFile(file, snap.markdown);
+      let shot = null;
+      if (page?.pic?.full) { shot = path.join(dir, `${name}.jpg`); await writeFile(shot, page.pic.full); }
+      await writeFile(path.join(dir, `${name}.json`), JSON.stringify({ url: doc.url, kind: "web", title: snap.title, fetchedAt, page: null, shot: shot ? `${name}.jpg` : null, sections: snap.sections.map((x) => x.title) }, null, 2));
+      return { ok: true, kind: "web", label: "Web page", url: doc.url, title: snap.title, sections: snap.sections, file, page: null, shot, thumb: page?.pic?.thumb ?? null, images: 0 };
+    } catch (e) { return { error: String(e?.message ?? e) || "The page could not be loaded.", kind: "web" }; }
+  }
+
   /** Ends the proxies (on quit, or when the territory changes). */
   async function close() {
     const all = [...clients.values()];
@@ -218,7 +239,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
   /** Signs in for the kind of document of `url` (the card shows "waiting for the sign-in" only while this runs, then the loading). */
   async function loginFor(url) {
     const doc = parseDocUrl(url);
-    if (!doc) return { error: "This is not a link to a uuBookKit page or a uuManagementKit document." };
+    if (!doc) return { error: "Only Plus4U documents need this sign-in: for another page use “Load with my access…” in its preview." };
     return login(doc.kind);
   }
 

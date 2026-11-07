@@ -58,6 +58,9 @@ export async function exportZip(projectDir, dest) {
     "index.html": strToU8(indexHtml(files)),
   };
   for (const f of files) entries[`mockups/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
+  // pictures the user put into the design (logo...) live in assets/; the mockups sit in mockups/, so they go to mockups/assets/
+  const assets = path.join(projectDir, "assets");
+  for (const f of await readdir(assets).catch(() => [])) entries[`mockups/assets/${f}`] = new Uint8Array(await readFile(path.join(assets, f)));
   // project memory travels with the mocks: description, business rules and the notes of the screens
   for (const f of (await readdir(projectDir)).filter((n) => n === "BUSINESS_RULES.md" || n === "PROJECT.md" || n.endsWith(".notes.md"))) entries[`docs/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
   await writeFile(dest, zipSync(entries, { level: 6 }));
