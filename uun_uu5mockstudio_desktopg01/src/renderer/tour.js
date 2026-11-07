@@ -9,7 +9,7 @@ const line = (x, y, w, cls = "t-line") => `<rect x="${x}" y="${y}" width="${w}" 
 const CARDS = [
   {
     title: "Describe a screen, get a live page",
-    text: "Write what you need in plain words. Claude builds it as a real uu5 / uuGDS page that you can click, inspect and share. One HTML file per screen, in a folder per project.",
+    text: "Write what you need in plain words. The AI agent (Claude Code or Codex) builds it as a real uu5 / uuGDS page that you can click, inspect and share. One HTML file per screen, in a folder per project.",
     art: S(`${frame(14, 20, 150, 150)}${line(28, 40, 90)}${line(28, 56, 110, "t-line s")}${line(28, 72, 70, "t-line s")}
       <rect x="28" y="124" width="122" height="30" rx="15" class="t-accent"/><text x="89" y="143" text-anchor="middle" class="t-btn">Send</text>
       <path d="M176 95h50" class="t-arrow"/><path d="M218 86l10 9-10 9" class="t-arrow"/>
@@ -28,7 +28,7 @@ const CARDS = [
   },
   {
     title: "Keep requests small and cheap",
-    text: "The line under each answer shows how big the conversation has grown (context) and what the request cost in tokens. When it gets large, a bar suggests a new conversation: Claude then reads less every time. Eco (the leaf under the message box) makes the agent think less, change only what you asked for and answer briefly: switch it on for quick tweaks, off for a new screen.",
+    text: "The line under each answer shows how big the conversation has grown (context) and what the request cost in tokens. When it gets large, a bar suggests a new conversation: the agent then reads less every time. Eco (the leaf under the message box) makes the agent think less, change only what you asked for and answer briefly: switch it on for quick tweaks, off for a new screen.",
     art: S(`${frame(14, 14, 412, 92)}${line(30, 32, 250)}${line(30, 48, 190, "t-line s")}${line(30, 64, 120, "t-line s")}
       <text x="410" y="96" text-anchor="end" class="t-text">context 142k</text>
       ${frame(14, 118, 412, 58)}<rect x="30" y="136" width="200" height="10" rx="5" class="t-fill"/><rect x="30" y="136" width="150" height="10" rx="5" class="t-accent"/>
@@ -62,7 +62,7 @@ const CARDS = [
   },
   {
     title: "Start from existing content",
-    text: "Paste a link into the message and it gets a card with a preview: a page of a uuBookKit book, a uuManagementKit document (read-only, through the uuAiChat MCP server) or any other web page. Claude takes the text and the look as input, so you can rebuild, extend or restyle a page that already exists.",
+    text: "Paste a link into the message and it gets a card with a preview: a page of a uuBookKit book, a uuManagementKit document (read-only, through the uuAiChat MCP server) or any other web page. The agent takes the text and the look as input, so you can rebuild, extend or restyle a page that already exists.",
     art: S(`${frame(14, 20, 190, 150)}${line(28, 38, 90)}<rect x="28" y="56" width="162" height="40" rx="5" class="t-fill"/>${line(28, 108, 120, "t-line s")}${line(28, 124, 140, "t-line s")}
       <rect x="28" y="140" width="52" height="16" rx="8" class="t-accent"/><rect x="86" y="140" width="62" height="16" rx="8" class="t-orange" fill="none"/>
       <path d="M216 95h40" class="t-arrow"/><path d="M248 86l10 9-10 9" class="t-arrow"/>
@@ -70,14 +70,14 @@ const CARDS = [
   },
   {
     title: "Project memory",
-    text: "Link a git repository: Claude reads it, never writes to it, and any branch works as a read-only snapshot. Business rules, project and screen descriptions and notes live in the project folder, so every request builds on them.",
+    text: "Link a git repository: the agent reads it, never writes to it, and any branch works as a read-only snapshot. Business rules, project and screen descriptions and notes live in the project folder, so every request builds on them.",
     art: S(`${frame(14, 14, 412, 34)}<circle cx="34" cy="31" r="5" class="t-accent"/>${line(48, 28, 90)}<rect x="320" y="24" width="86" height="14" rx="7" class="t-fill"/>
       ${frame(14, 60, 200, 116)}${line(28, 76, 80)}${[96, 116, 136].map((y) => `<rect x="28" y="${y}" width="26" height="12" rx="3" class="t-accent"/>${line(62, y + 3, 130, "t-line s")}`).join("")}
       ${frame(226, 60, 200, 116)}${line(240, 76, 60)}${line(240, 96, 160, "t-line s")}${line(240, 112, 140, "t-line s")}${line(240, 128, 150, "t-line s")}`),
   },
   {
     title: "Share, and stay up to date",
-    text: "Export a screen as an image or HTML, or the whole project as a ZIP, and share it from the menu. Help > Claude Code & Plugins… checks your setup, and the app tells you when a new version is out. On a Mac, View > Appearance > Glass Effect gives it a translucent look.",
+    text: "Export a screen as an image or HTML, or the whole project as a ZIP, and share it from the menu. Help > Claude Code & Plugins… or Codex & Plugins… checks your setup, and the app tells you when a new version is out. On a Mac, View > Appearance > Glass Effect gives it a translucent look.",
     art: S(`${frame(14, 30, 170, 130)}${line(28, 48, 80)}<rect x="28" y="66" width="142" height="40" rx="5" class="t-fill"/>${line(28, 120, 100, "t-line s")}
       <path d="M204 95h50" class="t-arrow"/><path d="M246 86l10 9-10 9" class="t-arrow"/>
       <rect x="276" y="40" width="64" height="64" rx="10" class="t-card"/><text x="308" y="78" text-anchor="middle" class="t-text">PNG</text>
