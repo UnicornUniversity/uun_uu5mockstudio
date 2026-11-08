@@ -1776,6 +1776,8 @@ function preferModel(id) {
 /** Presets the starting point of a role: the level of templates, Plan, Eco, the first Share format, and how much of the technical side shows. */
 function applyRole(role, { preset = true } = {}) {
   meta.role = isRole(role) ? role : null;
+  document.body.dataset.role = meta.role ?? "";
+  if (meta.role && roleOf(meta.role).hideLevels?.includes(dashboard.level?.())) dashboard.setLevel(roleOf(meta.role).level); // a saved level that this role does not offer
   $("dash-role").textContent = meta.role ? roleOf(meta.role).label : "Choose role…";
   if (!meta.role || !preset) return;
   const r = roleOf(role);

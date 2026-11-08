@@ -37,3 +37,8 @@ test("only the architect plans first, and only for an application or a route", (
   assert.equal(planFirst("architect", "component"), false);
   assert.equal(planFirst("uiux", "app"), false);
 });
+
+test("the architect does not get the Web and Document levels, the others do", () => {
+  assert.deepEqual(ROLES.architect.hideLevels, ["web", "page"]);
+  for (const id of ["uiux", "mkt", "other"]) assert.equal(ROLES[id].hideLevels, undefined, id);
+});

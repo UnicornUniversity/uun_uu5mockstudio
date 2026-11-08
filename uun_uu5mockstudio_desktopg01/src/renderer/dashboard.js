@@ -15,10 +15,11 @@ const ICONS = {
   landing: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="6" y="6" width="12" height="6" rx="1"/><line x1="6" y1="15" x2="18" y2="15"/><line x1="9" y1="18" x2="15" y2="18"/>'),
   home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>'),
   product: svg('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>'),
-  article: svg('<path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/>'),
+  news: svg('<path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/>'),
   report: svg('<line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/>'),
   other: svg('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>'),
 };
+ICONS.article = ICONS.news; // templates saved earlier with the kind article
 const iconOf = (t) => ICONS[t.kind] ?? ICONS[t.icon] ?? ICONS[t.level] ?? ICONS.other;
 const LEVELS = [["app", "Application"], ["route", "Route"], ["component", "Component"], ["web", "Web"], ["page", "Document"]];
 export const LEVEL_KEY = "uu5studio.dashLevel";
@@ -154,7 +155,10 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   }
   function setLevel(l) {
     level = l; try { localStorage.setItem(LEVEL_KEY, l); } catch { /* not remembered */ }
-    if (selected && selected.level !== l) selected = null;
+    if (selected && selected.level !== l) {
+      if (selected.prompt && prompt.value.trim() === selected.prompt) prompt.value = ""; // the sentence of the dropped template goes with it, so the next template can fill the field
+      selected = null; refreshSend();
+    }
     paintTemplates();
   }
   async function loadTemplates() {
@@ -172,7 +176,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     hide() { root.hidden = true; seq++; },
     reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },
     focus() { prompt.focus(); },
-    setLevel, setPlan,
+    setLevel, setPlan, level: () => level,
     /** The text of the message field (links in it get their cards); optionally a template by id (its level is chosen too). */
     fill(text, templateId = null) {
       if (templateId) { const t = templates.find((x) => x.id === templateId); if (t) { setLevel(t.level); selected = t; } }

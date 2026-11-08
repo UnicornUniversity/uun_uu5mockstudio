@@ -146,7 +146,7 @@ export function templatePrompt(meta) {
 // ---------------------------------------------------------------- my templates: made from screens of a project
 
 /** The kinds offered when a template is saved (they choose the icon of the chip). */
-export const KINDS = ["form", "list", "detail", "dashboard", "portal", "landing", "home", "product", "article", "report"];
+export const KINDS = ["form", "list", "detail", "dashboard", "portal", "landing", "home", "product", "news", "report"];
 
 /** A kebab-case id from a title ("Course detail" -> "course-detail"), "" when nothing is left. */
 export function slugify(title) {

@@ -1,0 +1,14 @@
+{
+  "id": "page-news",
+  "title": "News",
+  "level": "page",
+  "description": "A news item: headline, date and author, a lead, a picture, the text, a quote and related news.",
+  "prompt": "A news item announcing the opening of our new office, with a picture, a quote and related news",
+  "order": 20,
+  "kind": "news",
+  "icon": "news",
+  "tags": [
+    "uu5Bricks",
+    "uu5String"
+  ]
+}

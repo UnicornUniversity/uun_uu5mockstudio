@@ -1,0 +1,14 @@
+{
+  "id": "web-product",
+  "title": "Product detail",
+  "level": "web",
+  "description": "The detail of one product on a web site: a picture, price and availability, reasons to buy, specifications and questions.",
+  "prompt": "A product detail page of a backpack with a picture, price, reasons to buy, specifications and questions",
+  "order": 40,
+  "icon": "product",
+  "tags": [
+    "web",
+    "HTML"
+  ],
+  "kind": "product"
+}

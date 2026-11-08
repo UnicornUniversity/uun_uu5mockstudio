@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>News</title>
+    <!-- A content page made of uu5Bricks only: it is meant to be copied as uu5String into a document (uuBookKit page, uuManagementKit portal). -->
+    <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
+    <script>
+      var uu5DemoDependencies = { uu5bricksg01: "1.x", "uu5imagingg01-bricks": "2.x" };
+    </script>
+    <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
+    <style>
+      .uu-app-devkit-demo-middleware-controls {
+        display: none;
+      }
+      body {
+        margin: 0;
+      }
+      /* the width of a document page; the document gives its own frame, so this is not part of the uu5String */
+      #uu5 {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 24px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="uu5"></div>
+
+    <script type="text/babel">
+      import { Utils } from "uu5g05";
+      import * as Uu5Bricks from "uu5bricksg01";
+      import * as Uu5ImagingBricks from "uu5imagingg01-bricks";
+
+      const IMG = "https://uuapp.plus4u.net/uu-webkit-maing02/b6d739b46b0a4f4980891c3c54a6df5d/image-placeholder-";
+
+      function Page() {
+        return (
+          <>
+            <Uu5Bricks.Section header="Our new office opens in Brno" headerType="heading" level={1}>
+              <Uu5Bricks.InfoGroup size="s">
+                <Uu5Bricks.InfoGroup.Item icon="uugds-account" title="Jane Doe" subtitle="Author" />
+                <Uu5Bricks.InfoGroup.Item icon="uugds-calendar" title="5 November 2026" subtitle="Published" />
+                <Uu5Bricks.InfoGroup.Item icon="uugds-timer" title="3 minutes" subtitle="Reading time" />
+              </Uu5Bricks.InfoGroup>
+              <p><strong>From Monday 16 November the team of the south region works in a new office in the centre of Brno.</strong></p>
+              <Uu5ImagingBricks.Image src={`${IMG}03`} alt="The new office" aspectRatio="16x9" />
+            </Uu5Bricks.Section>
+
+            <Uu5Bricks.Section header="What changes" headerType="heading" level={2}>
+              <p>The office has room for forty people, a meeting room for workshops and a quiet zone. It is five minutes from the main station.</p>
+              <Uu5Bricks.InfoBlock>
+                <p>“We wanted a place where people like to meet, not only to work,” says the head of the region.</p>
+              </Uu5Bricks.InfoBlock>
+              <p>The old office closes on Friday 13 November. Post and parcels are forwarded for three months.</p>
+            </Uu5Bricks.Section>
+
+            <Uu5Bricks.Section header="What to do" headerType="heading" level={2}>
+              <ul>
+                <li>Take your things from the old office by Friday.</li>
+                <li>Collect your new access card at the reception.</li>
+                <li>Update the address in your email signature.</li>
+              </ul>
+            </Uu5Bricks.Section>
+
+            <Uu5Bricks.Section header="Related news" headerType="heading" level={2}>
+              <ul>
+                <li><Uu5Bricks.Link href="https://uuapp.plus4u.net" target="_blank">New parking rules from December</Uu5Bricks.Link></li>
+                <li><Uu5Bricks.Link href="https://uuapp.plus4u.net" target="_blank">Team day: registration is open</Uu5Bricks.Link></li>
+              </ul>
+            </Uu5Bricks.Section>
+          </>
+        );
+      }
+
+      Utils.Dom.render(<Page />, document.getElementById("uu5"));
+    </script>
+  </body>
+</html>

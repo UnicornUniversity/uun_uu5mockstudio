@@ -16,7 +16,7 @@ export const ROLES = {
   },
   mkt: {
     label: "Web and marketing",
-    hint: "Landing pages, product pages, articles, campaigns",
+    hint: "Home pages, landing pages, product pages, campaigns",
     level: "web", plan: false, eco: true, simple: true, share: "html",
     ideas: "home page, landing page, web page",
     prompt: "The user works in marketing and designs web pages. Write finished, readable content (headings, benefits, calls to action) instead of placeholder text. Do not use technical terms (component, prop, uu5String) in your answers; describe the page in plain words.",
@@ -24,7 +24,7 @@ export const ROLES = {
   architect: {
     label: "Solution architect",
     hint: "Structure of an application, routes and components before they are built",
-    level: "component", plan: false, eco: false, simple: false, share: "zip",
+    level: "component", plan: false, eco: false, simple: false, share: "zip", hideLevels: ["web", "page"], // an architect designs applications, routes and components: no Web, no Document
     ideas: "applications, routes and components",
     prompt: "The user is a software designer or solution architect. Name components exactly, mention the business rules a screen implies and ask the decisions that matter before building a large change; they may want a plan for it.",
   },
@@ -32,7 +32,7 @@ export const ROLES = {
     label: "Quick start",
     hint: "I need a page or a portal fast, without design or technical details",
     level: "page", plan: false, eco: true, simple: true, share: "png",
-    ideas: "a portal, a home page, a team page",
+    ideas: "a portal, news",
     prompt: "The user wants a result quickly and may not know design or technical terms, for example a portal of their team or organisational unit. Use plain language without technical terms, pick sensible defaults and ask at most one short question when something essential is missing. Offer one next step at the end of your answer.",
   },
 };

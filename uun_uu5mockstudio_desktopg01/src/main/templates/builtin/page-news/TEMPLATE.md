@@ -1,10 +1,10 @@
-# Home page
+# News
 
-The starting page of a project, team or organisation. The starter file is a worked example: write the page the user asked for into the project folder under a name of its own (course-detail.html, not the starter's name), keep the head and the structure where they fit and replace the sample content.
+A news item (an announcement, a story from the team). The starter file is a worked example: write the page the user asked for into the project folder under a name of its own (course-detail.html, not the starter's name), keep the head and the structure where they fit and replace the sample content.
 
 How to use it:
-- Find out the subject, its key facts (owner, phase, dates, size), the current announcement, the links people need and the milestones.
-- Key facts go into the InfoGroup under the title, the announcement into the HighlightedBox, groups of links into Blocks in a Layout.
+- Find out what happened, for whom it matters and what the reader should do next.
+- Headline, date and author in an InfoGroup, a short lead, a picture (Uu5ImagingBricks.Image), the text in short paragraphs, a quote in an InfoBlock, related news as links at the end.
 
 Rules of a Page (it ends up as uu5String in a document, see "Copy as uu5String"):
 - Only components of the Bricks libraries (Uu5Bricks, Uu5RichTextBricks, Uu5ImagingBricks, Uu5ChartsBricks, Uu5TilesBricks, Uu5CodeKitBricks …) and plain HTML for text (p, strong, em, ul, ol, li, br, h2…h4 only where a Section does not fit).

@@ -1078,6 +1078,7 @@ body.simple #modesw,body.simple #model,body.simple #dash-model,body.simple #dash
 /* the simple view of the whole app: what is needed to describe, look at, edit and share a design (editing by hand stays) */
 body.simple #ptabs [data-tab="components"],body.simple #libbtn,body.simple #rulesbtn,body.simple #insp-add,body.simple #insp-uu5,body.simple #insp-struct,
 body.simple .frame .fenvbtn,body.simple .frame .ftpl,body.simple .frame .ffit,body.simple #dash-levels [data-level="app"],body.simple #dash-levels [data-level="route"],body.simple #dash-levels [data-level="component"],body.simple #dash-tpl{display:none!important}
+body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="architect"] #dash-levels [data-level="page"]{display:none!important}
 
 /* variants of a screen: one colour per group, a tinted board with a header to choose from */
 .var-layer{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}

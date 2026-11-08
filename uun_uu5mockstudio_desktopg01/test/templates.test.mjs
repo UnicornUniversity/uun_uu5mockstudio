@@ -79,7 +79,7 @@ test("the built-in templates are all valid and cover the five levels", async () 
 test("a Page template is made of Bricks only: every library it uses is a dependency of the page and imported, nothing of uu5g05-elements", async () => {
   const { templates } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
   const pages = templates.filter((t) => t.level === "page");
-  assert.ok(pages.length >= 6);
+  assert.deepEqual(pages.map((t) => t.id).sort(), ["page-news", "page-portal"]); // a Document: portal, news (home page, landing page and product detail are Web)
   for (const t of pages) {
     const html = await readFile(path.join(t.dir, t.files[0]), "utf8");
     const deps = JSON.parse(html.match(/var uu5DemoDependencies = (\{[^}]*\})/)[1].replace(/(\w[\w-]*)(?=\s*:)/g, (k) => `"${k}"`).replace(/""/g, '"'));
@@ -157,7 +157,7 @@ test("saving refuses what a template may not contain", async () => {
 test("a Web template is a whole page: its own navigation and footer, no Bricks, no application components", async () => {
   const { templates } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
   const web = templates.filter((t) => t.level === "web");
-  assert.deepEqual(web.map((t) => t.id).sort(), ["web-home", "web-landing", "web-page"]);
+  assert.deepEqual(web.map((t) => t.id).sort(), ["web-home", "web-landing", "web-page", "web-product"]);
   for (const t of web) {
     const html = await readFile(path.join(t.dir, t.files[0]), "utf8");
     assert.match(html, /className="nav"/, `${t.id} has a navigation bar`);

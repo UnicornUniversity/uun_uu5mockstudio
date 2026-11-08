@@ -14,7 +14,7 @@ export function openTemplateSave({ api, files = [], id: editId = null, toast = (
     const edit = Boolean(editId);
     const d = edit ? await api.templatesGet(editId) : await api.templatesDraft(files);
     if (!d || d.error) { toast(d?.error ?? "The template could not be read.", { err: true }); return resolve(null); }
-    const levels = edit ? (await api.templatesList()).levels : d.levels, kinds = d.kinds ?? ["form", "list", "detail", "dashboard", "portal", "landing", "home", "product", "article", "report"];
+    const levels = edit ? (await api.templatesList()).levels : d.levels, kinds = d.kinds ?? ["form", "list", "detail", "dashboard", "portal", "landing", "home", "product", "news", "report"];
     const taken = new Set(d.taken ?? []);
 
     const field = (label, input, hint) => h("label", { className: "tsd-f" }, h("span", { textContent: label }), input, hint ? h("small", { className: "mute", textContent: hint }) : null);
@@ -64,13 +64,13 @@ export function openTemplateSave({ api, files = [], id: editId = null, toast = (
       save.disabled = false;
       if (r?.error) { err.textContent = r.error; return; }
       if (r?.exists) { taken.add(t.id); check(); return; } // created meanwhile: ask to replace
-      toast(edit ? `Template “${t.title}” saved.` : `Template “${t.title}” saved to My templates: choose it on the dashboard (${levels[t.level]}).`);
+      toast(edit ? `Template “${t.title}” saved.` : `Template “${t.title}” saved to My templates: choose it on the dashboard under ${levels[t.level]}.`);
       close(r.id);
     };
 
     const body = h("div", { className: "tsd-body" },
+      h("div", { className: "tsd-row" }, field("Category", level, "Where it appears on the dashboard"), field("Kind (icon)", kind)),
       h("div", { className: "tsd-row" }, field("Title", title), field("Id", id, "The folder name; kebab-case")),
-      h("div", { className: "tsd-row" }, field("Level", level), field("Kind (icon)", kind)),
       field("Description", desc),
       field("Sentence for the message field", prompt),
       edit ? null : h("fieldset", { className: "tsd-screens" }, h("legend", { textContent: "Screens" }), ...picks.map((p) => h("label", {}, p, h("span", { textContent: p.value })))),

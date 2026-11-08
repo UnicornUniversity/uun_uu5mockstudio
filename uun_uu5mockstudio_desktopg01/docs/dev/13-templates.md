@@ -33,7 +33,7 @@ A template is a folder:
 
 Later sources win over earlier ones by `id`:
 
-1. **Built-in**: `src/main/templates/builtin/` (shipped with the app: `app-basic`, `route-basic`, `form`, `list`, `detail`, `dashboard` and the Pages `page-portal`, `page-landing`, `page-home`, `page-product`, `page-article`, `page-report`), written by hand after the uu5-mockup conventions (simulated Top, `RouteHeader`, `ActionGroup`, Drawer navigation).
+1. **Built-in**: `src/main/templates/builtin/` (shipped with the app: `app-basic`, `route-basic`, `form`, `list`, `detail`, `dashboard` and the Web pages `web-home`, `web-landing`, `web-page`, `web-product` and the Documents `page-portal`, `page-news`), written by hand after the uu5-mockup conventions (simulated Top, `RouteHeader`, `ActionGroup`, Drawer navigation).
 2. **Plugins**: `templates/<id>/template.json` inside any installed Claude Code plugin (found through `~/.claude/plugins/installed_plugins.json`), and the bare skeletons of the `uu5-mockup` skill `create-mockup` as components (`legacy`; they are hidden where a template of the same level and kind exists).
 3. **My templates**: `<userData>/templates/mine/` (the **Open folder** button of the Templates dialog opens it).
 
