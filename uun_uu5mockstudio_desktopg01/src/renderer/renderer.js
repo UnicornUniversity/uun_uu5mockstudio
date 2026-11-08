@@ -586,7 +586,7 @@ function syncFrames(screens) {
     fr.view.addEventListener("console-message", (e) => inspector.handleConsole(f, e.message));
   }
   for (const f of canvas.files()) if (!screens.includes(f)) canvas.removeFrame(f);
-  $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens(); vlayer?.draw();
+  $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens(); vlayer?.draw(); if (flow) updateFlowBtn();
 }
 function renderTabs() {
   const keep = $("tabs").scrollLeft; // replaceChildren would reset the strip to the left
@@ -1119,10 +1119,16 @@ async function keepVariant(file) {
   if (r?.error) toast(r.error, { err: true }); else toast(`${name(r.kept)} is now the chosen variant${r.removed.length ? `; ${r.removed.length} other${r.removed.length === 1 ? "" : "s"} removed` : ""}.`);
 }
 // the flow between screens: arrows on the canvas from a screen to the screens it links to; variants of a screen as one request to the agent
-flow = createFlowLayer({ world: $("world"), canvas, api: window.studio });
+flow = createFlowLayer({ world: $("world"), canvas, api: window.studio, onDraw: () => updateFlowBtn() });
 vlayer = createVariantLayer({ world: $("world"), canvas, onKeep: (f) => keepVariant(f) }); vlayer.draw();
 const FLOW_KEY = "uu5studio.flow";
-const setFlow = (on) => { flow.setOn(on); $("flowbtn").setAttribute("aria-pressed", String(on)); try { localStorage.setItem(FLOW_KEY, on ? "1" : "0"); } catch { /* not remembered */ } };
+/** The button says what is on the canvas: unavailable with fewer than two screens, pressed only while arrows are drawn. */
+function updateFlowBtn() {
+  const b = $("flowbtn"), few = canvas.files().length < 2, shown = flow.isOn() && flow.count() > 0;
+  b.disabled = few; b.setAttribute("aria-pressed", String(!few && shown));
+  b.title = few ? "Screen flow: needs at least two screens" : "Show or hide the arrows between linked screens";
+}
+const setFlow = (on) => { flow.setOn(on); try { localStorage.setItem(FLOW_KEY, on ? "1" : "0"); } catch { /* not remembered */ } };
 $("flowbtn").onclick = () => { setFlow(!flow.isOn()); if (flow.isOn()) { flow.refresh().then(() => { if (!flow.count()) toast("No screen links to another one yet. Ask the agent to link the screens (a button that leads to another screen)."); }); } };
 try { setFlow(localStorage.getItem(FLOW_KEY) !== "0"); } catch { setFlow(true); }
 const variantsDialog = createVariantsDialog({

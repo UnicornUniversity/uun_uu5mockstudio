@@ -15,7 +15,7 @@ export function arrowPath(a, b, offset = 0) {
   return { d: `M${ax},${ay} C${ax + right * k},${ay} ${bx - right * k},${by} ${bx},${by}`, start: { x: ax, y: ay } };
 }
 
-export function createFlowLayer({ world, canvas, api }) {
+export function createFlowLayer({ world, canvas, api, onDraw }) {
   const svg = svgEl("svg", { class: "flow-layer", width: "1", height: "1" });
   svg.innerHTML = '<defs><marker id="flow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>';
   world.prepend(svg);
@@ -24,6 +24,7 @@ export function createFlowLayer({ world, canvas, api }) {
   function draw() {
     for (const p of [...svg.querySelectorAll("path.flow-arrow, circle.flow-dot")]) p.remove();
     svg.style.display = on ? "" : "none";
+    onDraw?.();
     if (!on) return;
     const rects = canvas.rects();
     for (const e of edges) {
