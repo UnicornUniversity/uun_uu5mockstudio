@@ -1,0 +1,13 @@
+{
+  "id": "web-page",
+  "title": "Web page",
+  "level": "web",
+  "description": "A standard content page of a web site: breadcrumb, a title, a lead, text in sections with a picture and a side column with links and a contact.",
+  "prompt": "A page about our teachers: who they are, how we choose them and how to become one",
+  "order": 30,
+  "icon": "page",
+  "tags": [
+    "web",
+    "HTML"
+  ]
+}

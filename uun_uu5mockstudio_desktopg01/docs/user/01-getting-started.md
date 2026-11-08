@@ -28,7 +28,7 @@ On the first run a **setup dialog** checks what is missing and offers to fix it 
 2. Signed in? The dialog opens the sign-in of Claude Code.
 3. Plugins installed and up to date? The dialog installs or updates them. Plugin updates are offered, never applied silently.
 
-Then the app shows the **dashboard** (see [Projects, screens and the canvas](02-projects-screens-canvas.md#the-dashboard)) and a short **welcome tour** (seven cards: describing a screen, the chat, keeping requests small and cheap (context size, Eco), the canvas, the inspector, project memory, sharing). It opens only the first time; **Help → Welcome Tour…** shows it again. **Esc** closes any dialog.
+Then the app asks for your **role** (what you will design; it sets where the app starts, see [Your role](09-appearance-and-settings.md#your-role)). Then it shows the **dashboard** (see [Projects, screens and the canvas](02-projects-screens-canvas.md#the-dashboard)) and a short **welcome tour** (seven cards: describing a screen, the chat, keeping requests small and cheap (context size, Eco), the canvas, the inspector, project memory, sharing). It opens only the first time; **Help → Welcome Tour…** shows it again. **Esc** closes any dialog.
 
 ## Your first screen
 

@@ -63,3 +63,7 @@ A real conversation (one session of an ordinary project) showed where the tokens
 - **Eco** switch of the message field: `send(prompt, model, { plan, economy })` → `ClaudeService.send` sets `effort: "low"` and appends `ECONOMY_MODE` to the system prompt.
 - The renderer remembers the context after the last main-loop API call (`contextOf(assistant message)`), stores it as `ctx` in the `usage` entry and shows the bar `#ctxwarn` from `CONTEXT_WARN` (200k) with a button that opens a new chat with a start text.
 
+
+## Pictures from the web
+
+The agent has no shell, so `studio-browser` offers `web_images(url)` and `download_asset(url, name)` (`src/main/webImages.mjs`, tested in `test/webImages.test.mjs`). The main process downloads: public hosts only (DNS result checked, redirects followed by hand and checked again), 10 MB, content sniffed by magic number (SVG through `checkSvg`), saved by `saveAssets` as `assets/<stem>.<ext>` without overwriting.

@@ -8,6 +8,7 @@ const ICONS = {
   form: svg('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="14" x2="16" y2="14"/>'),
   dashboard: svg('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'),
   app: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="9" x2="8" y2="20"/>'),
+  web: svg('<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
   route: svg('<circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h6a3 3 0 0 1 0 6h-4a3 3 0 0 0 0 6h6"/>'),
   page: svg('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>'),
   portal: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'),
@@ -19,8 +20,8 @@ const ICONS = {
   other: svg('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>'),
 };
 const iconOf = (t) => ICONS[t.kind] ?? ICONS[t.icon] ?? ICONS[t.level] ?? ICONS.other;
-const LEVELS = [["app", "Application"], ["route", "Route"], ["component", "Component"], ["page", "Page"]];
-const LEVEL_KEY = "uu5studio.dashLevel";
+const LEVELS = [["app", "Application"], ["route", "Route"], ["component", "Component"], ["web", "Web"], ["page", "Document"]];
+export const LEVEL_KEY = "uu5studio.dashLevel";
 const TRASH = svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>');
 const VIEW_KEY = "uu5studio.dashView";
 
@@ -57,7 +58,7 @@ export function projectNameFromTitle(title, taken = []) {
  * The first view of the app: write what to design (a project is made for it and the chat goes on there) or open a project from the recent ones.
  * `api` = window.studio (projectThumb, projectsFolder); the callbacks do the work in the renderer.
  */
-export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates }) {
+export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates, onLevel }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
   let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null;
   try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; } catch { /* default */ }
@@ -162,7 +163,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     if (selected && !templates.some((t) => t.id === selected.id)) selected = null;
     paintTemplates();
   }
-  for (const b of root.querySelectorAll("#dash-levels button")) b.onclick = () => setLevel(b.dataset.level);
+  for (const b of root.querySelectorAll("#dash-levels button")) b.onclick = () => { setLevel(b.dataset.level); onLevel?.(b.dataset.level); }; // a click of the user (not the preset of a role)
   $("dash-tpl").onclick = async () => { await onTemplates?.(); loadTemplates(); }; // templates put into the folder meanwhile show up
   setPlan(false); refreshSend(); setView(view);
 
@@ -171,5 +172,11 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     hide() { root.hidden = true; seq++; },
     reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },
     focus() { prompt.focus(); },
+    setLevel, setPlan,
+    /** The text of the message field (links in it get their cards); optionally a template by id (its level is chosen too). */
+    fill(text, templateId = null) {
+      if (templateId) { const t = templates.find((x) => x.id === templateId); if (t) { setLevel(t.level); selected = t; } }
+      prompt.value = text; docs?.scan(text); refreshSend(); paintTemplates(); prompt.focus(); prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+    },
   };
 }

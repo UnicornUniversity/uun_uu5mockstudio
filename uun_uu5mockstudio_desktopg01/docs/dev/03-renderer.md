@@ -27,6 +27,17 @@
 | `icons.js` | Shared SVG icons. |
 | `uu5StringCollect.js`, `uu5String.js`, `mdiBaseline.js` | Copy as uu5String: the tree collected from the rendered screen and its serialization, see [14](14-uu5string.md). |
 
+## Roles
+
+`src/renderer/role.js` is the only table of roles (preset level, Plan, Eco, Share format, simple view, the sentence for the agent); it is plain data, also imported by the main process and tested in `test/role.test.mjs`. The role is kept in `app-state.json` (`role`, `roleAsked`) and returned by `app:meta`; `role:set` / `role:skip` write it. `applyRole()` in `renderer.js` writes the presets into the usual localStorage keys once, so later manual choices simply stay (no list of overrides). The simple view is the `body.simple` class, switched by the `.viewtog` ("Advanced") button of the top bar and of the dashboard (`setView`; what it hides is the `body.simple` block at the end of `app.css` plus the context menu in `showContextMenu`; the simple view shows the model as `.modelnow` text, see `syncModelNow`, localStorage `uu5studio.view`); a role only presets it; `roleDialog.js` is the dialog, opened before the tour on the first run and from Help → Your Role…. `chat:send` puts `svc.role` on the service and `agentInstructions` appends `rolePrompt(role)`.
+
+## Guide, comments, flow, variants
+
+- `guide.js` (pure: the types, `buildGuidePrompt`) and `guideDialog.js`: "Guide me…" on the dashboard; the result is put into the message field with `dashboard.fill(text, templateId)`.
+- `main/comments.mjs` (files `<screen>.comments.json`, `changeComments`), `commentsPanel.js` (the dialog, the toolbar badge, "Comment on this" in `propsPanel`); `main/handoff.mjs` assembles the specification (`gatherHandoff` + the pure `buildHandoff`); IPC `export:handoff`, `comments:*`.
+- `main/flow.mjs` (`findFlowEdges`: which screen names which file as a string) and `flowLayer.js`: an SVG in the canvas world, drawn from `canvas.rects()`; refreshed on `preview:changed` and when a project opens.
+- `variants.js` (pure `buildVariantsPrompt`) and `variantsDialog.js`: "Screen → Variants…" sends one request to the agent.
+
 ## Conventions
 
 - **No framework.** DOM is built with small helpers (`el()`), state is plain objects, and most modules are `createX({ deps }) → { methods }`.

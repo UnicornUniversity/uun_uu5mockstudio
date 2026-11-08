@@ -45,7 +45,7 @@ export function buildEml({ subject, body, attachments, to = "" }) {
 }
 
 export const mailBody = (kind, name) => kind === "uu5"
-  ? `Hi,\n\nattached is the screen “${name}” from uu5Mock Studio as uu5String.\nPaste the content of the file into a document (uuBookKit, uuManagementKit) to show the screen there.\n`
+  ? `Hi,\n\nattached is the screen “${name}” from uu5Mock Studio as uu5String.\nPaste the content of the file into a document (uuBookKit, uuManagementKit) to show the screen there.\nIf a ZIP with files (pictures, videos) is attached too, upload them to the document and point the uu5String at them.\n`
   : kind === "zip"
   ? `Hi,\n\nattached is the project “${name}” from uu5Mock Studio (ZIP).\nUnzip it, run "node serve.mjs" and open http://localhost:4321/ (you need Node.js and an internet connection for the uu5 libraries).\n`
   : `Hi,\n\nattached is the mockup “${name}” from uu5Mock Studio (HTML).\nOpen the file in a browser; it needs an internet connection for the uu5 libraries.\n`;

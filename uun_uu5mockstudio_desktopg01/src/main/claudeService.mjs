@@ -9,6 +9,7 @@ import { templatePrompt } from "./templates.mjs";
 import { claudeEvents } from "./providers/events.mjs";
 import { docAgentSetup } from "./docFetcher.mjs";
 import { docToolVerdict } from "./docSources.mjs";
+import { rolePrompt } from "../renderer/role.js";
 
 const RULES_LIMIT = 12000;
 
@@ -88,7 +89,7 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
     "You run inside uu5Mock Studio, a desktop app that previews mockups live.",
     `Save every mockup (screen) as a single HTML file directly in ${cwd}/<kebab-name>.html: the project folder is the project, each .html file in it is one screen. Do not create subfolders.`,
     `The app serves that folder at ${urlBase}/<name>.html and reloads the preview automatically on every file change. ${cwd} is one project of several; only work inside it.`,
-    "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot, browser_click (all take the mockup file name), and screen_structure (the component structure of a screen, read from its file).",
+    "The uu_mockupkitg01 workspace and `npm start` are NOT available: never start a server. Wherever the mockup skills say to open the page in a browser, take a snapshot, read console messages or take a screenshot, use the studio-browser MCP tools instead: browser_open (first time) / browser_reload (after every edit), browser_console, browser_snapshot, browser_screenshot, browser_click (all take the mockup file name), and screen_structure (the component structure of a screen, read from its file). To use a picture from the web (photos of people, a logo) in the design: web_images lists the pictures a public page shows, download_asset saves one into the assets folder and returns its path (assets/<name>.<ext>); only what the user asked for, and put exactly that path into the screen.",
     "The app shows every .html file of the project as a separate frame on a canvas next to the others, so several screens can coexist: use one file per screen. The user picks device sizes (desktop/tablet/mobile) per frame, so layouts must be responsive.",
     "Verification loop: after you have finished a batch of changes (not after every edit) call browser_open/browser_reload once; if it reports rendered: NO or console errors, read browser_console, fix the file and reload again (max 3 attempts, then tell the user what is wrong). Only use components that exist in the uu5 libraries; if unsure, look them up in uu5-knowledge (in uu5bricks-knowledge for Uu5Bricks and the other Bricks libraries) before use.",
     "Write every component with the namespace it is imported under (`<Uu5Elements.Block>`, `<Uu5Elements.Text>`). Do not alias or destructure a library (no `const E = Uu5Elements`, no `const { Block } = Uu5Elements`) and do not squeeze the JSX into a few long lines: the component editor of the app (select, edit props, drag) is built on those names and on a readable file.",
@@ -97,6 +98,7 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
     "The user may attach screenshots to a message: they are image files under .studio/attachments in the project folder and their paths are listed in the message. Open them with the Read tool before acting and base your work on what they show. Never copy, edit or delete them. Images the user marked \"to use in the design\" (a logo, a specific picture) are different: the app has already saved them as files in the assets folder of the project and their paths are listed in the message. Put them into the screen with exactly that relative path (<img src=\"assets/logo.png\">, or the Uu5Elements component that takes an image url), keep the proportions, never draw a replacement, never inline or re-encode them.",
     "Use the uu5-mockup and uugds skills for composition and rules. A content page meant for a document (uuBookKit, uuManagementKit) is built from Uu5Bricks and the other Bricks libraries: use the uu5bricks-knowledge skill for them. Ask no questions unless essential; pick sensible defaults.",
     "The user can switch the message field from Agent to Plan: then you only propose a plan with a tree of the components first. For a large request (several screens, a rewrite) you may build as asked, but say in one sentence at the end that Plan lets them review a component tree before the next big step.",
+    "When screens belong to one flow, link them: a button or link that leads to another screen uses a relative address of its file (`<a href=\"room-detail.html\">` or `onClick={() => { location.href = \"room-detail.html\"; }}`). The app draws arrows between linked screens, and the user can click through them in Present mode.",
     memory,
   ].join("\n");
 }
@@ -107,7 +109,7 @@ export async function agentInstructions(svc, { plan = false, economy = false } =
   const templateMeta = await fs.promises.readFile(path.join(svc.cwd, ".studio", "template", "template.json"), "utf8").then(JSON.parse).catch(() => null); // a project started from a template
   const memory = memoryPrompt({ cwd: svc.cwd, repoDir: svc.repoDir, repoLabel: svc.repoLabel, rules, description: await readProject(svc.cwd), globalRules, globalFile, componentsBlock: componentsInRules(svc.docs, `${globalRules}\n${rules}`) });
   const docs = await docAgentSetup(svc.cwd).catch(() => ({ prompt: "", servers: {}, readTools: {} })); // documents of Plus4U read into the project
-  const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (docs.prompt ? `\n${docs.prompt}` : "") + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
+  const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (docs.prompt ? `\n${docs.prompt}` : "") + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (rolePrompt(svc.role) ? `\n${rolePrompt(svc.role)}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
   return { instructions, globalFile, docs, templateMeta };
 }
 

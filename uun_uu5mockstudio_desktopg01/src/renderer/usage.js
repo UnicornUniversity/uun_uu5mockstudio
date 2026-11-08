@@ -56,6 +56,9 @@ export const usageLabel = (u) => `${formatTokens(u.in + u.out)} tokens${isSoFar(
 
 /** The size of the context above which every step of the agent is dear (it reads the whole conversation again): the app suggests a new conversation. */
 export const CONTEXT_WARN = 200000;
+/** A request that is dear on its own (about 100k new tokens) or leaves a conversation that is: the simple view shows the token line only for it. */
+export const BIG_REQUEST = 100000;
+export const isBigRequest = (u) => (!isSoFar(u) && u.in + u.out >= BIG_REQUEST) || (u.ctx ?? 0) >= CONTEXT_WARN;
 /** The context after the last API call of the main loop, from an `assistant` message: input + cache. Subagents have their own contexts. */
 export function contextOf(assistantMessage) {
   const u = assistantMessage?.message?.usage;

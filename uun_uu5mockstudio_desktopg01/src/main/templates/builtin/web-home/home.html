@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home page</title>
+    <!-- A whole web page (header, content, footer) drawn full width: plain HTML and CSS for the look, Uu5Elements.Icon for icons. -->
+    <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
+    <script>
+      var uu5DemoDependencies = {};
+    </script>
+    <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
+    <style>
+      .uu-app-devkit-demo-middleware-controls { display: none; }
+      body { margin: 0; font-family: Roboto, "Segoe UI", system-ui, sans-serif; color: #1f2933; background: #fff; }
+      .w { max-width: 1152px; margin: 0 auto; padding: 0 24px; }
+      .nav { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.96); border-bottom: 1px solid #e4e7eb; }
+      .nav .w { display: flex; align-items: center; gap: 28px; height: 64px; }
+      .nav .brand { font-weight: 700; font-size: 20px; color: #0b3a8f; margin-right: auto; }
+      .nav a { color: #323f4b; text-decoration: none; font-size: 15px; }
+      .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; background: #1d5fbf; color: #fff !important; font-weight: 600; text-decoration: none; }
+      .btn.ghost { background: transparent; color: #1d5fbf !important; border: 2px solid #1d5fbf; padding: 10px 20px; }
+      .sec { padding: 72px 0; }
+      .sec.alt { background: #f4f7fb; }
+      h1 { font-size: 46px; line-height: 1.12; margin: 0 0 16px; }
+      h2 { font-size: 32px; margin: 0 0 12px; }
+      h3 { font-size: 19px; margin: 12px 0 6px; }
+      p { line-height: 1.6; margin: 0 0 12px; color: #3e4c59; }
+      .grid { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+      .card { background: #fff; border: 1px solid #e4e7eb; border-radius: 12px; padding: 24px; }
+      .foot { background: #0b2447; color: #cbd2d9; padding: 40px 0; font-size: 14px; }
+      .foot a { color: #e4e7eb; text-decoration: none; margin-right: 20px; }
+      @media (max-width: 700px) { h1 { font-size: 34px; } .nav .links { display: none; } .sec { padding: 48px 0; } }
+      .hero { background: linear-gradient(135deg, #e8f0fc 0%, #f7fafd 100%); padding: 96px 0 80px; }
+      .hero .w { display: grid; gap: 40px; grid-template-columns: 1.1fr .9fr; align-items: center; }
+      .hero img { width: 100%; border-radius: 16px; display: block; }
+      .hero .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+      .icon { width: 48px; height: 48px; border-radius: 12px; background: #e8f0fc; color: #1d5fbf; display: grid; place-items: center; font-size: 24px; }
+      .quote { font-size: 22px; line-height: 1.5; color: #1f2933; max-width: 760px; }
+      .cta { background: #0b3a8f; color: #fff; text-align: center; }
+      .cta h2, .cta p { color: #fff; }
+      @media (max-width: 800px) { .hero .w { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div id="uu5"></div>
+
+    <script type="text/babel">
+      import { Utils } from "uu5g05";
+      import Uu5Elements from "uu5g05-elements";
+      const IMG = "https://uuapp.plus4u.net/uu-webkit-maing02/b6d739b46b0a4f4980891c3c54a6df5d/image-placeholder-";
+
+      function Page() {
+        return (
+          <>
+            <div className="nav">
+              <div className="w">
+                <span className="brand">Northwind Academy</span>
+                <span className="links" style={{ display: "flex", gap: 28 }}>
+                  <a href="#">Programmes</a>
+                  <a href="#">About us</a>
+                  <a href="#">News</a>
+                  <a href="#">Contact</a>
+                </span>
+                <a className="btn" href="#">Apply now</a>
+              </div>
+            </div>
+
+            <div className="hero">
+              <div className="w">
+                <div>
+                  <h1>Learn what the industry needs, from people who do it</h1>
+                  <p>Practical programmes in software, design and data. Small groups, real projects and teachers from the field.</p>
+                  <div className="row">
+                    <a className="btn" href="#">See programmes</a>
+                    <a className="btn ghost" href="#">Book a visit</a>
+                  </div>
+                </div>
+                <img src={IMG + "02"} alt="" />
+              </div>
+            </div>
+
+            <div className="sec">
+              <div className="w">
+                <h2>Why study with us</h2>
+                <p>Three reasons our students tell us about.</p>
+                <div className="grid" style={{ marginTop: 24 }}>
+                  {[
+                    ["uugds-account-multi", "Small groups", "No more than 18 people, so every question gets an answer."],
+                    ["uugdsstencil-commerce-briefcase", "Real projects", "From the second month you work on assignments from partner companies."],
+                    ["uugds-check-circle", "A clear result", "You leave with a portfolio and a recommendation from a mentor."],
+                  ].map(([icon, title, text]) => (
+                    <div className="card" key={title}>
+                      <div className="icon"><Uu5Elements.Icon icon={icon} /></div>
+                      <h3>{title}</h3>
+                      <p>{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="sec alt">
+              <div className="w">
+                <p className="quote">“I came without any experience and after a year I led the front-end of my first real product.”</p>
+                <p><strong>Eva Novak</strong>, graduate 2025</p>
+              </div>
+            </div>
+
+            <div className="sec cta">
+              <div className="w">
+                <h2>Start in September</h2>
+                <p>Applications are open until 31 August. It takes ten minutes.</p>
+                <a className="btn" style={{ background: "#fff", color: "#0b3a8f" }} href="#">Apply now</a>
+              </div>
+            </div>
+
+            <div className="foot">
+              <div className="w">
+                <p style={{ color: "#fff", fontWeight: 600 }}>Northwind Academy</p>
+                <p><a href="#">Programmes</a><a href="#">About us</a><a href="#">News</a><a href="#">Contact</a></p>
+                <p style={{ color: "#9aa5b1" }}>© 2026 Northwind Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </>
+        );
+      }
+
+      Utils.Dom.render(<Page />, document.getElementById("uu5"));
+    </script>
+  </body>
+</html>

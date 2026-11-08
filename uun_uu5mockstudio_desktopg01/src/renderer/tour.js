@@ -2,6 +2,7 @@
  * The welcome tour: a few cards that show what the app does, opened on the first run (and from Help > Welcome Tour…).
  * Every card has a small drawing (inline SVG in the colors of the theme), a title and a few lines. Left / Right arrows move, Escape closes.
  */
+import { TOUR_TEXT } from "./role.js";
 const S = (inner) => `<svg viewBox="0 0 440 190" role="img" aria-hidden="true" class="tr-svg">${inner}</svg>`;
 const frame = (x, y, w, h, cls = "t-card") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" class="${cls}"/>`;
 const line = (x, y, w, cls = "t-line") => `<rect x="${x}" y="${y}" width="${w}" height="6" rx="3" class="${cls}"/>`;
@@ -27,6 +28,7 @@ const CARDS = [
       <circle cx="314" cy="134" r="12" class="t-card"/><circle cx="342" cy="134" r="12" class="t-card"/>`),
   },
   {
+    key: "economy",
     title: "Keep requests small and cheap",
     text: "The line under each answer shows how big the conversation has grown (context) and what the request cost in tokens. When it gets large, a bar suggests a new conversation: the agent then reads less every time. Eco (the leaf under the message box) makes the agent think less, change only what you asked for and answer briefly: switch it on for quick tweaks, off for a new screen.",
     art: S(`${frame(14, 14, 412, 92)}${line(30, 32, 250)}${line(30, 48, 190, "t-line s")}${line(30, 64, 120, "t-line s")}
@@ -44,6 +46,7 @@ const CARDS = [
       <rect x="318" y="8" width="92" height="46" rx="6" class="t-note"/>${line(326, 20, 70, "t-line n")}${line(326, 34, 50, "t-line n")}`),
   },
   {
+    key: "inspector",
     title: "Inspect and tweak components",
     text: "Switch on the inspector and click any uu5 component. Change its props: colors, icons from the uuGDS and uuBml catalogs, even objects and arrays. The change is written back to the HTML. Shift-click marks several components to use together in the chat.",
     art: S(`${frame(14, 20, 260, 150)}${line(30, 38, 100)}
@@ -86,7 +89,8 @@ const CARDS = [
   },
 ];
 
-export function createTour({ onClose }) {
+/** `isSimple()`: the role sees the simple view; two cards then speak less of tokens and props. */
+export function createTour({ onClose, isSimple = () => false }) {
   const box = document.createElement("div");
   box.id = "tour"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tr-title">
@@ -100,7 +104,7 @@ export function createTour({ onClose }) {
   function show(n) {
     i = Math.max(0, Math.min(CARDS.length - 1, n));
     const c = CARDS[i], last = i === CARDS.length - 1;
-    q(".tr-art").innerHTML = c.art; q("#tr-title").textContent = c.title; q(".tr-text").textContent = c.text;
+    q(".tr-art").innerHTML = c.art; q("#tr-title").textContent = c.title; q(".tr-text").textContent = (isSimple() && TOUR_TEXT[c.key]?.simple) || c.text;
     q(".tr-dots").innerHTML = CARDS.map((_, k) => `<i class="${k === i ? "on" : ""}"></i>`).join("");
     q(".tr-back").hidden = i === 0; q(".tr-skip").hidden = last;
     q(".tr-next").textContent = last ? "Get started" : "Next";

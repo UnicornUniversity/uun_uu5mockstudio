@@ -22,6 +22,10 @@ import { PICKER, EXTRACT, SLOT_MESSAGE, SAVE_MESSAGE } from "./frameCapture.mjs"
 import { loadFrame, listFrames, saveFrame, updateFrame, readFrame, parseFrameEnv, frameEnv, SCOPES } from "./frames.mjs";
 import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
+import { gatherHandoff, buildHandoff } from "./handoff.mjs";
+import { findFlowEdges } from "./flow.mjs";
+import { readComments, changeComments, screensWithComments, defaultAuthor } from "./comments.mjs";
+import { findAssets, writeUu5Assets } from "./assets.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
 import { createThumbs } from "./thumbs.mjs";
 import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
@@ -42,6 +46,7 @@ import { buildEml, mailBody } from "./mailDraft.mjs";
 import { buildMenuTemplate } from "./menu.mjs";
 import { tagHtml, structureOf, structureOutline, moveElements, insertElement, removeElements, duplicateElements, editText, changeItems, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
+import { isRole } from "../renderer/role.js";
 import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { loadMdi } from "./mdiIcons.mjs";
@@ -272,6 +277,7 @@ app.whenReady().then(async () => {
   const browser = createStudioBrowser({
     baseUrl: `http://127.0.0.1:${port}`,
     onNavigated: (screen) => emit("preview:navigated", screen),
+    projectDir: () => dir(),
     readStructure: (file) => { const f = path.basename(String(file)); const t = structureOf(fs.readFileSync(screenPath(f), "utf8"), f.replace(/\.html$/, "")); return t ? structureOutline(t) : null; },
   });
 
@@ -788,6 +794,7 @@ app.whenReady().then(async () => {
     const viaCodex = typeof model === "string" && /^codex(:|$)/.test(model), svc = viaCodex ? codex : claude;
     if (!svc) throw new Error("No project is open.");
     svc.runChat = currentChatId;
+    svc.role = loadApp().role; // the sentence about who the user is (role.js) goes to the agent with every request
     return svc.send(prompt, viaCodex ? model.slice(6) || undefined : model, { plan: Boolean(plan), economy: Boolean(economy) });
   }));
   ipcMain.handle("chat:stop", () => stopAgents());
@@ -889,6 +896,57 @@ app.whenReady().then(async () => {
     fs.writeFileSync(dest, text, "utf8");
     return { path: dest };
   }));
+  // The files (pictures, videos) a uu5String refers to: a document does not have them, so they come as a ZIP beside the text.
+  ipcMain.handle("assets:list", guard(async (_e, text) => ({ files: (await findAssets(dir(), [String(text ?? "")])).map((a) => a.zipPath) })));
+  ipcMain.handle("assets:export", guard(async (_e, name, text) => {
+    const base = path.basename(String(name)).replace(/\.html$/, "");
+    const dest = await pickDest(`${base}.assets.zip`, "zip", "ZIP");
+    if (!dest) return { canceled: true };
+    const files = await writeUu5Assets(dir(), String(text ?? ""), dest, base);
+    if (!files) throw new Error("The uu5String refers to no file of the project.");
+    return { path: dest, files };
+  }));
+  // Save the uu5String and, when it refers to files of the project, their ZIP next to it (<name>.assets.zip).
+  ipcMain.handle("export:uu5", guard(async (_e, name, text) => {
+    if (typeof text !== "string" || !text) throw new Error("Nothing to save.");
+    const dest = await pickDest(path.basename(String(name)), "txt", "Text");
+    if (!dest) return { canceled: true };
+    fs.writeFileSync(dest, text, "utf8");
+    const zip = dest.replace(/(\.uu5string)?\.txt$|$/, ".assets.zip");
+    const files = await writeUu5Assets(dir(), text, zip, path.basename(dest).replace(/\.uu5string\.txt$|\.txt$/, ""));
+    return { path: dest, files, assetsPath: files ? zip : undefined };
+  }));
+  // The handoff specification (one Markdown document for the people who build it): to a file, or as text for the clipboard.
+  const handoffText = async () => {
+    const repo = await repoView(await loadChats(dir()));
+    return buildHandoff(await gatherHandoff(dir(), { project: current, repo: repo && !repo.error ? `${repo.name}${repo.view ? ` (branch ${repo.view})` : ""}` : "" }));
+  };
+  ipcMain.handle("export:handoff", guard(async (_e, mode) => {
+    const text = await handoffText();
+    if (mode === "text") return { text };
+    const dest = await pickDest(`${current}-specification.md`, "md", "Markdown");
+    if (!dest) return { canceled: true };
+    await fs.promises.writeFile(dest, text);
+    return { path: dest };
+  }));
+  // Comments on the components of a screen (comments.mjs): files beside the screens, so they travel with the project
+  const author = () => String(loadApp().author || "").trim() || defaultAuthor();
+  // "Use this variant": the variant takes the place of the original (which goes to the trash) and the other variants go to the trash too
+  ipcMain.handle("variant:keep", guard(async (_e, file) => {
+    const m = /^(.+)-([a-z])\.html$/.exec(String(file)), all = listScreens();
+    if (!m || !all.includes(file)) throw new Error("This screen is not a variant.");
+    const base = `${m[1]}.html`; if (!all.includes(base)) throw new Error(`The original ${base} does not exist.`);
+    const re = new RegExp(`^${m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-[a-z]\\.html$`), others = all.filter((f) => f !== file && re.test(f));
+    await shell.trashItem(path.join(dir(), base));
+    await fs.promises.rename(path.join(dir(), file), path.join(dir(), base));
+    for (const f of others) await shell.trashItem(path.join(dir(), f));
+    return { kept: base, removed: others };
+  }));
+  ipcMain.handle("flow:edges", guard(() => findFlowEdges(Object.fromEntries(listScreens().map((f) => [f, fs.readFileSync(path.join(dir(), f), "utf8")])))));
+  ipcMain.handle("comments:get", guard((_e, file) => readComments(dir(), file)));
+  ipcMain.handle("comments:all", guard(async () => Object.fromEntries(await Promise.all(screensWithComments(dir()).map(async (f) => [f, await readComments(dir(), f)])))));
+  ipcMain.handle("comments:change", guard(async (_e, file, op) => { const list = await changeComments(dir(), file, op, { author: author() }); emit("memory:changed", { project: current, kind: "comments", screens: screensWithComments(dir()) }); return { comments: list }; }));
+  ipcMain.handle("comments:author", guard((_e, name) => { if (typeof name === "string") saveApp({ author: name.trim().slice(0, 60) }); return { author: author() }; }));
   ipcMain.handle("export:zip", guard(async () => {
     const dest = await pickDest(`${current}.zip`, "zip", "ZIP");
     return dest ? { path: dest, ...(await exportZip(dir(), dest)) } : { canceled: true };
@@ -918,14 +976,16 @@ app.whenReady().then(async () => {
   const SHARE_DIR = path.join(os.tmpdir(), "uu5studio-share");
   async function prepareShare(kind, file, text) {
     const out = SHARE_DIR; await fs.promises.mkdir(out, { recursive: true });
-    let name, data, label;
+    let name, data, label; const extra = [];
     if (kind === "uu5") { // the text comes from the renderer (collected from the rendered screen)
       if (typeof text !== "string" || !text) throw new Error("Nothing to share.");
       label = path.basename(String(file), ".html"); name = `${label}.uu5string.txt`; data = Buffer.from(text, "utf8"); await fs.promises.writeFile(path.join(out, name), data);
+      const zipName = `${label}.assets.zip`; // the pictures and videos the text refers to travel with it
+      if (await writeUu5Assets(dir(), text, path.join(out, zipName), label)) extra.push({ name: zipName, data: await fs.promises.readFile(path.join(out, zipName)), path: path.join(out, zipName) });
     } else if (kind === "zip") { name = `${current}.zip`; await exportZip(dir(), path.join(out, name)); data = await fs.promises.readFile(path.join(out, name)); label = current; }
     else if (kind === "png") { name = `${path.basename(file, ".html")}.png`; data = await render(file, "png"); await fs.promises.writeFile(path.join(out, name), data); label = path.basename(file, ".html"); }
     else { name = path.basename(file); data = await fs.promises.readFile(path.join(dir(), name)); await fs.promises.writeFile(path.join(out, name), data); label = path.basename(file, ".html"); }
-    return { out, name, data, label, attachment: path.join(out, name) };
+    return { out, name, data, label, attachment: path.join(out, name), extra };
   }
   // Drag a screen as a file into a chat, a mail or a folder. The file is prepared while the pointer is over the handle (a drag
   // has to start at once), `drag:start` then hands it to the operating system.
@@ -949,10 +1009,10 @@ app.whenReady().then(async () => {
     if (target.startsWith(SHARE_DIR + path.sep) && fs.existsSync(target)) e.sender.startDrag({ file: target, icon: dragIcon });
   });
   ipcMain.handle("share:mail", guard(async (_e, kind, file, text) => {
-    const { out, name, data, label, attachment } = await prepareShare(kind, file, text);
-    if (process.platform === "darwin" && !process.env.STUDIO_MAIL_DRY_RUN) { new ShareMenu({ filePaths: [attachment] }).popup({ window: win }); return { shared: true, method: "share-sheet", path: attachment }; }
+    const { out, name, data, label, attachment, extra } = await prepareShare(kind, file, text);
+    if (process.platform === "darwin" && !process.env.STUDIO_MAIL_DRY_RUN) { new ShareMenu({ filePaths: [attachment, ...extra.map((x) => x.path)] }).popup({ window: win }); return { shared: true, method: "share-sheet", path: attachment }; }
     const eml = path.join(out, `${name}.eml`);
-    await fs.promises.writeFile(eml, buildEml({ subject: `uu5 mockup: ${label}`, body: mailBody(kind === "zip" || kind === "uu5" ? kind : "html", label), attachments: [{ name, data }] }));
+    await fs.promises.writeFile(eml, buildEml({ subject: `uu5 mockup: ${label}`, body: mailBody(kind === "zip" || kind === "uu5" ? kind : "html", label), attachments: [{ name, data }, ...extra.map(({ name, data }) => ({ name, data }))] }));
     if (!process.env.STUDIO_MAIL_DRY_RUN) { const err = await shell.openPath(eml); if (err) throw new Error(`Could not open the mail client: ${err}`); }
     return { shared: true, method: "eml", path: eml };
   }));
@@ -1084,13 +1144,16 @@ app.whenReady().then(async () => {
   });
   // the welcome tour is shown on the first run only (STUDIO_NO_TOUR: tests and the demo recorder start from a fresh profile)
   ipcMain.handle("tour:done", () => void saveApp({ tourSeen: true }));
+  // the role of the user (role.js): chosen once, changeable in Help; an unknown value is refused
+  ipcMain.handle("role:set", (_e, role) => { if (!isRole(role)) return { error: "Unknown role." }; saveApp({ role, roleAsked: true }); return { ok: true, role }; });
+  ipcMain.handle("role:skip", () => { saveApp({ roleAsked: true }); return { ok: true }; });
   ipcMain.handle("update:later", (_e, version) => void saveApp({ updateLater: String(version) }));
   ipcMain.handle("update:open", (_e, url) => (isRepoUrl(url, UPDATE_REPO) ? shell.openExternal(url).then(() => ({ ok: true })) : { error: "Only pages of the project repository on GitHub can be opened." }));
   // versions of what the app is built from (for the About dialog)
   const depVersion = (name) => { try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "node_modules", name, "package.json"), "utf8")).version; } catch { return null; } };
   nativeTheme.on("updated", () => emit("glass:set", glassOn())); // Reduce transparency was switched in System Settings
   ipcMain.handle("app:meta", async () => ({
-    version: app.getVersion(), platform: process.platform, glass: glassOn(), tourSeen: Boolean(loadApp().tourSeen) || Boolean(process.env.STUDIO_NO_TOUR), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
+    version: app.getVersion(), platform: process.platform, glass: glassOn(), tourSeen: Boolean(loadApp().tourSeen) || Boolean(process.env.STUDIO_NO_TOUR), role: isRole(loadApp().role) ? loadApp().role : null, roleAsked: Boolean(loadApp().roleAsked) || Boolean(process.env.STUDIO_NO_TOUR), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
     runtime: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     deps: Object.fromEntries(["@anthropic-ai/claude-agent-sdk", "@babel/parser", "fflate", "electron-updater"].map((n) => [n, depVersion(n)])),
   }));

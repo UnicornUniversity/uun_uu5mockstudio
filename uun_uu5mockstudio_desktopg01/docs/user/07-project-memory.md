@@ -26,6 +26,12 @@ The **All projects** tab edits `GLOBAL_RULES.md` in the folder of your projects.
 
 Yellow sticky notes of a screen, kept in `<screen>.notes.md`; see [Projects, screens and the canvas](02-projects-screens-canvas.md#notes-on-a-screen). Claude reads them before it changes the screen and never edits them.
 
+## Comments
+
+**Comments** (the speech-bubble icon in the top bar, with the number of open ones) are for the conversation between people who review the design, not for the agent. A comment belongs to a screen, or to a component of it (mark it in the inspector and choose **Comment on this**), has an author, can be answered, **resolved** and **reopened**. They are saved beside the screen as `<screen>.comments.json`, so they travel with the project folder and the ZIP; the app is desktop-only and has no server, so a colleague gets them with the files. Your name in comments is the system user; click “You are …” in the dialog to change it.
+
+How they differ from **notes**: a note is yellow context on the canvas that the agent **reads** before it changes the screen (rules, open questions, a decision); it has no author and no state. A comment is a review remark with an author and a state that the agent does not read. Both go into the specification (notes under “Notes”, comments under “Open comments” and “Open questions”).
+
 ## Linked git repository
 
 Link the repository where the real components will be built: **Project → Git Repository → Link…**. Claude gets **read-only** access to it: it can read files to stay consistent with names, props and structure, and **never writes there**; mockups, rules and notes go only into the project folder. Secrets, `.git` and `node_modules` are not readable.

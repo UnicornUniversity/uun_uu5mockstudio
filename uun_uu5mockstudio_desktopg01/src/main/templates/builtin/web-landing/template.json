@@ -1,0 +1,14 @@
+{
+  "id": "web-landing",
+  "title": "Landing page",
+  "level": "web",
+  "description": "A web page that presents one offer and leads to one action: a hero, benefits, how it works, questions and a call to action.",
+  "prompt": "A landing page that presents our offer and leads visitors to sign up",
+  "order": 20,
+  "kind": "landing",
+  "icon": "landing",
+  "tags": [
+    "web",
+    "HTML"
+  ]
+}

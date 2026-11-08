@@ -1,6 +1,7 @@
 import { readFile, readdir, copyFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { zipSync, strToU8 } from "fflate";
+import { findAssets, zipEntry } from "./assets.mjs";
 
 export const SERVE = `// Minimal static server for the exported mockups (Node 18+, no dependencies).
 // uu5 mockups need http://, not file://:  node serve.mjs
@@ -57,12 +58,27 @@ export async function exportZip(projectDir, dest) {
     "serve.mjs": strToU8(SERVE),
     "index.html": strToU8(indexHtml(files)),
   };
-  for (const f of files) entries[`mockups/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
-  // pictures the user put into the design (logo...) live in assets/; the mockups sit in mockups/, so they go to mockups/assets/
+  const texts = {};
+  for (const f of files) texts[f] = await readFile(path.join(projectDir, f), "utf8");
+  // pictures and videos the screens use: those the user put into the design (logo...) live in assets/, others are found by their
+  // references (also the pictures of read documents, .studio/sources/assets). The mockups sit in mockups/, so they go beside them.
+  const used = await findAssets(projectDir, Object.values(texts));
+  // a reference that would not work from the ZIP (an absolute path of the preview server) is rewritten to the file's place in it
+  const rewrite = used.filter((a) => a.ref !== a.zipPath && (a.ref.startsWith("/") || a.rel.startsWith(".studio/")));
+  for (const f of files) {
+    let t = texts[f];
+    for (const a of rewrite) t = t.split(a.ref).join(a.zipPath);
+    entries[`mockups/${f}`] = strToU8(t);
+  }
+  for (const a of used) entries[`mockups/${a.zipPath}`] = await zipEntry(a.file);
   const assets = path.join(projectDir, "assets");
-  for (const f of await readdir(assets).catch(() => [])) entries[`mockups/assets/${f}`] = new Uint8Array(await readFile(path.join(assets, f)));
-  // project memory travels with the mocks: description, business rules and the notes of the screens
-  for (const f of (await readdir(projectDir)).filter((n) => n === "BUSINESS_RULES.md" || n === "PROJECT.md" || n.endsWith(".notes.md"))) entries[`docs/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
+  for (const f of await readdir(assets).catch(() => [])) {
+    if (f.startsWith(".")) continue;
+    entries[`mockups/assets/${f}`] ??= await zipEntry(path.join(assets, f)).catch(() => null) ?? undefined; // a sub-folder is not a file
+    if (entries[`mockups/assets/${f}`] === undefined) delete entries[`mockups/assets/${f}`];
+  }
+  // project memory travels with the mocks: description, business rules and the notes and comments of the screens
+  for (const f of (await readdir(projectDir)).filter((n) => n === "BUSINESS_RULES.md" || n === "PROJECT.md" || n.endsWith(".notes.md") || n.endsWith(".comments.json"))) entries[`docs/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
   await writeFile(dest, zipSync(entries, { level: 6 }));
-  return { dest, files: files.length };
+  return { dest, files: files.length, assets: used.length };
 }

@@ -57,7 +57,7 @@ function openDevMenu(f, anchor, envs, mode = "size") {
   setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
 }
 
-export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs }) {
+export function createCanvas({ root, world, onComments, onNavigate, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs }) {
   const envsFor = () => getEnvs?.() ?? null; // { environments, refresh } or null
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
@@ -132,7 +132,18 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
 
   // ----- descriptions of the screens (PROJECT.md): below each screen, at a readable size at any zoom
   let descs = {}; // file -> description
+  let cmtCounts = {};
+  const applyCommentCount = (f) => { const n = cmtCounts[f.file] ?? 0, b = f.cmtBtn?.querySelector(".fcmt-n"); if (!b) return; b.textContent = String(n); b.hidden = !n; f.cmtBtn.classList.toggle("has", n > 0); f.cmtBtn.title = n ? `${n} open comment${n === 1 ? "" : "s"} on this screen` : "Comments on this screen"; };
   const applyDesc = (f) => { const t = descs[f.file] ?? ""; f.desc.hidden = !t; f.desc.textContent = t; };
+  // history of the arrangement (position and size of the screens): undo / redo of moves and resizes
+  const undoStack = [], redoStack = [];
+  const snap = () => JSON.stringify([...frames.values()].map((f) => [f.file, f.x, f.y, f.device, f.w ?? null, f.h ?? null]));
+  const remember = (before) => { if (before === snap()) return false; undoStack.push(before); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0; lastLayoutChange = Date.now(); return true; };
+  let lastLayoutChange = 0;
+  function restore(state) {
+    for (const [file, x, y, device, w, h] of JSON.parse(state)) { const f = frames.get(file); if (!f) continue; Object.assign(f, { x, y, device, w: w ?? undefined, h: h ?? undefined }); layoutFrame(f); }
+    onChange?.("layout");
+  }
   function layoutFrame(f) {
     layoutNotes(f);
     const d = size(f);
@@ -145,6 +156,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     updateCompact();
     f.customOpt.textContent = f.device === "custom" ? `Custom ${d.w}×${d.h}` : "Custom size…";
     f.syncDev?.();
+    onChange?.("move"); // the arrows between the screens follow while a screen is dragged or resized
   }
   function updateShields() {
     for (const f of frames.values()) f.shield.hidden = inspecting || f.file === selected;
@@ -177,7 +189,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     const right = [...frames.values()].reduce((m, f) => Math.max(m, f.x + size(f).w), -GAP);
     const f = { file, x: saved.x ?? right + GAP, y: saved.y ?? 0, device: saved.device ?? "desktop", w: saved.w, h: saved.h, env: saved.env === "managementkit" || /^custom:(project|global):[a-z0-9-]+$/.test(saved.env ?? "") ? saved.env : null }; // (a layout saved with the removed live environment starts as content only)
     const el = document.createElement("div"); el.className = "frame";
-    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button type="button" class="fenvbtn" aria-haspopup="menu" title="What the page is shown in: content only, uuManagementKit, iPhone frame"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="ftpl" title="Save as template…" aria-label="Save as template"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
+    el.innerHTML = `<div class="ftitle"><span class="fname"></span><span class="fctl"><select class="fdev" hidden aria-hidden="true" tabindex="-1"></select><button type="button" class="fdevbtn" aria-haspopup="menu" title="Device size"></button><button type="button" class="fenvbtn" aria-haspopup="menu" title="What the page is shown in: content only, uuManagementKit, iPhone frame"></button><button class="ffit" title="Height to fit content" aria-label="Height to fit content"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/></svg></button><button class="ftpl" title="Save as template…" aria-label="Save as template"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button><button class="fcmt" title="Comments on this screen" aria-label="Comments on this screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H6l-3 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg><span class="fcmt-n" hidden></span></button><button class="fexp" title="Expand to full screen (⌘⇧F / Ctrl+Shift+F)" aria-label="Expand to full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button><button class="fdel" title="Delete screen" aria-label="Delete screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></span></div><div class="fbody"></div><div class="rs rs-e"></div><div class="rs rs-s"></div><div class="rs rs-se"></div>`;
     const fname = el.querySelector(".fname"); fname.textContent = file.replace(/\.html$/, ""); fname.title = file; // full name on hover
     const devSel = el.querySelector(".fdev");
     devSel.innerHTML = Object.entries(DEVICES).map(([k, d]) => `<option value="${k}">${d.label} ${d.w}×${d.h}</option>`).join("") + `<option value="custom">Custom size…</option>`;
@@ -220,6 +232,16 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
       const { deltaY, x, y, vw } = e.args[0], r = v.getBoundingClientRect(), cr = root.getBoundingClientRect();
       zoomAt(r.left - cr.left + x * (r.width / vw), r.top - cr.top + y * (r.width / vw), cam.z * Math.exp(-Math.max(-40, Math.min(40, deltaY)) * 0.01));
     });
+    // a link inside a screen that leads to another screen of the project: the canvas goes there instead of replacing this screen's page
+    v.addEventListener("did-navigate", (e) => {
+      if (v !== f.view) return;
+      try {
+        const here = new URL(urlFor(file, f.env)).pathname, to = new URL(e.url).pathname;
+        if (to === here || !/\.html$/.test(to)) return;
+        const target = decodeURIComponent(to.split("/").pop());
+        if (frames.has(target) && target !== file) onNavigate?.(file, target);
+      } catch { /* an address the canvas does not understand: left alone */ }
+    });
     v.addEventListener("dom-ready", () => {
       try { v.send("studio-pan-wheel", "alt"); } catch { /* not ready yet */ }
       if (v !== f.view) return; // the page of a screen that is still loading behind the shown one: the swap does the rest
@@ -254,17 +276,18 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     };
 
     devSel.onchange = async () => {
+      const before = snap();
       if (devSel.value === "custom") {
         const cur = size(f), r = await onRequestSize?.({ file, w: cur.w, h: cur.h });
         if (!r) { devSel.value = f.device; return; } // dialog cancelled
         Object.assign(f, { device: "custom", w: clampSide(r.w), h: clampSide(r.h) });
       } else f.device = devSel.value;
-      layoutFrame(f); onChange?.("layout");
+      layoutFrame(f); remember(before); onChange?.("layout");
     };
     const fitHeight = async () => {
       const h = await f.view.executeJavaScript("Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0)").catch(() => 0);
       if (!h) return;
-      Object.assign(f, { device: "custom", w: size(f).w, h: clampSide(h) }); layoutFrame(f); onChange?.("layout");
+      const before = snap(); Object.assign(f, { device: "custom", w: size(f).w, h: clampSide(h) }); layoutFrame(f); remember(before); onChange?.("layout");
     };
     const fit = el.querySelector(".ffit"); fit.onpointerdown = (e) => e.stopPropagation(); fit.onclick = fitHeight;
     for (const h of el.querySelectorAll(".rs")) {
@@ -273,12 +296,12 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
       h.onpointerdown = (e) => {
         if (e.button !== 0) return;
         e.preventDefault(); e.stopPropagation(); select(file); root.classList.add("dragging");
-        const sx = e.clientX, sy = e.clientY, s0 = size(f);
+        const sx = e.clientX, sy = e.clientY, s0 = size(f), before = snap();
         const move = (ev) => {
           Object.assign(f, { device: "custom", w: dir === "s" ? s0.w : clampSide(s0.w + (ev.clientX - sx) / cam.z), h: dir === "e" ? s0.h : clampSide(s0.h + (ev.clientY - sy) / cam.z) });
           layoutFrame(f);
         };
-        const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); root.classList.remove("dragging"); onChange?.("layout"); };
+        const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); root.classList.remove("dragging"); remember(before); onChange?.("layout"); };
         addEventListener("pointermove", move); addEventListener("pointerup", up);
       };
     }
@@ -289,15 +312,17 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     const exp = el.querySelector(".fexp");
     exp.onpointerdown = (e) => e.stopPropagation();
     exp.onclick = () => onFullscreen?.(file);
+    f.cmtBtn = el.querySelector(".fcmt"); f.cmtBtn.onclick = () => onComments?.(file);
+    applyCommentCount(f);
     const del = el.querySelector(".fdel");
     del.onpointerdown = (e) => e.stopPropagation();
     del.onclick = () => onDelete?.(file);
     // drag by title bar
     el.querySelector(".ftitle").onpointerdown = (e) => {
       if (e.target.closest(".fctl") || e.button !== 0) return;
-      select(file); root.classList.add("dragging"); const sx = e.clientX, sy = e.clientY, ox = f.x, oy = f.y;
+      select(file); root.classList.add("dragging"); const sx = e.clientX, sy = e.clientY, ox = f.x, oy = f.y, before = snap();
       const move = (ev) => { f.x = ox + (ev.clientX - sx) / cam.z; f.y = oy + (ev.clientY - sy) / cam.z; layoutFrame(f); };
-      const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); root.classList.remove("dragging"); onChange?.("layout"); };
+      const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); root.classList.remove("dragging"); remember(before); onChange?.("layout"); };
       addEventListener("pointermove", move); addEventListener("pointerup", up); e.preventDefault();
     };
     el.classList.toggle("working", file === workingFile);
@@ -351,6 +376,8 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     /** The address and session of a screen with its environment, for a second view of it (full screen). */
     viewOf: (file) => { const f = frames.get(file); return f ? { url: urlFor(file, f.env) } : null; },
     all: () => [...frames.values()],
+    /** The frames as rectangles in world coordinates: { file: { x, y, w, h } } (the flow arrows use them). */
+    rects: () => Object.fromEntries([...frames].map(([file, f]) => [file, { x: f.x, y: f.y, ...size(f) }])),
     addFrame, removeFrame, select,
     removeAll: () => { for (const f of [...frames.keys()]) removeFrame(f); },
     selected: () => selected,
@@ -370,6 +397,7 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     arrange: () => {
       const list = [...frames.values()].sort((a, b) => (Math.round(a.y / 400) - Math.round(b.y / 400)) || a.x - b.x);
       if (!list.length) return;
+      const before = snap();
       const maxRow = Math.max(4600, ...list.map((f) => size(f).w));
       let x = 0, y = 0, rowH = 0;
       for (const f of list) {
@@ -377,8 +405,10 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
         if (x > 0 && x + d.w > maxRow) { x = 0; y += rowH + GAP + 150; rowH = 0; } // 150: room for the next row's title bar, which grows when zoomed out
         f.x = x; f.y = y; x += d.w + GAP; rowH = Math.max(rowH, d.h); layoutFrame(f);
       }
-      onChange?.("layout"); fitBounds(list);
+      remember(before); onChange?.("layout"); fitBounds(list);
     },
+    /** `map`: { file: number of open comments }; the comment button of every frame shows it. */
+    setCommentCounts: (map = {}) => { cmtCounts = map; for (const f of frames.values()) applyCommentCount(f); },
     setScreenNotes,
     /** `map`: { file: description } of the screens. */
     setDescriptions: (map = {}) => { descs = map; for (const f of frames.values()) applyDesc(f); },
@@ -397,7 +427,11 @@ export function createCanvas({ root, world, urlFor, preloadUrl, onViewSwapped, o
     setWorking: (file) => { workingFile = file; for (const f of frames.values()) f.el.classList.toggle("working", f.file === file); },
     /** The menu of the device sizes of one screen at a point (the title bar of a narrow frame has no room for its own button). */
     openDeviceMenu: (file, x, y) => { const f = frames.get(file); if (f) openDevMenu(f, { getBoundingClientRect: () => ({ left: x, bottom: y }) }, envsFor); },
-    setDeviceAll: (device) => { for (const f of frames.values()) { f.device = device; layoutFrame(f); } onChange?.("layout"); },
+    setDeviceAll: (device) => { const before = snap(); for (const f of frames.values()) { f.device = device; layoutFrame(f); } remember(before); onChange?.("layout"); },
+    /** Undo / redo of the arrangement; false when there is nothing to step back to. */
+    undoLayout: () => { const to = undoStack.pop(); if (!to) return false; redoStack.push(snap()); restore(to); lastLayoutChange = Date.now(); return true; },
+    redoLayout: () => { const to = redoStack.pop(); if (!to) return false; undoStack.push(snap()); restore(to); lastLayoutChange = Date.now(); return true; },
+    layoutHistory: () => ({ undo: undoStack.length, redo: redoStack.length, at: lastLayoutChange }),
     layout: () => Object.fromEntries([...frames.values()].map((f) => [f.file, { x: f.x, y: f.y, device: f.device, ...(f.device === "custom" ? { w: f.w, h: f.h } : {}), ...(f.env ? { env: f.env } : {}), ...(Object.keys(f.notePos).some((id) => f.noteEls.has(id)) ? { notes: Object.fromEntries(Object.entries(f.notePos).filter(([id]) => f.noteEls.has(id))) } : {}) }])),
   };
 }

@@ -8,15 +8,24 @@ import { createDescPanel } from "./descPanel.js";
 import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
+import { createRoleDialog } from "./roleDialog.js";
+import { createGuideDialog } from "./guideDialog.js";
+import { createCommentsPanel } from "./commentsPanel.js";
+import { createFlowLayer } from "./flowLayer.js";
+import { createVariantLayer } from "./variantLayer.js";
+import { createVariantsDialog } from "./variantsDialog.js";
+import { buildVariantsPrompt, variantNames, variantInfo } from "./variants.js";
+import { buildGuidePrompt, guideTemplate } from "./guide.js";
+import { roleOf, planFirst, isRole } from "./role.js";
 import { createLibraryPicker } from "./libraryPicker.js";
 import { createCatalogDrag } from "./catalogDrag.js";
 import { listKind, newAction } from "./actionGrammar.js";
 import { attachFreeze } from "./freeze.js";
-import { usageDelta, usageLabel, usageTitle, CONTEXT_WARN, formatTokens } from "./usage.js";
+import { usageDelta, usageLabel, usageTitle, isBigRequest, CONTEXT_WARN, formatTokens } from "./usage.js";
 import { createTemplatesDialog } from "./templatesDialog.js";
 import { openTemplateSave } from "./templateSaveDialog.js";
 import { openFrameDialog } from "./frameDialog.js";
-import { createDashboard, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
+import { createDashboard, LEVEL_KEY, newProjectName, projectNameFromScreen, projectNameFromTitle } from "./dashboard.js";
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
@@ -64,7 +73,8 @@ function entryEl(e) {
   }
   if (e.kind === "plan") return renderPlan(e, planCtx);
   if (e.kind === "usage") { // the tokens of one request, under its answer
-    const u = Object.assign(document.createElement("div"), { className: "usage", textContent: usageLabel(e), title: usageTitle(e) });
+    const big = isBigRequest(e), u = Object.assign(document.createElement("div"), { className: big ? "usage big" : "usage", textContent: usageLabel(e), title: usageTitle(e) });
+    if (big) u.append(Object.assign(document.createElement("span"), { className: "usage-hint", textContent: " · a large request: a new conversation is cheaper" })); // shown in the simple view, where the other token lines are hidden
     return u;
   }
   const el = document.createElement("div");
@@ -98,6 +108,10 @@ function push(e) { entries.push(e); paint(e); persist(); return e; }
 const last = () => entries[entries.length - 1];
 
 // ---------- model selector: what "Default" resolves to ----------
+/** The simple view shows the model in use as plain text (the select is hidden): both rows follow their select. */
+function syncModelNow() {
+  for (const [sel, now] of [["model", "model-now"], ["dash-model", "dash-model-now"]]) { const s = $(sel), n = $(now); if (s && n) n.textContent = s.selectedOptions[0]?.textContent ?? ""; }
+}
 const DEFAULT_MODEL_KEY = "uu5studio.defaultModel";
 const prettyModel = (id) => { const m = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(id ?? ""); return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id; };
 function showDefaultModel(id) {
@@ -105,6 +119,7 @@ function showDefaultModel(id) {
   if (!opt) return; // no Claude among the usable providers
   opt.textContent = id ? `Default (${prettyModel(id)})` : "Default";
   $("model").title = id ? `Default = the model from your Claude Code: ${id}. Pick another one to override it for the next requests.` : "Default = the model configured in your Claude Code.";
+  syncModelNow();
 }
 try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 /**
@@ -112,6 +127,7 @@ try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showD
  * its own models. Both selects (message field, start screen) get the same list; the choice is remembered.
  */
 const MODEL_KEY = "uu5studio.model";
+let pendingModel = null; // a model a role prefers, applied when the list of models is built
 function renderModels(agents) {
   let saved = ""; try { saved = localStorage.getItem(MODEL_KEY) ?? ""; } catch { /* not remembered */ }
   for (const sel of [$("model"), $("dash-model")]) {
@@ -124,8 +140,9 @@ function renderModels(agents) {
     }
     sel.dataset.ready = "1";
     sel.value = keep; if (sel.value !== keep) sel.selectedIndex = 0;
+    if (pendingModel && [...sel.options].some((o) => o.value === pendingModel)) sel.value = pendingModel; // chosen by a role before the list existed
     sel.title = `Model for this request: ${agents.map((a) => a.label).join(" and ")}.`;
-    sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch { /* not remembered */ } if (sel.id === "model") $("dash-model").value = sel.value; else $("model").value = sel.value; };
+    sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch { /* not remembered */ } if (sel.id === "model") $("dash-model").value = sel.value; else $("model").value = sel.value; syncModelNow(); };
   }
   try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 }
@@ -212,7 +229,9 @@ $("pv-keep").onclick = () => {
   window.studio.send(p.message, sentModel || undefined, { plan: false, economy });
 };
 /** Undo / redo of the last change the app made to the screen. */
+let lastScreenChange = 0; // when the content of a screen changed last (to tell which comes first on ⌘Z: this or the arrangement)
 async function stepScreen(file, way) {
+  lastScreenChange = Date.now();
   const r = await (way === "undo" ? window.studio.screenUndo(file ?? null) : window.studio.screenRedo(file ?? null)).catch((e) => ({ error: String(e?.message ?? e) }));
   toast(r.error ?? `${way === "undo" ? "Undone" : "Redone"}: ${r.label}${r.file ? ` (${r.file.replace(/\.html$/, "")})` : ""}.`, { err: Boolean(r.error) });
 }
@@ -220,6 +239,9 @@ async function stepScreen(file, way) {
 function editStep(way) {
   const a = document.activeElement;
   if (a && ((a.isContentEditable) || ((a.tagName === "INPUT" || a.tagName === "TEXTAREA") && !a.readOnly && !a.disabled))) return void document.execCommand(way);
+  // an arrangement of the screens that is newer than the last change of a screen's content is stepped back first
+  const h = canvas.layoutHistory();
+  if (h[way] && h.at >= lastScreenChange && (way === "undo" ? canvas.undoLayout() : canvas.redoLayout())) return void toast(`${way === "undo" ? "Undone" : "Redone"}: position of the screens.`);
   stepScreen(inspectedFile(), way);
 }
 const planCtx = {
@@ -398,7 +420,7 @@ window.studio.onEvent(onAgentEvent);
 window.__feed = onAgentEvent; // lets automated checks play events of the agent without running it
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
-let saveLayoutTimer, savedLayout = {}, rules = null, desc = null;
+let saveLayoutTimer, savedLayout = {}, rules = null, desc = null, flow = null, vlayer = null;
 // environments (uuManagementKit around the content): offered on every screen
 let projectLevel = null, defaultEnv = null, envInfo = null;
 async function refreshEnvs() { const r = await window.studio.envList(); if (!r.error) { envInfo = r; for (const f of canvas.all()) f.syncEnv?.(); } }
@@ -536,10 +558,12 @@ const canvas = createCanvas({
   onReady: (file, id) => window.studio.registerView(file, id),
   onDelete: (file) => deleteScreen(file),
   onFullscreen: (file) => toggleFullscreen(file),
+  onComments: (file) => comments.open({ screen: file }),
+  onNavigate: (from, to) => { canvas.reload(from); canvas.focus(to); toast(`${from.replace(/\.html$/, "")} leads to ${to.replace(/\.html$/, "")}.`); }, // a link in a screen: show the screen it leads to, this one is put back
   onTemplate: (file) => saveAsTemplate(file),
   onRequestSize: askSize,
   onGone: (file) => { window.studio.unregisterView(file); renderTabs(); },
-  onChange: (what) => { $("zpct").textContent = canvas.zoomPercent() + "%"; persistLayout(); },
+  onChange: (what) => { $("zpct").textContent = canvas.zoomPercent() + "%"; if (what === "layout" || what === "move") flow?.draw(); if (what === "layout" || what === "move" || what === "camera") vlayer?.draw(); if (what === "layout") persistLayout(); },
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
@@ -552,9 +576,9 @@ const canvas = createCanvas({
     if (c.left + c.width / 2 < k.left + k.width / 2) out.left = Math.max(0, c.right - k.left + 12); else out.right = Math.max(0, k.right - c.left + 12);
     return out;
   },
-  onSelect: () => { renderTabs(); updateSelbar(); },
+  onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
-  onPageReady: (f) => { const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
+  onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
 function syncFrames(screens) {
   for (const f of screens) if (!canvas.get(f)) {
@@ -562,17 +586,14 @@ function syncFrames(screens) {
     fr.view.addEventListener("console-message", (e) => inspector.handleConsole(f, e.message));
   }
   for (const f of canvas.files()) if (!screens.includes(f)) canvas.removeFrame(f);
-  $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens();
+  $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens(); vlayer?.draw();
 }
 function renderTabs() {
   const keep = $("tabs").scrollLeft; // replaceChildren would reset the strip to the left
   $("tabs").replaceChildren(...canvas.files().map((s) => {
     const t = Object.assign(document.createElement("div"), { className: `tab${s === canvas.selected() ? " on" : ""}${s === workFile ? " working" : ""}`, title: s });
     t.append(Object.assign(document.createElement("span"), { textContent: s.replace(".html", "") }));
-    const x = Object.assign(document.createElement("button"), { className: "x", title: "Delete screen" });
-    x.setAttribute("aria-label", "Delete screen"); x.innerHTML = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
-    x.onclick = (e) => { e.stopPropagation(); deleteScreen(s); };
-    t.append(x); t.onclick = () => canvas.focus(s); return t;
+    t.onclick = () => canvas.focus(s); return t;
   }));
   $("tabs").scrollLeft = keep;
   $("tabs").querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -594,6 +615,7 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   if (p !== project) return;
   const fresh = screens.filter((f) => !canvas.get(f));
   syncFrames(screens);
+  flow?.refresh();
   for (const f of changed) if (!fresh.includes(f)) canvas.reload(f);
   for (const f of changed) propsPanel.refresh(f); // the inspector re-reads the picked component (or clears when it is gone)
   if (fsFile && changed.includes(fsFile)) { fsFreeze?.cover(); fsView?.reload(); }
@@ -604,7 +626,7 @@ $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.z
 $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox"]; // topmost first
+const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "guidebox", "cmtbox", "varbox"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
@@ -648,8 +670,10 @@ const actionListEditor = createActionListEditor({ api: {
   buttonDoc: () => window.studio.docsDetail("Uu5Elements.Button"), pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b),
 } });
 const propsPanel = createPropsPanel({
+  getScreens: () => canvas.files(),
   api: { markLevel: (file, i, item) => { const v = viewOfFile(file); if (v) inspector.markLevel(v, i, item); }, editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
+  onComment: (on) => comments.open({ on }),
   onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
   onDelete: (p) => copyRefused([p]) || deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
   onDuplicate: (p) => copyRefused([p]) || duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
@@ -792,7 +816,7 @@ function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new Reg
 let toastTimer;
 function toast(msg, { reveal, err, action } = {}) {
   const t = $("toast"); t.className = err ? "err" : ""; t.textContent = msg; t.hidden = false;
-  if (action) { const a = Object.assign(document.createElement("a"), { textContent: action.label }); a.onclick = action.run; t.append(a); }
+  for (const x of [].concat(action ?? [])) { const a = Object.assign(document.createElement("a"), { textContent: x.label }); a.onclick = x.run; t.append(a); }
   if (reveal) { const a = Object.assign(document.createElement("a"), { textContent: "Show" }); a.onclick = () => window.studio.reveal(reveal); t.append(a); }
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), err ? 8000 : 5000);
 }
@@ -1077,6 +1101,39 @@ rules = createRulesPanel({
 });
 const openRules = (screen) => project && rules.open({ screen: typeof screen === "string" ? screen : undefined });
 $("rulesbtn").onclick = openRules;
+// comments on the screens and their components: a dialog from the toolbar icon (the badge counts the open ones), "Comment on this" in the inspector
+const comments = createCommentsPanel({
+  api: window.studio, getScreens: () => canvas.files(), getSelected: () => canvas.selected(), toast,
+  onCounts: (map) => canvas.setCommentCounts(map),
+  onCount: (n) => { const b = $("cmtbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("cmtbtn").title = n ? `Comments on the screens (${n} open)` : "Comments on the screens"; },
+  onShow: (file) => canvas.focus(file),
+});
+/** "Use this variant": asks, then the variant replaces the original and the other variants are removed (all of it goes to the trash). */
+async function keepVariant(file) {
+  const v = variantInfo(file, canvas.files());
+  if (!v) return toast(`${file.replace(/\.html$/, "")} is not a variant of another screen (variants are named like room-list-a, room-list-b next to room-list).`, { err: true });
+  const name = (f) => f.replace(/\.html$/, "");
+  const ok = await askConfirm({ title: `Use “${name(file)}” as “${name(v.base)}”?`, detail: `${v.base} is replaced by this variant. The old ${v.base}${v.others.length ? ` and the other variants (${v.others.map(name).join(", ")})` : ""} are moved to the trash, so you can restore them.`, ok: "Use this variant" });
+  if (!ok) return;
+  const r = await window.studio.variantKeep(file);
+  if (r?.error) toast(r.error, { err: true }); else toast(`${name(r.kept)} is now the chosen variant${r.removed.length ? `; ${r.removed.length} other${r.removed.length === 1 ? "" : "s"} removed` : ""}.`);
+}
+// the flow between screens: arrows on the canvas from a screen to the screens it links to; variants of a screen as one request to the agent
+flow = createFlowLayer({ world: $("world"), canvas, api: window.studio });
+vlayer = createVariantLayer({ world: $("world"), canvas, onKeep: (f) => keepVariant(f) }); vlayer.draw();
+const FLOW_KEY = "uu5studio.flow";
+const setFlow = (on) => { flow.setOn(on); $("flowbtn").setAttribute("aria-pressed", String(on)); try { localStorage.setItem(FLOW_KEY, on ? "1" : "0"); } catch { /* not remembered */ } };
+$("flowbtn").onclick = () => { setFlow(!flow.isOn()); if (flow.isOn()) { flow.refresh().then(() => { if (!flow.count()) toast("No screen links to another one yet. Ask the agent to link the screens (a button that leads to another screen)."); }); } };
+try { setFlow(localStorage.getItem(FLOW_KEY) !== "0"); } catch { setFlow(true); }
+const variantsDialog = createVariantsDialog({
+  onDone: ({ file, count, aspect, custom }) => {
+    if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+    push({ kind: "user", text: `Make ${count} variants of ${file.replace(/\.html$/, "")}: ${variantNames(file, count).join(", ")}.` });
+    setBusy(true); sentModel = $("model").value; planPending = false;
+    window.studio.send(buildVariantsPrompt({ file, count, aspect, custom }), sentModel || undefined, { plan: false, economy });
+  },
+});
+$("cmtbtn").onclick = () => project && comments.open({ screen: canvas.selected() ?? undefined });
 // the description of the project and of its screens (PROJECT.md): a strip above the canvas, a dialog of its own
 desc = createDescPanel({
   api: window.studio, getScreens: () => canvas.files(),
@@ -1091,6 +1148,7 @@ window.studio.onMemoryChanged((ev) => {
   if (ev.project !== project) return;
   memory.changed(ev);
   if (ev.kind === "rules") rules.reload();
+  if (ev.kind === "comments") comments.reload();
   if (ev.kind === "project") desc.reload();
   if (ev.kind === "rules") toast(`Business rules updated${ev.added.length ? `: ${ev.added.length} added` : ""}${ev.removed.length ? `, ${ev.removed.length} removed` : ""}.`, { action: { label: "Show", run: openRules } });
 });
@@ -1106,12 +1164,14 @@ async function linkRepoFlow() {
 const mentionItems = (name) => marked.length
   ? [[marked.length > 1 ? `Mention ${marked.length} components in chat` : "Mention component in chat", () => useMarked()], ["Mention screen in chat", () => insertMention(name)]]
   : [["Mention in chat", () => insertMention(name)]];
+const v0 = (file) => variantInfo(file, canvas.files())?.base.replace(/\.html$/, "") ?? "";
 function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
+  const simple = isSimple(); // the simple view keeps what is needed to look at, edit and share a design; the rest is under Advanced
   const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ["Add rule…", () => openRules(file)], ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...mentionItems(name),
-    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)], null, ["Delete screen…", () => deleteScreen(file), true],
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], ...(simple ? [] : [["Add rule…", () => openRules(file)]]), ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...(simple ? [] : mentionItems(name)),
+    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : []), ...(simple ? [] : [["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
@@ -1203,15 +1263,20 @@ async function uu5StringOf(parts) {
   const r = toUu5String(mergeTrees(trees));
   return r.text ? r : { error: "Nothing to copy: the screen renders no content." };
 }
-function reportUu5(r, scope) {
+/** `assets`: the files of the project the text refers to (pictures, videos); the toast offers them as a ZIP. */
+function reportUu5(r, scope, assets = []) {
   if (r.error) return toast(r.error, { err: true });
-  toast(summaryOf(r, { scope }), r.notes.length ? { action: { label: "Details", run: () => toast(r.notes.join(" ")) } } : {});
+  const actions = [];
+  if (r.notes.length) actions.push({ label: "Details", run: () => toast(r.notes.join(" ")) });
+  if (assets.length) actions.push({ label: `Files (${assets.length})…`, run: async () => report(await window.studio.assetsExport(r.name ?? "uu5string", r.text), (x) => `Files saved: ${x.path.split("/").pop()} (${x.files})`) });
+  toast(summaryOf(r, { scope }) + (assets.length ? ` It refers to ${assets.length} file${assets.length > 1 ? "s" : ""} (pictures, videos) a document does not have.` : ""), actions.length ? { action: actions } : {});
 }
-async function copyUu5(r, scope) {
+async function copyUu5(r, scope, name) {
   if (r.error) return reportUu5(r, scope);
   const c = await window.studio.copyText(r.text).catch((e) => ({ error: e.message }));
   if (!c?.ok) return toast(c?.error ?? "Could not copy to the clipboard.", { err: true });
-  reportUu5(r, scope);
+  const a = await window.studio.assetsList(r.text).catch(() => null);
+  reportUu5({ ...r, name }, scope, a?.files ?? []);
 }
 /** The uu5String of a screen handed to `use(text)` (share or drag a file); the notes ride along on the result. */
 async function uu5File(file, use) {
@@ -1221,11 +1286,11 @@ async function uu5File(file, use) {
   return r?.error ? r : { ...r, notes: u.notes };
 }
 const reportUu5Notes = (notes) => toast(`uu5String: ${notes.length} note${notes.length > 1 ? "s" : ""} on what was left out.`, { action: { label: "Details", run: () => toast(notes.join(" ")) } });
-const copyUu5Screen = async (file) => copyUu5(await uu5StringOf([{ file }]), "screen");
+const copyUu5Screen = async (file) => copyUu5(await uu5StringOf([{ file }]), "screen", file);
 async function saveUu5Screen(file) {
   const r = await uu5StringOf([{ file }]);
   if (r.error) return reportUu5(r);
-  report(await window.studio.exportText(file.replace(/\.html$/, ".uu5string.txt"), r.text), (x) => `Saved: ${x.path.split("/").pop()}${r.notes.length ? ` (${r.notes.length} note${r.notes.length > 1 ? "s" : ""} on what was left out)` : ""}`);
+  report(await window.studio.exportUu5(file.replace(/\.html$/, ".uu5string.txt"), r.text), (x) => `Saved: ${x.path.split("/").pop()}${x.files ? ` and ${x.assetsPath.split("/").pop()} (${x.files} file${x.files > 1 ? "s" : ""}: pictures, videos)` : ""}${r.notes.length ? ` (${r.notes.length} note${r.notes.length > 1 ? "s" : ""} on what was left out)` : ""}`);
 }
 /** The button of the Edit panel: the marked components (several, also across screens), else the shown one. */
 async function copyUu5Components(p) {
@@ -1234,7 +1299,7 @@ async function copyUu5Components(p) {
   const byFile = new Map();
   for (const it of items) if (Number.isFinite(Number(it.ordinal))) byFile.set(it.file, [...(byFile.get(it.file) ?? []), Number(it.ordinal)]);
   const n = items.length;
-  copyUu5(await uu5StringOf([...byFile].map(([file, ordinals]) => ({ file, ordinals }))), n > 1 ? `${n} components` : "The component");
+  copyUu5(await uu5StringOf([...byFile].map(([file, ordinals]) => ({ file, ordinals }))), n > 1 ? `${n} components` : "The component", p.file);
 }
 // ----- drag the selected screen as a file (into WhatsApp, Signal, Teams, Mail, a folder, ...): the ⠿ buttons of the Share menu
 const drags = new Map(); // kind -> { file, path, at }
@@ -1435,7 +1500,7 @@ function loadProject(info) {
   projectLevel = info.level ?? null; defaultEnv = info.environment ?? null; refreshEnvs();
   canvas.removeAll(); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
-  showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); memory.setNotes(info.notes); memory.loadTexts();
+  showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
   $("projbtn").textContent = project ? `${project} ▾` : "No project ▾"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
   updateNoProject();
@@ -1512,6 +1577,7 @@ const dashboard = createDashboard({
   },
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
   onTemplates: () => templatesDialog.open(),
+  onLevel: (l) => { if (meta.role) dashboard.setPlan(planFirst(meta.role, l)); }, // the architect plans an application or a route first
   onStart: async ({ text, plan, model, template, templateLevel, docs = [] }) => {
     if (!ready) return toast(NO_AI, { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
@@ -1636,6 +1702,8 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "project:desc": return needProject(() => openDesc(null));
       case "project:repo-link": return needProject(() => linkRepoFlow());
       case "project:zip": return needProject(async () => report(await window.studio.exportZip(), (r) => `ZIP saved (${r.files} screens)`));
+      case "project:handoff": return needProject(async () => report(await window.studio.exportHandoff("file"), () => "Specification saved"));
+      case "project:handoff-copy": return needProject(async () => { const r = await window.studio.exportHandoff("text"); if (r?.error) return toast(r.error, { err: true }); await window.studio.copyText(r.text); toast("Specification copied (Markdown)."); });
       case "project:share-zip": return needProject(async () => notifyShare(await window.studio.shareMail("zip")));
       case "view:zoomin": return $("zin").click();
       case "view:zoomout": return $("zout").click();
@@ -1645,6 +1713,9 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:reload": return withScreen((f) => canvas.reload(f));
       case "screen:note": return withScreen((f) => addNote(f));
       case "screen:desc": return withScreen((f) => openDesc(f));
+      case "screen:variants": return withScreen((f) => variantsDialog.open(f));
+      case "screen:keepvariant": return withScreen((f) => keepVariant(f));
+      case "view:flow": return needProject(() => $("flowbtn").click());
       case "screen:structure": return withScreen((f) => structureDialog.open(f));
       case "screen:template": return withScreen((f) => saveAsTemplate(f));
       case "edit:undo": case "edit:redo": return editStep(action === "edit:undo" ? "undo" : "redo");
@@ -1661,6 +1732,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "view:chatmode": return $("chatmode").click();
       case "app:about": return openAbout();
       case "app:tour": return tour.open();
+      case "app:role": return roleDialog.open(meta.role);
       case "claude:setup": return setup.open();
       case "codex:plugins": return setup.openCodex();
       case "update:check": return checkAppUpdates();
@@ -1675,9 +1747,65 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
 
 // ---------- Claude Code setup wizard (Claude Code, sign-in, plugins; plugin updates) ----------
 // ---------- welcome tour: on the first run, once the setup wizard (if it was needed) is out of the way ----------
-const tour = createTour({ onClose: () => { meta.tourSeen = true; window.studio.tourDone(); } });
+// ---------- role (role.js): chosen before the tour on the first run, changeable in Help. It presets the starting point once; what the user sets by hand later stays ----------
+const isSimple = () => document.body.classList.contains("simple");
+const VIEW_KEY = "uu5studio.view"; // "simple" | "advanced": the switch next to the message field; a role presets it, the user changes it
+function setView(v) {
+  const simple = v === "simple";
+  document.body.classList.toggle("simple", simple); try { localStorage.setItem(VIEW_KEY, simple ? "simple" : "advanced"); } catch { /* not remembered */ }
+  for (const b of document.querySelectorAll(".viewtog")) { b.classList.toggle("on", !simple); b.setAttribute("aria-pressed", String(!simple)); }
+  syncModelNow();
+}
+for (const b of document.querySelectorAll(".viewtog")) b.onclick = () => setView(isSimple() ? "advanced" : "simple");
+try { setView(localStorage.getItem(VIEW_KEY) === "simple" ? "simple" : "advanced"); } catch { setView("advanced"); }
+/** The simple view starts on a cheaper model, but only for someone who never chose one: their choice (or the default of their Claude Code) is not overridden. */
+function preferModel(id) {
+  let stored = null; try { stored = localStorage.getItem(MODEL_KEY); } catch { /* unknown */ }
+  if (stored !== null) return;
+  try { localStorage.setItem(MODEL_KEY, id); } catch { /* not remembered */ }
+  pendingModel = id; // the list may not be built yet: renderModels applies it
+  for (const sel of [$("model"), $("dash-model")]) if ([...sel.options].some((o) => o.value === id)) sel.value = id;
+  syncModelNow();
+}
+/** Presets the starting point of a role: the level of templates, Plan, Eco, the first Share format, and how much of the technical side shows. */
+function applyRole(role, { preset = true } = {}) {
+  meta.role = isRole(role) ? role : null;
+  $("dash-role").textContent = meta.role ? roleOf(meta.role).label : "Choose role…";
+  if (!meta.role || !preset) return;
+  const r = roleOf(role);
+  setView(r.simple ? "simple" : "advanced");
+  if (r.simple) preferModel("sonnet");
+  dashboard.setLevel(r.level); dashboard.setPlan(r.plan);
+  setPlanMode(r.plan); setEconomy(r.eco);
+  outFormat = r.share; try { localStorage.setItem(OUT_KEY, r.share); } catch { /* not remembered */ }
+  updateSelbar();
+}
+applyRole(meta.role, { preset: false });
+$("dash-role").onclick = () => roleDialog.open(meta.role);
+const guideDialog = createGuideDialog({ onDone: (a) => dashboard.fill(buildGuidePrompt(a), guideTemplate(a.type).template) }); // the request lands in the message field; nothing is sent
+$("dash-guide").onclick = () => guideDialog.open();
+const roleDialog = createRoleDialog({
+  onChoose: async (role) => { const r = await window.studio.setRole(role); if (r?.error) return toast(r.error, { err: true }); meta.roleAsked = true; $("rolehint")?.remove(); applyRole(role); toast(`Set up for: ${roleOf(role).label}. Help → Your Role… changes it.`); maybeTour(); },
+  onSkip: async () => { await window.studio.setRole("other"); meta.roleAsked = true; $("rolehint")?.remove(); applyRole("other"); maybeTour(); }, // Skip = the simplest view
+});
+/** An existing user is asked once, without a dialog over the work: a strip on the dashboard. */
+function maybeRoleHint() {
+  if (meta.roleAsked || $("rolehint")) return;
+  const strip = Object.assign(document.createElement("div"), { id: "rolehint", innerHTML: '<span>New: set your role and the app starts closer to what you do.</span><button type="button" class="rh-set">Choose role…</button><button type="button" class="rh-x" aria-label="Not now" title="Not now">✕</button>' });
+  const done = () => { strip.remove(); meta.roleAsked = true; window.studio.skipRole(); };
+  strip.querySelector(".rh-set").onclick = () => { done(); roleDialog.open(meta.role); };
+  strip.querySelector(".rh-x").onclick = done;
+  $("dash-top").after(strip);
+}
+const tour = createTour({ isSimple, onClose: () => { meta.tourSeen = true; window.studio.tourDone(); } });
 function maybeTour() {
-  if (meta.tourSeen || tour.isOpen()) return;
+  if (tour.isOpen() || roleDialog.isOpen()) return;
+  if (!meta.roleAsked) { // a new user chooses the role first (the tour follows); an existing one gets a quiet strip
+    if (meta.tourSeen) { maybeRoleHint(); return; }
+    setTimeout(() => { if (!meta.roleAsked && !roleDialog.isOpen() && !tour.isOpen() && $("setup").hidden) roleDialog.open(); }, 700);
+    return;
+  }
+  if (meta.tourSeen) return;
   setTimeout(() => { if (!meta.tourSeen && !tour.isOpen() && $("setup").hidden) tour.open(); }, 700);
 }
 setup = createSetup({

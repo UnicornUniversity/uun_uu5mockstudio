@@ -69,10 +69,10 @@ test("applying a template keeps the starter files as a reference for the agent, 
   assert.doesNotMatch(templatePrompt({ ...meta, level: "component" }), /route header/i);
 });
 
-test("the built-in templates are all valid and cover the four levels", async () => {
+test("the built-in templates are all valid and cover the five levels", async () => {
   const { templates, errors } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
   assert.deepEqual(errors, []);
-  assert.deepEqual([...new Set(templates.map((t) => t.level))].sort(), ["app", "component", "page", "route"]);
+  assert.deepEqual([...new Set(templates.map((t) => t.level))].sort(), ["app", "component", "page", "route", "web"]);
   for (const t of templates) assert.ok(t.hasInstructions && t.prompt, `${t.id} has instructions and a prompt`);
 });
 
@@ -96,7 +96,7 @@ test("a Page template is made of Bricks only: every library it uses is a depende
 
 test("the prompt of a Page names the uu5Bricks rules", () => {
   const p = templatePrompt({ id: "page-portal", title: "Portal", level: "page", files: ["portal.html"] });
-  assert.match(p, /Page template "Portal"/);
+  assert.match(p, /Document template "Portal"/);
   assert.match(p, /uu5bricks-knowledge/);
   assert.match(p, /uu5String/);
 });
@@ -152,4 +152,18 @@ test("saving refuses what a template may not contain", async () => {
   await assert.rejects(saveTemplate(root, { ...ok, files: [] }), /at least one/);
   await assert.rejects(saveTemplate(root, { ...ok, files: [{ name: "../a.html", html: "x" }] }), /Unsafe/);
   await assert.rejects(saveTemplate(root, { ...ok, files: [{ name: "a.html", html: "x".repeat(600 * 1024) }] }), /bigger/);
+});
+
+test("a Web template is a whole page: its own navigation and footer, no Bricks, no application components", async () => {
+  const { templates } = await loadSource(path.resolve("src/main/templates/builtin"), "builtin");
+  const web = templates.filter((t) => t.level === "web");
+  assert.deepEqual(web.map((t) => t.id).sort(), ["web-home", "web-landing", "web-page"]);
+  for (const t of web) {
+    const html = await readFile(path.join(t.dir, t.files[0]), "utf8");
+    assert.match(html, /className="nav"/, `${t.id} has a navigation bar`);
+    assert.match(html, /className="foot"/, `${t.id} has a footer`);
+    assert.match(html, /@media \(max-width/, `${t.id} is responsive`);
+    assert.doesNotMatch(html, /Uu5Bricks|Uu5Elements\.(Block|Button)|Uu5Forms/, `${t.id} looks like a web site, not an application or a document`);
+  }
+  assert.match(templatePrompt({ id: "web-home", title: "Home page", level: "web", files: ["home.html"] }), /Web template "Home page".*whole page of a web site/s);
 });

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web page</title>
+    <!-- A whole web page (header, content, footer) drawn full width: plain HTML and CSS for the look, Uu5Elements.Icon for icons. -->
+    <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
+    <script>
+      var uu5DemoDependencies = {};
+    </script>
+    <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
+    <style>
+      .uu-app-devkit-demo-middleware-controls { display: none; }
+      body { margin: 0; font-family: Roboto, "Segoe UI", system-ui, sans-serif; color: #1f2933; background: #fff; }
+      .w { max-width: 1152px; margin: 0 auto; padding: 0 24px; }
+      .nav { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.96); border-bottom: 1px solid #e4e7eb; }
+      .nav .w { display: flex; align-items: center; gap: 28px; height: 64px; }
+      .nav .brand { font-weight: 700; font-size: 20px; color: #0b3a8f; margin-right: auto; }
+      .nav a { color: #323f4b; text-decoration: none; font-size: 15px; }
+      .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; background: #1d5fbf; color: #fff !important; font-weight: 600; text-decoration: none; }
+      .btn.ghost { background: transparent; color: #1d5fbf !important; border: 2px solid #1d5fbf; padding: 10px 20px; }
+      .sec { padding: 72px 0; }
+      .sec.alt { background: #f4f7fb; }
+      h1 { font-size: 46px; line-height: 1.12; margin: 0 0 16px; }
+      h2 { font-size: 32px; margin: 0 0 12px; }
+      h3 { font-size: 19px; margin: 12px 0 6px; }
+      p { line-height: 1.6; margin: 0 0 12px; color: #3e4c59; }
+      .grid { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+      .card { background: #fff; border: 1px solid #e4e7eb; border-radius: 12px; padding: 24px; }
+      .foot { background: #0b2447; color: #cbd2d9; padding: 40px 0; font-size: 14px; }
+      .foot a { color: #e4e7eb; text-decoration: none; margin-right: 20px; }
+      @media (max-width: 700px) { h1 { font-size: 34px; } .nav .links { display: none; } .sec { padding: 48px 0; } }
+      .crumbs { font-size: 14px; color: #52606d; padding: 20px 0 0; }
+      .crumbs a { color: #1d5fbf; }
+      .article { display: grid; gap: 48px; grid-template-columns: minmax(0, 1fr) 280px; padding: 24px 0 72px; }
+      .article img { width: 100%; border-radius: 12px; display: block; margin: 8px 0 20px; }
+      .article h2 { font-size: 26px; margin-top: 32px; }
+      .lead { font-size: 20px; color: #323f4b; }
+      .side .card { margin-bottom: 20px; }
+      .side ul { list-style: none; margin: 0; padding: 0; }
+      .side li { padding: 8px 0; border-bottom: 1px solid #e4e7eb; }
+      .side li:last-child { border: 0; }
+      .side a { color: #1d5fbf; text-decoration: none; }
+      @media (max-width: 860px) { .article { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div id="uu5"></div>
+
+    <script type="text/babel">
+      import { Utils } from "uu5g05";
+      import Uu5Elements from "uu5g05-elements";
+      const IMG = "https://uuapp.plus4u.net/uu-webkit-maing02/b6d739b46b0a4f4980891c3c54a6df5d/image-placeholder-";
+
+      function Page() {
+        return (
+          <>
+            <div className="nav">
+              <div className="w">
+                <span className="brand">Northwind Academy</span>
+                <span className="links" style={{ display: "flex", gap: 28 }}>
+                  <a href="#">Programmes</a>
+                  <a href="#">About us</a>
+                  <a href="#">News</a>
+                  <a href="#">Contact</a>
+                </span>
+                <a className="btn" href="#">Apply now</a>
+              </div>
+            </div>
+
+            <div className="w">
+              <div className="crumbs"><a href="#">Home</a> › <a href="#">About us</a> › Our teachers</div>
+              <div className="article">
+                <div>
+                  <h1>Our teachers</h1>
+                  <p className="lead">Everyone who teaches here works in the field and teaches because they want to pass something on.</p>
+                  <img src={IMG + "03"} alt="" />
+                  <h2>How we choose them</h2>
+                  <p>We look for people with at least five years of practice and the patience to explain. Every new teacher first assists a course and gets feedback from students before leading one.</p>
+                  <h2>What students can expect</h2>
+                  <p>Teachers are available for consultations every week, review your project work and introduce you to people in their companies.</p>
+                  <ul>
+                    <li>Weekly consultation hours</li>
+                    <li>Written feedback on every assignment</li>
+                    <li>Introductions to partner companies</li>
+                  </ul>
+                  <h2>Become a teacher</h2>
+                  <p>Would you like to teach with us? Write to us and tell us what you would like to teach.</p>
+                  <a className="btn" href="#">Get in touch</a>
+                </div>
+                <div className="side">
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>In this section</h3>
+                    <ul>
+                      <li><a href="#">About us</a></li>
+                      <li><a href="#">Our teachers</a></li>
+                      <li><a href="#">Partners</a></li>
+                      <li><a href="#">Careers</a></li>
+                    </ul>
+                  </div>
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Questions?</h3>
+                    <p>Write to <a href="#">info@northwind.example</a> or call +420 123 456 789.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="foot">
+              <div className="w">
+                <p style={{ color: "#fff", fontWeight: 600 }}>Northwind Academy</p>
+                <p><a href="#">Programmes</a><a href="#">About us</a><a href="#">News</a><a href="#">Contact</a></p>
+                <p style={{ color: "#9aa5b1" }}>© 2026 Northwind Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </>
+        );
+      }
+
+      Utils.Dom.render(<Page />, document.getElementById("uu5"));
+    </script>
+  </body>
+</html>

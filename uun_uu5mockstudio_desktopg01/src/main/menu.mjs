@@ -39,6 +39,8 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
         item("Copy Screen as uu5String", "screen:uu5string"),
         item("Screen as uu5String…", "screen:save-uu5string"),
         item("Project as ZIP…", "project:zip"),
+        item("Project Specification (Markdown)…", "project:handoff"),
+        item("Copy Project Specification", "project:handoff-copy"),
       ] },
       { label: "Share", enabled: has, submenu: [
         item("Screen Image…", "screen:share-png"),
@@ -85,6 +87,8 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       sep,
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
       item("Description…", "screen:desc", { enabled: has }),
+      item("Variants…", "screen:variants", { enabled: has }),
+      item("Use This Variant…", "screen:keepvariant", { enabled: has }),
       item("Show Component Tree…", "screen:structure", { enabled: has }),
       item("Save as Template…", "screen:template", { enabled: has }),
       item("Undo Screen Change", "screen:undo", { accelerator: "Alt+CmdOrCtrl+Z", enabled: has }),
@@ -123,6 +127,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       { label: "Device for All Screens", enabled: has, submenu: [["Desktop", "desktop"], ["Laptop", "laptop"], ["Tablet", "tablet"], ["Mobile", "mobile"]].map(([l, d]) => item(l, "view:device:" + d)) },
       sep,
       item("Edit Components", "view:inspector", { enabled: has }),
+      item("Show / Hide Screen Flow", "view:flow", { enabled: has }),
       sep,
       { label: "Appearance", submenu: [
         item("Automatic", "view:theme:auto"), item("Light", "view:theme:light"), item("Dark", "view:theme:dark"),
@@ -139,7 +144,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
   };
 
   const windowMenu = { label: "Window", submenu: [{ role: "minimize" }, ...(mac ? [{ role: "zoom" }, sep, { role: "front" }] : [{ role: "close" }])] };
-  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), item("uuAiChat MCP Server…", "docs:territory"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
+  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), item("Your Role…", "app:role"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), item("uuAiChat MCP Server…", "docs:territory"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
 
   const appMenu = {
     label: appName,

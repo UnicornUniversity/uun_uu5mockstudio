@@ -57,3 +57,11 @@ test("the context is the input of the last call of the main loop, and the label 
   assert.match(usageTitle({ ...u, cum: u, ctx: CONTEXT_WARN + 1 }), /new conversation would be cheaper/);
   assert.match(usageTitle({ ...u, cum: u, ctx: 50000 }), /fine/);
 });
+
+test("the simple view shows the token line only for a large request or a large conversation", async () => {
+  const { isBigRequest } = await import("../src/renderer/usage.js");
+  assert.equal(isBigRequest({ in: 8000, out: 2000, cum: true, ctx: 40000 }), false);
+  assert.equal(isBigRequest({ in: 90000, out: 20000, cum: true, ctx: 60000 }), true);
+  assert.equal(isBigRequest({ in: 1000, out: 500, cum: true, ctx: 210000 }), true);
+  assert.equal(isBigRequest({ in: 500000, out: 1000, sofar: true }), false); // a total "so far" says nothing about this request
+});

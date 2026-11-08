@@ -1,0 +1,14 @@
+{
+  "id": "web-home",
+  "title": "Home page",
+  "level": "web",
+  "description": "The front page of a web site: navigation, a hero with two actions, reasons to choose it, a reference, a closing call to action and a footer.",
+  "prompt": "The home page of our school: what we teach, why to choose us and how to apply",
+  "order": 10,
+  "kind": "home",
+  "icon": "home",
+  "tags": [
+    "web",
+    "HTML"
+  ]
+}

@@ -74,7 +74,7 @@ export function toLiteral(v, pad = "") {
  * components it is nested in, the props written in the file as editable controls, and the other props it supports.
  * Editing writes to the HTML file through `api`.
  */
-export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicate, onAddItem, onCopyUu5 }) {
+export function createPropsPanel({ api, getScreens = () => [], onUse, onComment, onStructure, onDelete, onDuplicate, onAddItem, onCopyUu5 }) {
   let pick = null, info = null, ordinals = [], level = 0, useSub = false;
   const root = $("insp-comp");
 
@@ -348,6 +348,14 @@ export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicat
       d?.url ? el("a", { href: d.url, textContent: " Docs", onclick: (e) => { e.preventDefault(); api.openExternal(d.url); } }) : null); // opens in the system browser
     const props = $("insp-props"); props.replaceChildren();
     const attrs = info.element.attrs;
+    // "Leads to screen": the link between screens without code: sets the href of a button or a link to the file of another screen (the flow arrows follow)
+    if (!isItem && /(^|\.)(Button|Link)$|^a$/.test(info.element.name)) {
+      const others = getScreens().filter((f) => f !== pick.file), cur = attrs.find((a) => a.name === "href"), now = cur && typeof cur.value === "string" && others.includes(cur.value) ? cur.value : "";
+      const sel = el("select", { "aria-label": "Leads to screen" }, el("option", { value: "", textContent: others.length ? "(no screen)" : "(no other screen)" }), ...others.map((f) => el("option", { value: f, textContent: f.replace(/\.html$/, "") })));
+      sel.value = now; sel.disabled = !others.length;
+      sel.onchange = () => (sel.value ? setProp("href", { type: "string", value: sel.value }) : now ? removeProp("href") : null);
+      props.append(el("div", { className: "prow goto", title: "Click on this button or link opens the other screen (in Present, and in the flow arrows)" }, el("label", {}, el("span", { className: "pname", textContent: "Leads to" })), sel, el("span")));
+    }
     if (pick.assets?.gdsBase && attrs.some((a) => isIconProp(a.name, docProp(a.name)) && !isStateIconProp(a.name))) api.ensureIconFonts?.(pick.assets.gdsBase); // glyph previews
     if (attrs.some((a) => isStateIconProp(a.name) || isBmlCode(a.value))) api.ensureBmlFonts?.(); // uuBml icons and states come from the uuBml icon font
     for (const a of attrs) {
@@ -384,6 +392,7 @@ export function createPropsPanel({ api, onUse, onStructure, onDelete, onDuplicat
   $("insp-delete").onclick = () => pick && info && onDelete?.(targetOf());
   $("insp-additem").onclick = () => pick && info && info.element.item && onAddItem?.(targetOf());
   $("insp-uu5").onclick = () => pick && info && onCopyUu5?.(targetOf());
+  $("insp-comment").onclick = () => pick && info && onComment?.({ file: pick.file, name: info.element.name, text: pick.text ? String(pick.text).slice(0, 80) : "", ordinal: info.element.ordinal });
   $("insp-use").onclick = () => pick && info && onUse({ ...pick, chain: info.chain, element: info.element, sub: info.element.item ? pick.sub : null });
 
   return {

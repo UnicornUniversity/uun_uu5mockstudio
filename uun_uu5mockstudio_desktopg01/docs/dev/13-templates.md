@@ -1,6 +1,6 @@
 # 13. Templates for new projects
 
-The dashboard offers **templates** on four levels, after the uu5 / uuAppFramework vocabulary: **Application** (uu5Uve: a shell with navigation and several routes), **Route** (uu5Route: one screen with a route layout), **Component** (form, list, detail, dashboard…) and **Page** (a content page for a document, see below). A template is a starting point for the agent, not a finished screen.
+The dashboard offers **templates** on five levels, after the uu5 / uuAppFramework vocabulary: **Application** (uu5Uve: a shell with navigation and several routes), **Route** (uu5Route: one screen with a route layout), **Component** (form, list, detail, dashboard…) and **Page** (a content page for a document, see below). A template is a starting point for the agent, not a finished screen.
 
 ## Format
 
@@ -19,7 +19,7 @@ A template is a folder:
 | --- | --- |
 | `id` | kebab-case (`a-z`, `0-9`, `-`, ≤ 64 characters); the key by which sources override each other. Default: the folder name. |
 | `title`, `description` | shown on the chip, in its tooltip and in the Templates dialog |
-| `level` | `app`, `route`, `component` or `page` |
+| `level` | `app`, `route`, `component`, `web` or `page` (shown as **Web** and **Document**) |
 | `kind` | optional: `form`, `list`, `detail`, `dashboard`… (chooses the icon) |
 | `icon` | optional icon key (`app`, `route`, `form`, `list`, `detail`, `dashboard`, `page`, `portal`, `landing`, `home`, `product`, `article`, `report`) |
 | `prompt` | the sentence put into the message field when the template is chosen |

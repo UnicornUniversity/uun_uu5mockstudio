@@ -38,6 +38,10 @@ The control follows the type of the prop:
 
 The cross removes a prop from the file.
 
+### Leads to (links between screens)
+
+For a button or a link the panel has a **Leads to** row: choose another screen of the project and the component gets that screen as its `href`. The flow arrows on the canvas follow it, and in Present a click opens the other screen. Choose “(no screen)” to remove the link.
+
 ### Lists of actions
 
 `actionList`, `iconRightList`, `itemList` of `ActionGroup` / `Dropdown` / `ContextMenu` open in a window: all actions on the left, a form on the right (text, icon, tooltip, significance, colour, disabled, onClick, in the menu …), and **add, duplicate, delete, move**. An action that is a component is edited as code. Lists written as a function (`getActionList` of `ContentContainer`) or as a condition between lists (`cond ? [{ … }] : []`, `...(readOnly ? [] : [{ … }])`) are read too.

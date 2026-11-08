@@ -5,14 +5,15 @@ import path from "node:path";
 import { isEnvironment } from "./environments.mjs";
 
 /**
- * Templates for a new project: App (uu5Uve), Route (uu5Route), Component (form, list, detail, dashboard, ...) or Page (a content page
- * made of uu5Bricks that is copied as uu5String into a document: portal, landing page, product detail, ...).
+ * Templates for a new project: App (uu5Uve), Route (uu5Route), Component (form, list, detail, dashboard, ...), Web (a whole page of a web site:
+ * home page, landing page, web page) or Document (id "page": a content page made of uu5Bricks that is copied as uu5String into a document:
+ * portal, landing page, product detail, ...).
  * A template is a folder: `template.json` (manifest), `TEMPLATE.md` (instructions for the agent) and the starter `*.html` file(s).
  * Sources, later ones win by id: built-in < installed plugins < mine (a folder of the user).
  */
 
-export const LEVELS = ["app", "route", "component", "page"];
-export const LEVEL_LABELS = { app: "Application", route: "Route", component: "Component", page: "Page" };
+export const LEVELS = ["app", "route", "component", "web", "page"];
+export const LEVEL_LABELS = { app: "Application", route: "Route", component: "Component", web: "Web", page: "Document" };
 const MAX_FILE = 512 * 1024, MAX_INSTRUCTIONS = 64 * 1024, MAX_FILES = 24;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/, FILE_RE = /^[\w][\w.-]{0,100}\.html$/;
 const clip = (v, n) => String(v ?? "").slice(0, n);
@@ -124,7 +125,8 @@ export async function applyTemplate(t, projectDir) {
 /** What the agent must get right on each level, whatever the instructions of a particular template say. */
 const LEVEL_RULES = {
   app: "This is an application (uu5Uve): it consists of several routes with one shared shell. Every route has its own route header (RouteHeader with a title naming the subject of the page, and an ActionGroup with the actions of that route), the same simulated Top and the same local navigation; never leave the placeholder header, title or actions, and never use Plus4U5App.Top or PositionBar. Follow the mockup-route-layout skill when it is available.",
-  page: "This is a Page: a content page that the user copies as uu5String (Copy as uu5String) into a document such as a uuBookKit page or a uuManagementKit portal. Build it only from components of the Bricks libraries (Uu5Bricks, Uu5RichTextBricks, Uu5ImagingBricks, Uu5ChartsBricks, Uu5TilesBricks, Uu5CodeKitBricks …) and plain HTML for text; look every component and prop up in the uu5bricks-knowledge skill before you use it (do not take props from Uu5Elements: the Bricks are a different generation). No state, no event handlers, no components of your own with logic and no className styling: they do not survive the uu5String; put the data straight into the props. No simulated Top, RouteHeader or app shell. Every library used needs its entry in uu5DemoDependencies and an `import * as Name from \"package\"` line.",
+  web: "This is a Web page: a whole page of a web site, drawn full width with its own navigation bar and footer (not a part of a document, not an application). Build it from plain HTML and CSS in the style element of the file, with Uu5Elements.Icon for icons; do not use Uu5Elements.Block, Button or Uu5Forms (they look like an application). No simulated Top, RouteHeader or app shell. Write real content in the language of the user, give the page one main action and make it responsive (a grid with auto-fit and one media query).",
+  page: "This is a Document page: a content page that the user copies as uu5String (Copy as uu5String) into a document such as a uuBookKit page or a uuManagementKit portal. Build it only from components of the Bricks libraries (Uu5Bricks, Uu5RichTextBricks, Uu5ImagingBricks, Uu5ChartsBricks, Uu5TilesBricks, Uu5CodeKitBricks …) and plain HTML for text; look every component and prop up in the uu5bricks-knowledge skill before you use it (do not take props from Uu5Elements: the Bricks are a different generation). No state, no event handlers, no components of your own with logic and no className styling: they do not survive the uu5String; put the data straight into the props. No simulated Top, RouteHeader or app shell. Every library used needs its entry in uu5DemoDependencies and an `import * as Name from \"package\"` line.",
   route: "This is one route (uu5Route): keep the simulated Top and give it a real route header (RouteHeader with a title naming the subject of the page, and an ActionGroup with the actions of the route: main actions first, overflow actions collapsed); never leave the placeholder header, title or actions, and never use Plus4U5App.Top or PositionBar. Follow the mockup-route-layout skill when it is available.",
 };
 

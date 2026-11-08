@@ -4,7 +4,7 @@
 
 **Share ▾** on the bar over a selected screen works in two steps:
 
-1. **What** — pick a tile: **Image** (PNG, JPEG or PDF at the size of the frame), **HTML file** (opens in a browser), **uu5String** (to paste into a document) or **Project ZIP** (every screen with its notes and rules). The menu remembers the last pick.
+1. **What** — pick a tile: **Image** (PNG, JPEG or PDF at the size of the frame), **HTML file** (opens in a browser), **uu5String** (to paste into a document) or **Project ZIP** (every screen with its notes and rules, and the pictures and videos the screens use). The menu remembers the last pick.
 2. **What to do with it**:
 
 | Action | Image | HTML file | uu5String | Project ZIP |
@@ -14,7 +14,15 @@
 | **Share…** | on macOS the system share sheet (Messages, Mail, AirDrop, WhatsApp, Signal …); elsewhere an e-mail draft with the file attached | | | |
 | **⠿ Drag** | press, hold and drag the file into a chat, a mail or a folder (it is prepared when you pick the tile; the button is dim for a moment) | | | |
 
+**Pictures and videos.** The Project ZIP contains every file the screens point to (`assets/…` and other local files, also the pictures of read documents); the screens in it work when unzipped. A **uu5String** cannot carry files and a document does not have them: **Save…** writes `<screen>.assets.zip` next to the text, **Share…** attaches it to the text, and after **Copy** the message offers **Files…** to save it. The ZIP has a `README.md` listing which address of the text is which file; upload the files to the document and point the uu5String at them. **Drag** takes only the text.
+
 The same is in the application menu: **File → Export** (Screen as Image, as HTML, Copy Screen as uu5String, Screen as uu5String…, Project as ZIP) and **File → Share** (Screen Image, HTML File, Screen as uu5String, Project ZIP).
+
+## Project specification (for the people who build it)
+
+**File → Export → Project Specification (Markdown)…** (or **Copy Project Specification**) writes one Markdown document for the developers: the overview (the project description), the linked repository, a table of the screens, the business rules, then for every screen its purpose, the **component structure** (the tree of the screen as an outline), the library components and the components defined in the screen, the notes and the comments (open and resolved), and at the end the components overall and the open questions. It is assembled from what the project already holds, so keep the descriptions, the rules and the comments up to date.
+
+The Project ZIP also contains the comments of the screens (`docs/<screen>.comments.json`).
 
 ## uu5String (to paste into a document)
 

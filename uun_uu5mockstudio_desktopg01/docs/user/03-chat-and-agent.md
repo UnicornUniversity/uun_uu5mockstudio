@@ -69,3 +69,7 @@ The chat shows the steps (reading, writing, checking in the browser). Claude che
 ## Business rules written by the agent
 
 Claude records business rules by itself: the ones you state, and the ones a screen it builds implements (who may do what, conditions of a change of state, validations, what is shown by role or state). Rules it worked out itself end with `(assumed)` so you can confirm or correct them. It says in one line which rules it recorded. See [project memory](07-project-memory.md#business-rules).
+
+## Pictures from the web
+
+Ask the agent to use a picture from a public web page ("download the photos of the graduates from https://… and use them in the design"). It lists the pictures of the page (`web_images`), saves the ones you asked for into the `assets` folder of the project (`download_asset`) and puts `assets/<name>.jpg` into the screen. Only public http(s) addresses work (never your own machine or network), only PNG, JPEG, GIF, WebP or SVG up to 10 MB, and a page that builds its pictures by script may name few of them: then attach the pictures to the message as "to use in the design". The pictures go into the Project ZIP and into the files of a uu5String (see Export and share).

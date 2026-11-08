@@ -2,7 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { startMockServer } from "../src/main/mockServer.mjs";
+import { startMockServer, cleanAddress } from "../src/main/mockServer.mjs";
 import { makeProject } from "./helpers.mjs";
 
 const root = await makeProject();
@@ -47,4 +47,13 @@ test("of .studio only the rendered Plus4U documents and their pictures are serve
   assert.equal(await (await get("/p/.studio/sources/mkEcc-1.html")).text(), "<p>doc</p>");
   assert.equal((await get("/p/.studio/sources/assets/abc.jpg")).headers.get("content-type"), "image/jpeg");
   for (const p of ["/p/.studio/sources/mkEcc-1.json", "/p/.studio/state.json", "/p/.studio/sources/../state.json"]) assert.equal((await get(p)).status, 404, p);
+});
+
+test("a relative link of a uu5 page (which sets <base> to its own address + /public/0.0.0/) is sent back to the real file", async () => {
+  assert.equal(cleanAddress("/Flow test/home.html/public/0.0.0/page.html", "?env=none"), "/Flow%20test/page.html?env=none");
+  assert.equal(cleanAddress("/P/home.html/public/0.0.0/assets/logo.png"), "/P/assets/logo.png");
+  assert.equal(cleanAddress("/P/home.html/public/0.0.0/page.html/public/0.0.0/x.html"), "/P/x.html"); // a page reached that way sets its own base again
+  assert.equal(cleanAddress("/P/home.html"), null); assert.equal(cleanAddress("/P/assets/logo.png"), null);
+  const r = await fetch(`http://127.0.0.1:${port}/p/a.html/public/0.0.0/b.html?x=1`, { redirect: "manual" });
+  assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/p/b.html?x=1");
 });
