@@ -1,7 +1,8 @@
 /**
  * "Guide me…": four short steps (what, for whom, what on it, what you already have) that end in a request put into the
- * message field of the dashboard (nothing is sent: the user reads it and presses Enter). Esc and Cancel close it.
+ * message field of the dashboard (nothing is sent: the user reads it and presses Enter). Esc and the cross close it.
  */
+import { addDialogClose } from "./dialogChrome.js";
 import { GUIDE_TYPES, GUIDE_TYPE_IDS, GUIDE_TONES, GUIDE_LANGS } from "./guide.js";
 
 const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
@@ -11,7 +12,7 @@ export function createGuideDialog({ onDone }) {
   box.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="gd-title">
     <div class="gd-step mute"></div><h2 id="gd-title"></h2><p class="gd-text"></p><div class="gd-body"></div>
     <div class="gd-dots" aria-hidden="true"></div>
-    <div class="row"><button class="gd-cancel" type="button">Cancel</button><span class="grow"></span><button class="gd-back" type="button">Back</button><button class="gd-next" type="button">Next</button></div></div>`;
+    <div class="row"><span class="grow"></span><button class="gd-back" type="button">Back</button><button class="gd-next" type="button">Next</button></div></div>`;
   document.body.append(box);
   const q = (s) => box.querySelector(s);
   const lang = (navigator.language ?? "en").toLowerCase().startsWith("cs") ? "cs" : "en";
@@ -71,7 +72,7 @@ export function createGuideDialog({ onDone }) {
     const answers = { ...a, sections: [...a.sections, ...(a.extra.trim() ? [a.extra.trim()] : [])] };
     close(); onDone?.(answers);
   }
-  q(".gd-cancel").onclick = close;
+  addDialogClose(q(".card"), close);
   q(".gd-back").onclick = () => show(i - 1);
   q(".gd-next").onclick = () => (i === STEPS.length - 1 ? finish() : show(i + 1));
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });

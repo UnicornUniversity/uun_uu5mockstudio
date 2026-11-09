@@ -60,6 +60,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Rename Project…", "project:rename", { enabled: has }),
       item("Project Description…", "project:desc", { accelerator: "Alt+CmdOrCtrl+D", enabled: has }),
       item("Business Rules…", "project:rules", { accelerator: "Alt+CmdOrCtrl+R", enabled: has }),
+      item("Brand Guidelines…", "brand:open", { accelerator: "Alt+CmdOrCtrl+B", enabled: has }),
       { label: "Git Repository", enabled: has, submenu: [
         item(repoLinked ? "Change Repository…" : "Link Repository…", "project:repo-link"),
         item("Switch Branch…", "repo:branch", { enabled: repoLinked }),

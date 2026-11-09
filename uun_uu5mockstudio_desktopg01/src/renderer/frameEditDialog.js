@@ -3,6 +3,7 @@
  * (the capture window opens on the stored link; the new capture replaces the HTML, CSS, pictures and offsets); or ask Claude to change it
  * in the chat. `api` = window.studio; resolves to true when the frame was changed (saved or taken again), else false.
  */
+import { closeButton } from "./dialogChrome.js";
 const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
 export function changePrompt({ dir, instruction }) {
@@ -26,10 +27,8 @@ export function openFrameEdit({ api, env, toast = () => {}, send = null }) {
     const close = (v) => { ov.classList.add("closing"); setTimeout(() => ov.remove(), 160); resolve(v); };
 
     const save = h("button", { type: "button", className: "primary", textContent: "Save" });
-    const cancel = h("button", { type: "button", textContent: "Close" });
     const recapture = h("button", { type: "button", textContent: "Take again from the page…", title: d.url ? `Opens ${d.url}` : "" });
     const askBtn = h("button", { type: "button", textContent: "Ask Claude" });
-    cancel.onclick = () => close(changed);
     save.onclick = async () => {
       err.textContent = ""; save.disabled = true;
       const r = await api.frameUpdate(env, { label: name.value.trim(), offset: Object.fromEntries(Object.entries(off).map(([k, i]) => [k, Math.max(0, Math.round(Number(i.value) || 0))])), html: html.value, css: css.value });
@@ -56,7 +55,7 @@ export function openFrameEdit({ api, env, toast = () => {}, send = null }) {
 
     const ov = h("div", { className: "tsdbox", onmousedown: (e) => { if (e.target === ov) close(changed); } },
       h("div", { className: "card", role: "dialog" },
-        h("div", { className: "dlg-head" }, h("h2", { textContent: `Edit frame “${d.label}”` })),
+        h("div", { className: "dlg-head" }, h("h2", { textContent: `Edit frame “${d.label}”` }), closeButton(() => close(changed))),
         h("div", { className: "tsd-body" },
           field("Name", name),
           h("p", { className: "mute", textContent: `${d.scope === "global" ? "For all projects" : "In this project"}${d.url ? ` · from ${d.url}` : ""}` }),
@@ -66,7 +65,7 @@ export function openFrameEdit({ api, env, toast = () => {}, send = null }) {
           h("div", { className: "tsd-row" }, recapture),
           field("Ask Claude to change it", ask), h("div", { className: "tsd-row" }, askBtn),
           err),
-        h("div", { className: "row" }, h("span", { className: "grow" }), cancel, save)));
+        h("div", { className: "row" }, h("span", { className: "grow" }), save)));
     ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(changed); } });
     document.body.append(ov);
     name.focus();

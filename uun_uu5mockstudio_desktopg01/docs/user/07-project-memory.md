@@ -18,6 +18,15 @@ What is learned while designing does not stay in the chat. It is kept as plain f
 
 The **All projects** tab edits `GLOBAL_RULES.md` in the folder of your projects. Rules there (`- G-001 text`) apply in every project, for example *"the business component is always a `Plus4U5Elements.ContentContainer`"*. Claude records a rule there when you say it holds always, for every screen or in all projects; any other rule goes to the project file. Components named in the rules (for example `@Uu5Elements.Block`) are described to Claude, so it knows their props. When a request conflicts with a standing rule Claude says so and asks before breaking it.
 
+## Brand guidelines
+
+When the customer has a brand manual, give it to the project: **Project → Brand Guidelines… (⌥⌘B)**, or drop a PDF, HTML or Markdown file into the chat (the app asks whether it is a brand manual).
+
+- The manual is stored in the project (hidden folder `.studio/brand/source`, never served) and Claude **distills it once** into **`DESIGN_GUIDE.md`**: colours, typography, spacing and shape, logo, icons and images, tone of voice, do and don't, and where in the manual each part comes from. What Claude had to interpret ends with **(assumed)**. Edit the guide in the dialog; **Distill again** reads the manual again and keeps what you wrote by hand.
+- The guide goes into every request, like the business rules, so every screen follows it. The long manual is read again only for a detail the guide does not cover.
+- **Colours and fonts are available in every screen as CSS variables** (`--brand-primary`, `--brand-font-body`, …), made from the bullets `- primary: #0057B8 (…)` under *Colours* and `- font-body: Inter, sans-serif` under *Typography*. Uu5Elements components only have their fixed colour schemes, so Claude uses the closest one and puts the brand colour on top through `style` / `className` and these variables.
+- Limits: at most 10 files of 50 MB each; ZIP archives are not accepted yet. Logos are added as pictures “In design” (they go to `assets/`).
+
 ## Descriptions
 
 **Project → Project Description…** (⌥⌘D) and **Screen → Description…** edit `PROJECT.md`: what the project is and what each screen is for. Claude reads it for context and changes it only when you ask.

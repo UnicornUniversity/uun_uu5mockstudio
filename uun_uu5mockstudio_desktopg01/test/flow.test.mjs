@@ -56,3 +56,23 @@ test("variants of one screen form a group with the original first; a lone -a wit
   assert.deepEqual(g[0].members.map((m) => [m.file, m.label]), [["room-list.html", "Original"], ["room-list-a.html", "A"], ["room-list-b.html", "B"]]);
   assert.equal(typeof g[0].hue, "number");
 });
+
+import { arrangeGroup } from "../src/renderer/variantLayer.js";
+test("arrangeGroup: the original stays, the variants go in a row below it, left-aligned with it", () => {
+  const g = groupVariants(["r.html", "r-a.html", "r-b.html"])[0];
+  const boxes = { "r.html": { x: 100, y: 50, w: 1440, h: 900 }, "r-a.html": { x: 9, y: 9, w: 1440, h: 900 }, "r-b.html": { x: 8, y: 8, w: 768, h: 1024 } };
+  assert.deepEqual(arrangeGroup(g, boxes), [["r-a.html", 100, 1220], ["r-b.html", 1660, 1220]]);
+  assert.deepEqual(arrangeGroup(g, { "r-a.html": boxes["r-a.html"] }), []);
+});
+
+import { flowLayout } from "../src/renderer/arrange.js";
+test("flowLayout: a screen with variants is a block (original on top, variants in a row below), the other screens flow next to it", () => {
+  const items = [{ file: "r.html", w: 1000, h: 800 }, { file: "r-a.html", w: 1000, h: 800 }, { file: "r-b.html", w: 500, h: 900 }, { file: "z.html", w: 400, h: 300 }];
+  const pos = flowLayout(items, groupVariants(items.map((i) => i.file)), { gap: 100, rowGap: 200, rowExtra: 0, minRow: 4600 });
+  assert.deepEqual(pos.get("r.html"), { x: 0, y: 0 });
+  assert.deepEqual(pos.get("r-a.html"), { x: 0, y: 1000 });
+  assert.deepEqual(pos.get("r-b.html"), { x: 1100, y: 1000 });
+  assert.deepEqual(pos.get("z.html"), { x: 1700, y: 0 }); // after the block (1600 wide) and a gap
+  // without groups everything is one row
+  assert.deepEqual([...flowLayout(items, [], { gap: 100 }).values()].map((p) => p.y), [0, 0, 0, 0]);
+});

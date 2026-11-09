@@ -3,6 +3,7 @@
  * and "Comment on this" in the inspector, which opens it with the marked component filled in. Files beside the screens, no server:
  * a colleague gets them with the project folder or the ZIP. `api` = window.studio.
  */
+import { closeButton } from "./dialogChrome.js";
 const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
 const ago = (t, now = Date.now()) => { const m = Math.round((now - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 
@@ -11,7 +12,7 @@ export function createCommentsPanel({ api, getScreens, getSelected = () => null,
   box.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="cm-title">
     <div class="cm-head"><h2 id="cm-title">Comments</h2><span class="grow"></span>
       <span class="cm-filter" role="radiogroup" aria-label="Show"><button type="button" role="radio" data-f="open">Open</button><button type="button" role="radio" data-f="all">All</button></span>
-      <button type="button" class="cm-close" aria-label="Close" title="Close">✕</button></div>
+      </div>
     <div class="cm-list"></div>
     <form class="cm-new"><div class="cm-on"></div><div class="cm-row"><select class="cm-screen" aria-label="Screen"></select><textarea rows="2" placeholder="Write a comment…" aria-label="Comment"></textarea></div>
       <div class="cm-row2"><span class="cm-me mute"></span><span class="grow"></span><button type="submit" class="primary" disabled>Add comment</button></div></form></div>`;
@@ -68,7 +69,7 @@ export function createCommentsPanel({ api, getScreens, getSelected = () => null,
     return d;
   }
   function close() { box.hidden = true; }
-  q(".cm-close").onclick = close;
+  q(".cm-head").append(closeButton(close));
   for (const b of box.querySelectorAll(".cm-filter button")) b.onclick = () => { filter = b.dataset.f; paint(); };
   const ta = q("textarea"), add = q(".cm-new button.primary");
   ta.oninput = () => { add.disabled = !ta.value.trim(); };

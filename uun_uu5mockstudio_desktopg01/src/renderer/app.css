@@ -31,7 +31,7 @@ details.steps ul{margin:0;padding:2px 10px 8px;list-style:none;display:flex;flex
 .mute{color:var(--mute)}
 #setup{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:50}
 #setup .card{width:min(520px,92vw);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
-#setup h2{margin:0 0 8px;font-size:16px}#setup pre{background:var(--bg);border:1px solid var(--line);padding:9px;border-radius:8px;user-select:all;overflow:auto}
+#setup h2{margin:0;font-size:16px}#setup .dlg-head{margin-bottom:8px}#setup pre{background:var(--bg);border:1px solid var(--line);padding:9px;border-radius:8px;user-select:all;overflow:auto}
 #setup .row{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}#setup .row .grow{flex:1}#setup a{color:var(--acc);cursor:pointer}
 #setup p{margin:0 0 10px;line-height:1.5;font-size:13px}#setup #setup-action{background:var(--acc);border-color:var(--acc);color:#fff}#setup button:disabled{opacity:.55}
 #setup-steps{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -445,10 +445,10 @@ body[data-platform="darwin"][data-noproject] #bar{padding-left:84px} /* traffic 
 body[data-chat="float"] #chat.collapsed :is(#chathist,#newchat,#chatmode,.wsep){display:none}
 
 /* business rules dialog */
-#rules,#descdlg{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:44}
-#rules[hidden],#descdlg[hidden]{display:none}
-#rules .card,#descdlg .card{width:min(760px,94vw);max-height:88vh;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-size:14px;line-height:1.5}
-#rules h2,#descdlg h2{margin:0;font-size:16px}#rules p,#descdlg p{margin:0;font-size:12px;line-height:1.5}#rules code,#descdlg code{font:11px ui-monospace,Menlo,monospace}
+#rules,#descdlg,#branddlg{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:44}
+#rules[hidden],#descdlg[hidden],#branddlg[hidden]{display:none}
+#rules .card,#descdlg .card,#branddlg .card{width:min(760px,94vw);max-height:88vh;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-size:14px;line-height:1.5}
+#rules h2,#descdlg h2,#branddlg h2{margin:0;font-size:16px}#branddlg code{font:11px ui-monospace,Menlo,monospace}#branddlg .row{display:flex;gap:8px;align-items:center}#branddlg .grow{flex:1}.bd-src{display:inline-block;margin-right:8px}.bd-rm{border:0;background:none;cursor:pointer;opacity:.6;padding:0 2px}#rules p,#descdlg p,#branddlg p{margin:0;font-size:12px;line-height:1.5}#rules code,#descdlg code{font:11px ui-monospace,Menlo,monospace}
 .ru-head{display:flex;align-items:center;gap:10px}.ru-head h2{flex:1}
 #rules .row,#descdlg .row{display:flex;gap:8px;align-items:center}#rules .grow,#descdlg .grow{flex:1}
 .rc-toggle{width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center}.rc-toggle .ico{width:17px;height:17px}
@@ -594,8 +594,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .ae-src{width:100%;box-sizing:border-box;font:12px/1.5 ui-monospace,Menlo,monospace;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);white-space:pre;overflow:auto;resize:vertical}
 .ae-srcbox h5{margin:0 0 6px}.ae-srcbox p{margin:0 0 8px}.ae-srcrow{display:flex;justify-content:flex-end;margin-top:8px}.ae-more{margin-top:6px}.ae-more summary{cursor:pointer;color:var(--mute);font-size:12px;padding:4px 0}
 
-/* the business rules dialog closes with a cross in its header, next to the code / rendered switch */
-/* the cross that closes a dialog: the same in every dialog that only shows or edits something (not in those that ask for a decision) */
+/* the cross that closes a dialog: the same in every dialog (dialogChrome.js); a footer button is only a real choice (Cancel next to the action) */
 .dlg-head{display:flex;align-items:center;gap:10px}.dlg-head h2{flex:1}
 .dlg-x{padding:5px 7px;line-height:0;border-color:transparent;background:none;color:var(--mute);flex:none;margin-left:auto}.dlg-x:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.dlg-x .ico{width:16px;height:16px}
 #rules .row:has(.rc-save[hidden]) .rc-meta:empty{display:none}
@@ -1043,7 +1042,6 @@ body.simple #modesw,body.simple #model,body.simple #dash-model,body.simple #dash
 #cmtbox .cm-head{display:flex;align-items:center;gap:10px}#cmtbox h2{margin:0;font-size:19px}#cmtbox .grow{flex:1}
 #cmtbox .cm-filter{display:inline-flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg);border:1px solid var(--line)}
 #cmtbox .cm-filter button{border:0;background:none;color:var(--mute);font-size:12px;padding:3px 10px;border-radius:7px;cursor:pointer}#cmtbox .cm-filter button.on{background:var(--panel);color:var(--fg);font-weight:600}
-#cmtbox .cm-close{border:0;background:none;color:var(--mute);cursor:pointer;padding:4px 8px}
 #cmtbox .cm-list{overflow:auto;display:flex;flex-direction:column;gap:14px;min-height:80px}
 #cmtbox .cm-group h3{margin:0 0 6px;font-size:13px}#cmtbox .cm-screenlink{border:0;background:none;padding:0;color:var(--acc);font-weight:600;cursor:pointer}
 #cmtbox .cm-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg)}#cmtbox .cm-card.done{opacity:.7}
@@ -1092,3 +1090,19 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .frame.vgrp .fbody{box-shadow:0 0 0 calc(3px*var(--iz,1)) var(--vc),0 12px 40px rgba(0,0,0,.45)}
 .frame.vgrp.sel .fbody{box-shadow:0 0 0 calc(2px*var(--iz,1)) var(--bg),0 0 0 calc(6px*var(--iz,1)) var(--vc),0 12px 40px rgba(0,0,0,.45)}
 .fvl{display:inline-block;margin-right:calc(8px*var(--iz,1));padding:0 calc(8px*var(--iz,1));border-radius:99px;background:var(--vc);color:#111;font-weight:700;font-size:.9em}
+
+#branddlg .bd-prog{display:flex;align-items:center;gap:10px;font-size:12px}#branddlg .bd-prog[hidden],#branddlg .bd-result[hidden],#branddlg .bd-sw[hidden]{display:none}
+#branddlg .bd-bar{flex:0 0 200px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}#branddlg .bd-bar i{display:block;height:100%;width:0;background:var(--accent,#3b82f6);transition:width .15s}
+#branddlg .bd-result{font-size:12px;line-height:1.6}
+#branddlg .bd-sw{display:flex;flex-wrap:wrap;gap:6px;max-height:84px;overflow:auto}.bd-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px}.bd-chip i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.2)}.bd-chip b{font:11px ui-monospace,Menlo,monospace;font-weight:400;opacity:.7}
+.bd-re{border:0;background:none;cursor:pointer;opacity:.6;padding:0 2px}
+
+.bd-saved{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important}
+
+/* every dialog: the same corners and the same title size (declared last so it wins over the per-dialog rules above) */
+:is(#setup,#about,#actbox,#structbox,#libbox,#tplbox,#iconbox,#jsonbox,#dialog,#sizebox,#confirm,#tour,#rolebox,#guidebox,#cmtbox,#varbox,#descdlg,#rules,#branddlg,.tsdbox) .card{border-radius:14px}
+:is(#setup,#about,#actbox,#structbox,#libbox,#tplbox,#iconbox,#jsonbox,#dialog,#sizebox,#confirm,#tour,#rolebox,#guidebox,#cmtbox,#varbox,#descdlg,#rules,#branddlg,.tsdbox) .card h2{font-size:16px;font-weight:600}
+
+/* the cross of a dialog whose title is not the first line: the top right corner of the card */
+.card:has(> .dlg-x.corner){position:relative}.card > .dlg-x.corner{position:absolute;top:12px;right:12px;margin:0}
+

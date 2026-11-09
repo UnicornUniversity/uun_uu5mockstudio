@@ -18,10 +18,30 @@ export function groupVariants(files) {
   return [...groups.values()].sort((a, b) => (a.base < b.base ? -1 : 1)).map((g, i) => ({ ...g, hue: VARIANT_HUES[i % VARIANT_HUES.length] }));
 }
 
+/** The original on top and its variants in a row below it, left-aligned with the original: [[file, x, y], …] for the variants. `boxes`: file -> { x, y, w, h }. */
+export function arrangeGroup(group, boxes, gap = 120, rowGap = 270) {
+  const o = boxes[group.base]; if (!o) return [];
+  let x = o.x; const y = o.y + o.h + rowGap, out = [];
+  for (const m of group.members.slice(1)) { const b = boxes[m.file]; if (!b) continue; out.push([m.file, x, y]); x += b.w + gap; }
+  return out;
+}
+
 export function createVariantLayer({ world, canvas, onKeep }) {
   const layer = Object.assign(document.createElement("div"), { className: "var-layer" });
   world.prepend(layer);
   const stop = (e) => e.stopPropagation(); // a click on the header is not a pan of the canvas
+
+  // the controls of a frame do not shrink with the zoom, so at a small zoom they can reach past the narrow frame: the board has to include them
+  const ctlRight = (f) => { const c = f.el.querySelector(".fctl"); return c ? (c.getBoundingClientRect().right - f.el.getBoundingClientRect().left) / canvas.camera().z : 0; };
+
+  /** The original on top, the variants in a row below it (one undo step); used when new variants appear. */
+  function arrange(base) {
+    const g = groupVariants(canvas.files()).find((x) => x.base === base); if (!g) return;
+    const boxes = {};
+    for (const m of g.members) { const f = canvas.get(m.file); if (f) boxes[m.file] = { x: f.x, y: f.y, w: f.el.offsetWidth, h: f.el.offsetHeight }; }
+    const moves = arrangeGroup(g, boxes);
+    if (moves.length) canvas.moveFrames(moves);
+  }
 
   function draw() {
     layer.replaceChildren();
@@ -40,7 +60,7 @@ export function createVariantLayer({ world, canvas, onKeep }) {
     for (const g of groups) {
       const fr = g.members.map((m) => canvas.get(m.file)).filter(Boolean); if (fr.length < 2) continue;
       const x0 = Math.min(...fr.map((f) => f.x)), y0 = Math.min(...fr.map((f) => f.y));
-      const x1 = Math.max(...fr.map((f) => f.x + f.el.offsetWidth)), y1 = Math.max(...fr.map((f) => f.y + f.el.offsetHeight));
+      const x1 = Math.max(...fr.map((f) => f.x + Math.max(f.el.offsetWidth, ctlRight(f)))), y1 = Math.max(...fr.map((f) => f.y + f.el.offsetHeight));
       const board = Object.assign(document.createElement("div"), { className: "var-board" });
       board.style.cssText = `left:${x0 - pad}px;top:${y0 - head - pad}px;width:${x1 - x0 + 2 * pad}px;height:${y1 - y0 + head + 2 * pad}px;--vc:hsl(${g.hue} 78% 62%);--vi:${iz}`;
       const bar = Object.assign(document.createElement("div"), { className: "var-head" });
@@ -53,9 +73,10 @@ export function createVariantLayer({ world, canvas, onKeep }) {
         b.onclick = () => canvas.select(m.file);
         bar.append(b);
       }
-      const pick = sel && g.members.find((m) => m.file === sel && m.file !== g.base);
+      const pick = sel && g.members.find((m) => m.file === sel);
       if (pick) {
-        const use = Object.assign(document.createElement("button"), { type: "button", className: "var-use", textContent: `Use ${pick.label}`, title: `Use ${pick.file.replace(/\.html$/, "")} as ${g.base.replace(/\.html$/, "")} (the others go to the trash)` });
+        const orig = pick.file === g.base, bn = g.base.replace(/\.html$/, "");
+        const use = Object.assign(document.createElement("button"), { type: "button", className: "var-use", textContent: orig ? "Keep Original" : `Use ${pick.label}`, title: orig ? `Keep ${bn} and move all its variants to the trash` : `Use ${pick.file.replace(/\.html$/, "")} as ${bn} (the original and the other variants go to the trash)` });
         use.onclick = () => onKeep?.(pick.file);
         bar.append(use);
       }
@@ -63,5 +84,5 @@ export function createVariantLayer({ world, canvas, onKeep }) {
       board.append(bar); layer.append(board);
     }
   }
-  return { draw };
+  return { draw, arrange };
 }

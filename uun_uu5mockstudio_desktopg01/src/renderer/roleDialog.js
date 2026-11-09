@@ -2,6 +2,7 @@
  * The dialog "What describes your work best?": four cards, one per role (role.js). Opened before the welcome tour on the first run
  * and from Help > Your Role…. A click chooses the role; Skip (or Esc) on the first run chooses the simplest one.
  */
+import { addDialogClose } from "./dialogChrome.js";
 import { ROLES, ROLE_IDS } from "./role.js";
 
 const ICONS = {
@@ -26,6 +27,7 @@ export function createRoleDialog({ onChoose, onSkip }) {
   function close() { box.hidden = true; }
   function skip() { if (box.hidden) return; close(); if (first) onSkip?.(); }
   q(".rl-skip").onclick = skip;
+  addDialogClose(q(".card"), skip);
   for (const b of box.querySelectorAll("[data-role]")) b.onclick = () => { close(); onChoose?.(b.dataset.role); };
   box.addEventListener("mousedown", (e) => { if (e.target === box) skip(); });
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); skip(); } });
@@ -35,7 +37,7 @@ export function createRoleDialog({ onChoose, onSkip }) {
     open(current) {
       first = !current;
       for (const b of box.querySelectorAll("[data-role]")) b.setAttribute("aria-checked", String(b.dataset.role === current));
-      q(".rl-skip").textContent = first ? "Skip" : "Cancel";
+      q(".row").hidden = !first; // the first time Skip chooses the simplest view; later the cross is enough
       box.hidden = false; (q(`[data-role="${current}"]`) ?? q("[data-role]")).focus();
     },
     isOpen: () => !box.hidden,

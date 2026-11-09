@@ -4,6 +4,7 @@ import { createPropsPanel } from "./propsPanel.js";
 import { createIconPicker } from "./iconPicker.js";
 import { createMemory } from "./memory.js";
 import { createRulesPanel } from "./rulesPanel.js";
+import { createBrandDialog, isBrandFile } from "./brandDialog.js";
 import { createDescPanel } from "./descPanel.js";
 import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
@@ -12,7 +13,7 @@ import { createRoleDialog } from "./roleDialog.js";
 import { createGuideDialog } from "./guideDialog.js";
 import { createCommentsPanel } from "./commentsPanel.js";
 import { createFlowLayer } from "./flowLayer.js";
-import { createVariantLayer } from "./variantLayer.js";
+import { createVariantLayer, groupVariants } from "./variantLayer.js";
 import { createVariantsDialog } from "./variantsDialog.js";
 import { buildVariantsPrompt, variantNames, variantInfo } from "./variants.js";
 import { buildGuidePrompt, guideTemplate } from "./guide.js";
@@ -37,6 +38,7 @@ import { collectCode } from "./uu5StringCollect.js";
 import { toUu5String, mergeTrees, summaryOf } from "./uu5String.js";
 import { createDocCards, docsContext, territoryDialog } from "./docCards.js";
 import { kindLabel } from "./docLinks.js";
+import { addDialogClose } from "./dialogChrome.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -581,11 +583,14 @@ const canvas = createCanvas({
   onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
 function syncFrames(screens) {
+  const added = [];
   for (const f of screens) if (!canvas.get(f)) {
+    added.push(f);
     const fr = canvas.addFrame(f, savedLayout[f] ?? (defaultEnv ? { env: defaultEnv } : undefined));
     fr.view.addEventListener("console-message", (e) => inspector.handleConsole(f, e.message));
   }
   for (const f of canvas.files()) if (!screens.includes(f)) canvas.removeFrame(f);
+  for (const f of added) { const v = !savedLayout[f] && variantInfo(f, canvas.files()); if (v) vlayer?.arrange(v.base); } // new variants are put in a row below their original
   $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens(); vlayer?.draw(); if (flow) updateFlowBtn();
 }
 function renderTabs() {
@@ -624,6 +629,8 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
 });
 $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.zoomBy(0.8);
 $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
+// every dialog closes with the same cross in its header; in the static ones it does what their Cancel / Close button does
+for (const [box, btn] of [["sizebox", "sz-cancel"], ["confirm", "cf-cancel"], ["dialog", "dlg-cancel"], ["jsonbox", "jb-cancel"], ["setup", "setup-close"]]) addDialogClose($(box).firstElementChild, () => $(btn).click());
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
 const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "guidebox", "cmtbox", "varbox"]; // topmost first
@@ -1099,6 +1106,25 @@ rules = createRulesPanel({
   api: window.studio, getScreens: () => canvas.files(),
   onCount: (n) => { const b = $("rulesbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("rulesbtn").title = n ? `Business rules of this project (${n})` : "Business rules of this project"; },
 });
+// brand guidelines: the manual is stored, the agent distills it into DESIGN_GUIDE.md (an ordinary chat request)
+const brand = createBrandDialog({
+  api: window.studio, toast, onChanged: () => refreshBrandFlag(),
+  askAgent: (prompt, label = "Improve the design guide from the brand manual.") => { push({ kind: "user", text: label }); setBusy(true); sentModel = $("model").value; planPending = false; window.studio.send(prompt, sentModel || undefined, { plan: false, economy }); },
+});
+// does the project have a design guide with colours or fonts? Only then the screen menu offers the check
+let brandReady = false;
+async function refreshBrandFlag() {
+  try { const r = project ? await window.studio.brandGet() : null; brandReady = Boolean(r?.guide && /^\s*[-*]\s+`?[\w .\/-]{1,40}?`?\s*:\s*#[0-9a-f]{3,8}\b|^\s*[-*]\s+`?font[\w-]*`?\s*:/im.test(r.guide)); } catch { brandReady = false; }
+}
+/** Advanced, context menu of a screen: its colours and fonts against the design guide; Fix hands the findings to Claude. */
+async function checkBrand(file) {
+  const r = await window.studio.brandCheck(file);
+  if (r?.error) return toast(r.error, { err: true });
+  if (r.empty) return toast("The project has no design guide with colours or fonts yet.", { action: { label: "Open", run: () => brand.open() } });
+  const n = r.off.length, f = r.fonts.length;
+  if (!n && !f) return toast(`${file} follows the design guide${r.literals.length ? ` (${r.literals.length} palette colours are written as hex instead of var(--brand-…))` : ""}.`);
+  toast(`${file}: ${n ? `${n} colours` : ""}${n && f ? " and " : ""}${f ? `${f} fonts` : ""} outside the design guide.`, { err: true, action: { label: "Fix with Claude", run: () => brand.askAgentFix(r.prompt, `Make ${file} follow the design guide.`) } });
+}
 const openRules = (screen) => project && rules.open({ screen: typeof screen === "string" ? screen : undefined });
 $("rulesbtn").onclick = openRules;
 // comments on the screens and their components: a dialog from the toolbar icon (the badge counts the open ones), "Comment on this" in the inspector
@@ -1108,12 +1134,15 @@ const comments = createCommentsPanel({
   onCount: (n) => { const b = $("cmtbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("cmtbtn").title = n ? `Comments on the screens (${n} open)` : "Comments on the screens"; },
   onShow: (file) => canvas.focus(file),
 });
-/** "Use this variant": asks, then the variant replaces the original and the other variants are removed (all of it goes to the trash). */
+/** "Use this variant": asks, then the variant replaces the original and the rest is removed; on the original: the original stays and its variants are removed (all of it goes to the trash). */
 async function keepVariant(file) {
-  const v = variantInfo(file, canvas.files());
-  if (!v) return toast(`${file.replace(/\.html$/, "")} is not a variant of another screen (variants are named like room-list-a, room-list-b next to room-list).`, { err: true });
-  const name = (f) => f.replace(/\.html$/, "");
-  const ok = await askConfirm({ title: `Use “${name(file)}” as “${name(v.base)}”?`, detail: `${v.base} is replaced by this variant. The old ${v.base}${v.others.length ? ` and the other variants (${v.others.map(name).join(", ")})` : ""} are moved to the trash, so you can restore them.`, ok: "Use this variant" });
+  const name = (f) => f.replace(/\.html$/, ""), files = canvas.files();
+  const v = variantInfo(file, files);
+  const group = groupVariants(files).find((g) => g.base === file);
+  if (!v && !group) return toast(`${name(file)} has no variants (variants are named like room-list-a, room-list-b next to room-list).`, { err: true });
+  const ok = await askConfirm(v
+    ? { title: `Use “${name(file)}” as “${name(v.base)}”?`, detail: `${v.base} is replaced by this variant (with its notes, comments and description). The old ${v.base}${v.others.length ? ` and the other variants (${v.others.map(name).join(", ")})` : ""} are moved to the trash, so you can restore them.`, ok: "Use this variant" }
+    : { title: `Keep “${name(file)}” as it is?`, detail: `The variants (${group.members.slice(1).map((m) => name(m.file)).join(", ")}) are moved to the trash, so you can restore them. ${file} stays.`, ok: "Keep original" });
   if (!ok) return;
   const r = await window.studio.variantKeep(file);
   if (r?.error) toast(r.error, { err: true }); else toast(`${name(r.kept)} is now the chosen variant${r.removed.length ? `; ${r.removed.length} other${r.removed.length === 1 ? "" : "s"} removed` : ""}.`);
@@ -1155,6 +1184,7 @@ window.studio.onMemoryChanged((ev) => {
   memory.changed(ev);
   if (ev.kind === "rules") rules.reload();
   if (ev.kind === "comments") comments.reload();
+  if (ev.kind === "brand") { brand.refresh(); refreshBrandFlag(); }
   if (ev.kind === "project") desc.reload();
   if (ev.kind === "rules") toast(`Business rules updated${ev.added.length ? `: ${ev.added.length} added` : ""}${ev.removed.length ? `, ${ev.removed.length} removed` : ""}.`, { action: { label: "Show", run: openRules } });
 });
@@ -1177,7 +1207,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const simple = isSimple(); // the simple view keeps what is needed to look at, edit and share a design; the rest is under Advanced
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ...(simple ? [] : [["Add rule…", () => openRules(file)]]), ["Present", () => openFullscreen(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...(simple ? [] : mentionItems(name)),
-    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : []), ...(simple ? [] : [["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
@@ -1506,7 +1536,7 @@ function loadProject(info) {
   projectLevel = info.level ?? null; defaultEnv = info.environment ?? null; refreshEnvs();
   canvas.removeAll(); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
-  showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
+  showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); refreshBrandFlag(); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
   $("projbtn").textContent = project ? `${project} ▾` : "No project ▾"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
   updateNoProject();
@@ -1705,6 +1735,7 @@ addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projme
       case "screen:share-uu5": return withScreen((f) => screenAction("share-uu5", f));
       case "docs:territory": return territoryDialog({ toast, onSaved: () => docCards.reloadWaiting() });
       case "project:rules": return needProject(openRules);
+      case "brand:open": return needProject(() => brand.open());
       case "project:desc": return needProject(() => openDesc(null));
       case "project:repo-link": return needProject(() => linkRepoFlow());
       case "project:zip": return needProject(async () => report(await window.studio.exportZip(), (r) => `ZIP saved (${r.files} screens)`));
@@ -1871,6 +1902,12 @@ async function prepareSvg(file) {
   return { id: crypto.randomUUID(), name: file.name || "image.svg", mime: "image/svg+xml", data, thumb: `data:image/svg+xml;base64,${data}`, asset: true };
 }
 async function addImages(files) {
+  const manuals = [...files].filter(isBrandFile);
+  if (manuals.length) { // a PDF / HTML / Markdown file is a brand manual, not a picture
+    if (!project) toast("Open a project first.", { err: true });
+    else if (await askConfirm({ title: "Use as brand manual?", danger: false, detail: `“${manuals.map((f) => f.name).join("”, “")}” will be stored in the project and read for colours, fonts and logo sizes, which go into the design guide every screen follows.`, ok: "Use as manual" })) await brand.importFiles(manuals);
+    files = [...files].filter((f) => !isBrandFile(f));
+  }
   const imgs = [...files].filter((f) => f.type.startsWith("image/"));
   if (!imgs.length) return;
   if (pending.length + preparing + imgs.length > MAX_IMAGES) { toast(`You can attach at most ${MAX_IMAGES} images at a time.`, { err: true }); imgs.splice(Math.max(0, MAX_IMAGES - pending.length - preparing)); }

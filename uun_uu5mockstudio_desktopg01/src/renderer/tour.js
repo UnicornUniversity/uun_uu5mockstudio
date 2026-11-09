@@ -2,6 +2,7 @@
  * The welcome tour: a few cards that show what the app does, opened on the first run (and from Help > Welcome Tour…).
  * Every card has a small drawing (inline SVG in the colors of the theme), a title and a few lines. Left / Right arrows move, Escape closes.
  */
+import { addDialogClose } from "./dialogChrome.js";
 import { TOUR_TEXT } from "./role.js";
 const S = (inner) => `<svg viewBox="0 0 440 190" role="img" aria-hidden="true" class="tr-svg">${inner}</svg>`;
 const frame = (x, y, w, h, cls = "t-card") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" class="${cls}"/>`;
@@ -111,6 +112,7 @@ export function createTour({ onClose, isSimple = () => false }) {
   }
   function close() { if (box.hidden) return; box.hidden = true; onClose?.(); }
   q(".tr-skip").onclick = close;
+  addDialogClose(q(".card"), close);
   q(".tr-back").onclick = () => show(i - 1);
   q(".tr-next").onclick = () => (i === CARDS.length - 1 ? close() : show(i + 1));
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });

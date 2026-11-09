@@ -34,6 +34,7 @@ import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
 import * as chats from "./chats.mjs";
 import { saveAttachments, saveAssets } from "./attachments.mjs";
+import { GUIDE_TEMPLATE, GUIDE_FILE, readGuide, writeGuide, saveSources, listSources, removeSource, brandCss, injectBrand, distillPrompt, checkScreen, fixPrompt, parseTokens, importManual, sourceDir, sourceKind } from "./brand.mjs";
 import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
 import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, snapshotName, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
@@ -51,6 +52,7 @@ import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { loadMdi } from "./mdiIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
+import { keepVariantFiles } from "./variantKeep.mjs";
 import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes, screenMemoryInfo, forgetScreen } from "./rules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -80,8 +82,18 @@ app.whenReady().then(async () => {
 
   // custom frames (frames.mjs): per project in <project>/.studio/frames, global in <userData>/frames
   const frameBase = (scope, project) => (scope === "global" ? path.join(app.getPath("userData"), "frames") : project && !project.startsWith(".") ? path.join(root, project, ".studio", "frames") : null);
+  // the brand variables of a project's guide (DESIGN_GUIDE.md) go into every served screen; read again only when the file changed
+  const brandCache = new Map();
+  const brandCssOf = (project) => {
+    if (!project || project.startsWith(".")) return "";
+    try {
+      const file = path.join(root, project, GUIDE_FILE), mt = fs.statSync(file).mtimeMs, hit = brandCache.get(file);
+      if (hit?.mt === mt) return hit.css;
+      const css = brandCss(fs.readFileSync(file, "utf8")); brandCache.set(file, { mt, css }); return css;
+    } catch { return ""; }
+  };
   const routes = Object.fromEntries(WARMUP_GROUPS.map((g, i) => [`/__warmup/${i}.html`, warmupPage(g)]));
-  const { port } = await startMockServer(root, { routes, transformHtml: (html, q, rel) => wrapPage(tagHtml(html), q?.get("env"), (env) => loadFrame((scope) => frameBase(scope, String(rel ?? "").split("/")[1]), env)), dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
+  const { port } = await startMockServer(root, { routes, transformHtml: (html, q, rel) => wrapPage(injectBrand(tagHtml(html), brandCssOf(String(rel ?? "").split("/")[1])), q?.get("env"), (env) => loadFrame((scope) => frameBase(scope, String(rel ?? "").split("/")[1]), env)), dynamic: (rel) => (rel.startsWith(PREVIEW_PREFIX) && rel.endsWith(".html") ? previewPage(rel.slice(PREVIEW_PREFIX.length, -5), docs) : null) }); // serves every project: /<project>/<screen>.html
 
   // Record/replay cache for the plus4u CDN: mockups keep rendering offline once their libraries have been loaded.
   let offline = Boolean(loadApp().offline), warming = false;
@@ -335,17 +347,19 @@ app.whenReady().then(async () => {
   let lastRules = "";
   const startWatch = () => {
     const name = current, changed = new Set();
-    let rulesDirty = false, notesDirty = false, projectDirty = false;
+    let rulesDirty = false, notesDirty = false, projectDirty = false, brandDirty = false;
     watcher = fs.watch(dir(), (_evt, file) => {
       if (file?.endsWith(".html")) changed.add(file);
       if (file === RULES_FILE) rulesDirty = true;
       if (file === "PROJECT.md") projectDirty = true;
+      if (file === GUIDE_FILE) brandDirty = true;
       if (file?.endsWith(".notes.md")) notesDirty = true;
       clearTimeout(watchTimer);
       watchTimer = setTimeout(async () => {
         if (name !== current) return;
         emit("preview:changed", { project: name, screens: listScreens(), changed: [...changed] }); changed.clear();
         if (rulesDirty) { rulesDirty = false; const now = await readRules(dir()), s = summarizeChange(lastRules, now); lastRules = now; if (s.added.length || s.removed.length) emit("memory:changed", { project: name, kind: "rules", ...s }); }
+        if (brandDirty) { brandDirty = false; emit("memory:changed", { project: name, kind: "brand" }); }
         if (projectDirty) { projectDirty = false; emit("memory:changed", { project: name, kind: "project" }); }
         if (notesDirty) { notesDirty = false; emit("memory:changed", { project: name, kind: "notes", screens: screensWithNotes(dir()) }); }
       }, 250);
@@ -931,16 +945,12 @@ app.whenReady().then(async () => {
   }));
   // Comments on the components of a screen (comments.mjs): files beside the screens, so they travel with the project
   const author = () => String(loadApp().author || "").trim() || defaultAuthor();
-  // "Use this variant": the variant takes the place of the original (which goes to the trash) and the other variants go to the trash too
+  // "Use this variant": the variant takes the place of the original and the rest goes to the trash; on the original it keeps the original and trashes the variants
   ipcMain.handle("variant:keep", guard(async (_e, file) => {
-    const m = /^(.+)-([a-z])\.html$/.exec(String(file)), all = listScreens();
-    if (!m || !all.includes(file)) throw new Error("This screen is not a variant.");
-    const base = `${m[1]}.html`; if (!all.includes(base)) throw new Error(`The original ${base} does not exist.`);
-    const re = new RegExp(`^${m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-[a-z]\\.html$`), others = all.filter((f) => f !== file && re.test(f));
-    await shell.trashItem(path.join(dir(), base));
-    await fs.promises.rename(path.join(dir(), file), path.join(dir(), base));
-    for (const f of others) await shell.trashItem(path.join(dir(), f));
-    return { kept: base, removed: others };
+    const r = await keepVariantFiles(dir(), path.basename(String(file)), { trash: (p) => shell.trashItem(p), screens: listScreens() });
+    emit("memory:changed", { project: current, kind: "comments", screens: screensWithComments(dir()) });
+    emit("memory:changed", { project: current, kind: "project" });
+    return r;
   }));
   ipcMain.handle("flow:edges", guard(() => findFlowEdges(Object.fromEntries(listScreens().map((f) => [f, fs.readFileSync(path.join(dir(), f), "utf8")])))));
   ipcMain.handle("comments:get", guard((_e, file) => readComments(dir(), file)));
@@ -1087,6 +1097,31 @@ app.whenReady().then(async () => {
   ipcMain.handle("rules:get", guard(() => readRules(dir())));
   ipcMain.handle("rules:set", guard(async (_e, text) => { await writeRules(dir(), String(text)); lastRules = String(text); return { ok: true }; }));
   ipcMain.handle("rules:add", guard(async (_e, text, screen) => { const r = await appendRule(dir(), text, screen || null); lastRules = r.content; return r; }));
+  // the brand guide (DESIGN_GUIDE.md) and the manual it was distilled from (.studio/brand/source)
+  ipcMain.handle("brand:get", guard(async () => ({ guide: await readGuide(dir()), template: GUIDE_TEMPLATE, sources: (await listSources(dir())).map((f) => path.basename(f)) })));
+  ipcMain.handle("brand:set", guard(async (_e, text) => { await writeGuide(dir(), String(text)); return { ok: true }; }));
+  // the manual is read in the app itself (text of the PDF, colours, fonts, sizes) and the guide is filled; progress goes to the dialog
+  ipcMain.handle("brand:import", guard(async (_e, items) => {
+    const files = await saveSources(dir(), items), found = [];
+    for (const f of files) {
+      const name = path.basename(f.path);
+      found.push({ name, ...(await importManual(dir(), f.path, (pr) => emit("brand:progress", { project: current, file: name, ...pr }))) });
+    }
+    return { files: files.map((f) => f.path), found };
+  }));
+  ipcMain.handle("brand:reread", guard(async (_e, name) => {
+    const f = path.join(sourceDir(dir()), path.basename(String(name)));
+    const r = await importManual(dir(), f, (pr) => emit("brand:progress", { project: current, file: path.basename(f), ...pr }));
+    return { found: [{ name: path.basename(f), ...r }] };
+  }));
+  ipcMain.handle("brand:improve", guard(async () => ({ prompt: distillPrompt((await listSources(dir())).map((f) => ({ path: f, kind: sourceKind(f) })), dir()) })));
+  ipcMain.handle("brand:remove", guard(async (_e, name) => { await removeSource(dir(), name); return { ok: true }; }));
+  ipcMain.handle("brand:check", guard(async (_e, file) => {
+    const guide = await readGuide(dir()), t = parseTokens(guide);
+    if (!t.colors.length && !t.fonts.length) return { empty: true };
+    const name = path.basename(String(file)), r = checkScreen(fs.readFileSync(path.join(dir(), name), "utf8"), guide);
+    return { file: name, ...r, prompt: fixPrompt(name, r, dir()) };
+  }));
   ipcMain.handle("desc:get", guard(() => readProject(dir())));
   ipcMain.handle("desc:set", guard(async (_e, text) => { await writeProject(dir(), String(text)); return { ok: true }; }));
   ipcMain.handle("notes:get", guard((_e, file) => readNotes(dir(), file)));

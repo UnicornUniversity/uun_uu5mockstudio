@@ -44,7 +44,7 @@ A screen that links to another one (a button or link whose address is the other 
 
 ### Variants of a screen
 
-**Screen → Variants…** asks how many (2 to 4) and what should differ (layout, visual style, how the information is organised, or your own words). The agent writes them as new screens (`room-list-a`, `room-list-b` …) next to the original, which stays as it is. Compare them side by side: the original and its variants share a colour, sit on a tinted board with the header “Variants of …”, and each has a label (Original, A, B …). Choose in the header: click a label to select that screen, then **Use A** (or the context menu of the screen) makes it the screen and moves the original and the other variants to the trash.
+**Screen → Variants…** asks how many (2 to 4) and what should differ (layout, visual style, how the information is organised, or your own words). The agent writes them as new screens (`room-list-a`, `room-list-b` …) next to the original, which stays as it is. Compare them side by side: the original and its variants share a colour, sit on a tinted board with the header “Variants of …”, and each has a label (Original, A, B …). Choose in the header: click a label to select that screen, then **Use A** (or the context menu of the screen) makes it the screen, with its notes, comments and description, and moves the original and the other variants to the trash. If the original wins, select **Original** and click **Keep Original**: the variants go to the trash.
 
 ### Present
 

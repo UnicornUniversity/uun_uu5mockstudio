@@ -1,4 +1,5 @@
 /** "Variants…": how many and what should differ. The request itself is built by variants.js. */
+import { addDialogClose } from "./dialogChrome.js";
 import { VARIANT_ASPECTS, VARIANT_COUNTS } from "./variants.js";
 const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
 
@@ -20,6 +21,7 @@ export function createVariantsDialog({ onDone }) {
   };
   const close = () => { box.hidden = true; };
   q(".vr-cancel").onclick = close;
+  addDialogClose(q(".card"), close);
   q(".vr-go").onclick = () => { const c = q(".vr-custom").value; if (aspect === "custom" && !c.trim()) return q(".vr-custom").focus(); close(); onDone?.({ file, count, aspect, custom: c }); };
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });

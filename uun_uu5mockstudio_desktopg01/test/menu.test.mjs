@@ -36,7 +36,7 @@ test("Project holds description, rules, git, location and deletion", () => {
   const project = find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", send: (a) => sent.push(a) }), "Project").submenu;
   assert.equal(find(project, "Business Rules…").accelerator, "Alt+CmdOrCtrl+R");
   assert.equal(find(project, "Project Description…").accelerator, "Alt+CmdOrCtrl+D");
-  for (const l of ["Rename Project…", "Project Description…", "Business Rules…", "Show Project in Finder", "Delete Project…"]) assert.ok(find(project, l), l);
+  for (const l of ["Rename Project…", "Project Description…", "Business Rules…", "Brand Guidelines…", "Show Project in Finder", "Delete Project…"]) assert.ok(find(project, l), l);
   find(project, "Rename Project…").click(); find(project, "Business Rules…").click(); find(project, "Delete Project…").click();
   assert.deepEqual(sent, ["project:rename", "project:rules", "project:delete"]);
   assert.deepEqual(find(project, "Projects Folder").submenu.map((i) => i.label), ["Show in Finder", "Change…"]);

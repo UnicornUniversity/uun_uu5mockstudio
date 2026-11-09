@@ -33,7 +33,7 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
 
     const title = $("setup-title"), text = $("setup-text"), action = $("setup-action"), copy = $("setup-copy"), code = $("setup-code"), link = $("setup-link"), more = $("setup-more");
     code.hidden = true; copy.hidden = true; link.hidden = true; more.hidden = true; action.hidden = false; action.disabled = working; $("setup-cancel").hidden = !working; $("setup-recheck").disabled = working;
-    $("setup-close").hidden = false; $("setup-close").textContent = active && !manual ? "Continue without chat" : "Close"; $("setup-updates").hidden = Boolean(active) || !manual;
+    $("setup-close").hidden = !(active && !manual); $("setup-close").textContent = "Continue without chat"; // otherwise the cross closes it $("setup-updates").hidden = Boolean(active) || !manual;
     if (active === "claude") {
       const info = await api.claudeInstallerInfo();
       title.textContent = "Claude Code is needed"; text.textContent = "uu5Mock Studio works through Claude Code installed on this computer, with your own sign-in. Install it here, then continue with signing in.";
@@ -87,7 +87,7 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
     pl.replaceChildren(...plugins.map((p) => el("li", { className: p.state }, el("span", { className: "pm", textContent: STATE_MARK[p.state] ?? "?" }), p.name,
       el("small", { textContent: `${p.kind} · ${p.installed ?? "not installed"}${p.state === "outdated" ? ` → ${p.available}` : ""}` }))));
     for (const id of ["setup-code", "setup-copy", "setup-link", "setup-more", "setup-cancel", "setup-log"]) $(id).hidden = true;
-    $("setup-close").hidden = false; $("setup-recheck").disabled = working;
+    $("setup-close").hidden = true; $("setup-recheck").disabled = working;
     $("setup-updates").hidden = Boolean(active); $("setup-updates").disabled = working; // like Claude Code: a check that only looks, the answer comes as a message
     const action = $("setup-action"), missing = plugins.some((p) => p.state === "missing");
     action.hidden = !(st.installed && st.loggedIn && bad); action.disabled = working;

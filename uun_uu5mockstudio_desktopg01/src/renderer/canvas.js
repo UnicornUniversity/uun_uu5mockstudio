@@ -1,4 +1,6 @@
 import { attachFreeze, waitSettled } from "./freeze.js";
+import { flowLayout } from "./arrange.js";
+import { groupVariants } from "./variantLayer.js";
 import { ICON_MIN, ICON_MAX, ICON_TRASH } from "./icons.js";
 export const DEVICES = {
   desktop: { label: "Desktop", w: 1440, h: 900 },
@@ -398,13 +400,8 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
       const list = [...frames.values()].sort((a, b) => (Math.round(a.y / 400) - Math.round(b.y / 400)) || a.x - b.x);
       if (!list.length) return;
       const before = snap();
-      const maxRow = Math.max(4600, ...list.map((f) => size(f).w));
-      let x = 0, y = 0, rowH = 0;
-      for (const f of list) {
-        const d = size(f);
-        if (x > 0 && x + d.w > maxRow) { x = 0; y += rowH + GAP + 150; rowH = 0; } // 150: room for the next row's title bar, which grows when zoomed out
-        f.x = x; f.y = y; x += d.w + GAP; rowH = Math.max(rowH, d.h); layoutFrame(f);
-      }
+      const pos = flowLayout(list.map((f) => ({ file: f.file, w: size(f).w, h: size(f).h })), groupVariants([...frames.keys()]), { gap: GAP });
+      for (const f of list) { const p = pos.get(f.file); if (p) { f.x = p.x; f.y = p.y; layoutFrame(f); } }
       remember(before); onChange?.("layout"); fitBounds(list);
     },
     /** `map`: { file: number of open comments }; the comment button of every frame shows it. */
@@ -427,6 +424,8 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
     setWorking: (file) => { workingFile = file; for (const f of frames.values()) f.el.classList.toggle("working", f.file === file); },
     /** The menu of the device sizes of one screen at a point (the title bar of a narrow frame has no room for its own button). */
     openDeviceMenu: (file, x, y) => { const f = frames.get(file); if (f) openDevMenu(f, { getBoundingClientRect: () => ({ left: x, bottom: y }) }, envsFor); },
+    /** Puts frames at new places ([[file, x, y], …]) as one step that can be undone. */
+    moveFrames: (list) => { const before = snap(); for (const [file, x, y] of list) { const f = frames.get(file); if (f) { f.x = x; f.y = y; layoutFrame(f); } } remember(before); onChange?.("layout"); },
     setDeviceAll: (device) => { const before = snap(); for (const f of frames.values()) { f.device = device; layoutFrame(f); } remember(before); onChange?.("layout"); },
     /** Undo / redo of the arrangement; false when there is nothing to step back to. */
     undoLayout: () => { const to = undoStack.pop(); if (!to) return false; redoStack.push(snap()); restore(to); lastLayoutChange = Date.now(); return true; },

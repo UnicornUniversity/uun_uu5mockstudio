@@ -4,6 +4,7 @@
  * (variables for the title and breadcrumb, a repeated menu written once). `api` = window.studio; resolves to null, or { saving: Promise<env id | null> } as soon as the dialog is closed (the frame is written in the background).
  */
 import { openFrameEdit } from "./frameEditDialog.js";
+import { closeButton } from "./dialogChrome.js";
 /** The hand editor of a frame (HTML, CSS, offsets) is built but hidden: set to true to show "Edit the code…" in the edit dialog. */
 const SHOW_CODE_EDITOR = false;
 const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
@@ -97,7 +98,7 @@ export function openFrameDialog({ api, toast = () => {}, send = null, edit = nul
     code.onclick = async () => { const changed = await openFrameEdit({ api, env: edit.env, toast, send }); if (changed) close({ saving: Promise.resolve(edit.env) }); };
     const ov = h("div", { className: "tsdbox", onmousedown: (e) => { if (e.target === ov) close(null); } },
       h("div", { className: "card", role: "dialog" },
-        h("div", { className: "dlg-head" }, h("h2", { textContent: edit ? `Edit frame “${edit.label}”` : "New frame from a link" })),
+        h("div", { className: "dlg-head" }, h("h2", { textContent: edit ? `Edit frame “${edit.label}”` : "New frame from a link" }), closeButton(() => close(null))),
         h("div", { className: "tsd-body" },
           ...(edit ? [field("Name", name), scopeBox] : []),
           h("p", { className: "mute", textContent: "A window opens with the page: sign in there if it needs it and open the page. Then press “Choose content area” and click or drag over the area where the content of a page goes: everything around it becomes the frame." }),

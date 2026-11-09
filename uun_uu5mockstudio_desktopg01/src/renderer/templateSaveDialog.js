@@ -4,6 +4,7 @@
  * business rules and the notes of the screens go with it (main writes TEMPLATE.md from them). Edit: the same fields and the whole TEMPLATE.md;
  * the screens of the template stay. `api` = window.studio; resolves to the saved id or null.
  */
+import { closeButton } from "./dialogChrome.js";
 const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
 /** kebab-case id from a title (the same rule as `slugify` in templates.mjs). */
@@ -82,7 +83,7 @@ export function openTemplateSave({ api, files = [], id: editId = null, toast = (
       replace, err);
     const ov = h("div", { className: "tsdbox", onmousedown: (e) => { if (e.target === ov) close(null); } },
       h("div", { className: "card", role: "dialog" },
-        h("div", { className: "dlg-head" }, h("h2", { textContent: edit ? `Edit template “${d.title}”` : "Save as template" })),
+        h("div", { className: "dlg-head" }, h("h2", { textContent: edit ? `Edit template “${d.title}”` : "Save as template" }), closeButton(() => close(null))),
         body,
         h("div", { className: "row" }, h("span", { className: "grow" }), cancel, save)));
     ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(null); } });
