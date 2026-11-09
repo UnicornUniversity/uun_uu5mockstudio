@@ -35,8 +35,60 @@ function normalize(nodes = []) {
   return out;
 }
 
+
+/**
+ * Documents do not paint a `background` written in the `style` of a div or a Card (a gradient hero comes out white, its white text
+ * invisible); `Uu5Bricks.Background` does. The export stays faithful to the components of the screen and does not rewrite them: it only
+ * recognises a gradient or a dark solid colour in the style of a `div` / `Uu5Bricks.Card` so that `notesOf` can say the screen should use
+ * `Uu5Bricks.Background` there. Translucent (glass), light and text-clip backgrounds are fine in a style.
+ */
+const BG_KEYS = ["background", "backgroundColor", "backgroundImage"];
+const toHex = (v) => {
+  v = v.trim();
+  let m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v);
+  if (m) return "#" + (m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1]).toLowerCase();
+  m = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*\)$/i.exec(v);
+  return m ? "#" + [m[1], m[2], m[3]].map((x) => Math.min(255, +x).toString(16).padStart(2, "0")).join("") : null;
+};
+const luminance = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
+/**
+ * Safety net for screens that paint with `style`: the gradient or dark colour is moved into a `Uu5Bricks.Background` around the element
+ * (screens should use `Uu5Bricks.Background` themselves, see the Web templates; then nothing is rewritten). Only `div`s and
+ * `Uu5Bricks.Card`s: wrapped, a button would turn into a full-width block. No `background="full"`: it puts the components inside into
+ * their dark-mode grey. A Card cannot take a colour, so it becomes the Background (its margin and radius) with a padding div inside.
+ */
+function backgroundLift(n) {
+  const isCard = n.name === "Uu5Bricks.Card";
+  if (!(n.host && n.name === "div") && !isCard) return null;
+  const st = n.props?.style?.$json;
+  if (!st || typeof st !== "object" || st.backgroundClip === "text" || st.WebkitBackgroundClip === "text") return null;
+  const key = BG_KEYS.find((k) => typeof st[k] === "string" && st[k].trim());
+  if (!key) return null;
+  const v = st[key].trim();
+  if (/\btext\b|^(transparent|none|inherit|initial|unset)$/i.test(v)) return null;
+  let attrs;
+  if (/gradient\(/i.test(v)) {
+    if (/rgba\(|hsla\(/i.test(v) && !/#[0-9a-f]{3,6}\b/i.test(v)) return null; // only translucent layers: nothing to show on its own
+    attrs = { gradient: v };
+  } else {
+    const hex = toHex(v);
+    if (!hex || luminance(hex) >= 0.5) return null; // light colours (white cards) render in the style as they are
+    attrs = { color: hex };
+  }
+  const rest = { ...st }; for (const k of BG_KEYS) delete rest[k];
+  if (isCard) {
+    const p = n.props ?? {};
+    const inner = { t: "el", name: "div", host: true, props: { style: { $json: { boxSizing: "border-box", padding: p.contentPadding ?? 0, ...rest } } }, children: n.children };
+    return { attrs: { ...attrs, margin: p.margin ?? 0, borderRadius: p.borderRadius ?? "none" }, inner };
+  }
+  const props = { ...n.props }; if (Object.keys(rest).length) props.style = { $json: rest }; else delete props.style;
+  const r = rest.borderRadius; // the Background paints the element now, so it takes the radius (and clips its content) too
+  const round = r !== undefined && r !== null && !/^0(px|%)?$/.test(String(r)) ? { style: { $json: { borderRadius: r, overflow: "hidden" } } } : {};
+  return { attrs: { ...attrs, margin: 0, borderRadius: "none", ...round }, inner: { ...n, props } };
+}
+
 export function createSerializer() {
-  const stats = { components: 0, html: 0, jsxInData: 0 };
+  const stats = { components: 0, html: 0, jsxInData: 0, backgrounds: 0 };
   const names = new Set(), icons = new Set();
   const seeIcon = (v) => { if (typeof v === "string" && /^mdi-[a-z0-9-]+$/.test(v)) icons.add(v); }; // icon props, items of action lists, …
 
@@ -68,6 +120,12 @@ export function createSerializer() {
   }
   function node(n, indent, inline) {
     if (n.t === "text") return keepEdgeSpaces(escapeText(n.v));
+    const lift = backgroundLift(n);
+    if (lift) {
+      stats.components++; stats.backgrounds++; names.add("Uu5Bricks.Background");
+      const a = Object.entries(lift.attrs).map(([k, v]) => ` ${k}=${attr(v)}`).join("");
+      return `<Uu5Bricks.Background${a}>${children([lift.inner], indent, inline)}</Uu5Bricks.Background>`;
+    }
     if (n.host) stats.html++; else { stats.components++; names.add(n.name); }
     const attrs = Object.entries(n.props ?? {}).map(([k, v]) => ` ${k}=${attr(v)}`).join("");
     const kids = normalize(n.children);
@@ -102,6 +160,7 @@ export function notesOf(report, stats = {}, missing = []) {
   if (report.hover) notes.push(`${report.hover} element${report.hover > 1 ? "s have" : " has"} a hover style (shadow, lift, …) that was left out: a uu5String cannot hold :hover. Use a component that has hover itself (Button, Link) or add it in the document.`);
   const newIcons = (stats.icons ?? []).filter((i) => !MDI_BASELINE.has(i.slice(4)));
   if (newIcons.length) notes.push(`Icons that a document may not show (not in Material Design Icons ${MDI_BASELINE_VERSION}, which documents may still load): ${list(newIcons)}. Pick older icons in the screen if they stay empty.`);
+  if (stats.backgrounds) notes.push(`${stats.backgrounds} background${stats.backgrounds > 1 ? "s" : ""} (gradient or dark colour) written as Uu5Bricks.Background because a document does not paint a background from style. Use Uu5Bricks.Background in the screen itself to get the same look in the preview.`);
   if (stats.jsxInData) notes.push(`${stats.jsxInData} piece${stats.jsxInData > 1 ? "s" : ""} of JSX inside data written as nested uu5String; it may show as text.`);
   const skipped = times(report.skipped);
   if (skipped.length) notes.push(`Values that are not plain data were left out: ${list(skipped)}.`);

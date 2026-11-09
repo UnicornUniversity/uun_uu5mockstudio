@@ -11,10 +11,9 @@
 | --- | --- | --- | --- | --- |
 | **Copy** | the picture | the source text | the uu5String | the file (paste it into Finder, Mail, a chat; on Windows and Linux its path) |
 | **Save…** | choose PNG, JPEG or PDF | `.html` | `.uu5string.txt` | `.zip` |
-| **Share…** | on macOS the system share sheet (Messages, Mail, AirDrop, WhatsApp, Signal …); elsewhere an e-mail draft with the file attached | | | |
 | **⠿ Drag** | press, hold and drag the file into a chat, a mail or a folder (it is prepared when you pick the tile; the button is dim for a moment) | | | |
 
-**Pictures and videos.** The Project ZIP contains every file the screens point to (`assets/…` and other local files, also the pictures of read documents); the screens in it work when unzipped. A **uu5String** cannot carry files and a document does not have them: **Save…** writes `<screen>.assets.zip` next to the text, **Share…** attaches it to the text, and after **Copy** the message offers **Files…** to save it. The ZIP has a `README.md` listing which address of the text is which file; upload the files to the document and point the uu5String at them. **Drag** takes only the text.
+**Pictures and videos.** The Project ZIP contains every file the screens point to (`assets/…` and other local files, also the pictures of read documents); the screens in it work when unzipped. A **uu5String** cannot carry files and a document does not have them: **Save…** writes `<screen>.assets.zip` next to the text, and after **Copy** the message offers **Files…** to save it. The ZIP has a `README.md` listing which address of the text is which file; upload the files to the document and point the uu5String at them. **Drag** takes only the text.
 
 The same is in the application menu: **File → Export** (Screen as Image, as HTML, Copy Screen as uu5String, Screen as uu5String…, Project as ZIP) and **File → Share** (Screen Image, HTML File, Screen as uu5String, Project ZIP).
 

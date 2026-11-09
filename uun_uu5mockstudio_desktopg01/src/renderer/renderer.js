@@ -422,7 +422,7 @@ window.studio.onEvent(onAgentEvent);
 window.__feed = onAgentEvent; // lets automated checks play events of the agent without running it
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
-let saveLayoutTimer, savedLayout = {}, rules = null, desc = null, flow = null, vlayer = null;
+let saveLayoutTimer, savedLayout = {}, rules = null, desc = null, flow = null, vlayer = null; let flowHover = null;
 // environments (uuManagementKit around the content): offered on every screen
 let projectLevel = null, defaultEnv = null, envInfo = null;
 async function refreshEnvs() { const r = await window.studio.envList(); if (!r.error) { envInfo = r; for (const f of canvas.all()) f.syncEnv?.(); } }
@@ -578,7 +578,7 @@ const canvas = createCanvas({
     if (c.left + c.width / 2 < k.left + k.width / 2) out.left = Math.max(0, c.right - k.left + 12); else out.right = Math.max(0, k.right - c.left + 12);
     return out;
   },
-  onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); },
+  onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
   onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
 });
@@ -1157,7 +1157,15 @@ function updateFlowBtn() {
   const b = $("flowbtn"), few = canvas.files().length < 2, shown = flow.isOn() && flow.count() > 0;
   b.disabled = few; b.setAttribute("aria-pressed", String(!few && shown));
   b.title = few ? "Screen flow: needs at least two screens" : "Show or hide the arrows between linked screens";
+  const nb = $("flownavbtn"); nb.hidden = few || !flow.isOn() || flow.navCount() === 0; nb.setAttribute("aria-pressed", String(flow.navOn()));
+  nb.title = flow.navOn() ? "Hide the menu links again" : `Also draw the ${flow.navCount()} link${flow.navCount() === 1 ? "" : "s"} of the menu (hidden, they are on every screen)`;
 }
+$("flownavbtn").onclick = () => { flow.setNav(!flow.navOn()); try { localStorage.setItem("uu5studio.flownav", flow.navOn() ? "1" : "0"); } catch { /* not remembered */ } };
+try { flow.setNav(localStorage.getItem("uu5studio.flownav") === "1"); } catch { /* menu links stay hidden */ }
+// the focused screen: the selected one, or the one under the pointer; its arrows are strong, the others fade
+const flowFocus = () => flow.setFocus(flowHover ?? canvas.selected());
+$("world").addEventListener("pointerover", (ev) => { const f = ev.target.closest?.(".frame")?.querySelector(".fname")?.title ?? null; if (f !== flowHover) { flowHover = f; flowFocus(); } });
+$("world").addEventListener("pointerleave", () => { flowHover = null; flowFocus(); });
 const setFlow = (on) => { flow.setOn(on); try { localStorage.setItem(FLOW_KEY, on ? "1" : "0"); } catch { /* not remembered */ } };
 $("flowbtn").onclick = () => { setFlow(!flow.isOn()); if (flow.isOn()) { flow.refresh().then(() => { if (!flow.count()) toast("No screen links to another one yet. Ask the agent to link the screens (a button that leads to another screen)."); }); } };
 try { setFlow(localStorage.getItem(FLOW_KEY) !== "0"); } catch { setFlow(true); }
@@ -1219,7 +1227,7 @@ addEventListener("keydown", (e) => { if (e.key === "Escape") { hideCtx(); $("sel
 addEventListener("blur", hideCtx);
 
 // ---------- actions on the selected screen (bar above the canvas) ----------
-// The Share menu has two parts: first WHAT goes out (a format, the tiles), then WHAT TO DO with it (Copy, Save…, Share…, Drag).
+// The Share menu has two parts: first WHAT goes out (a format, the tiles), then WHAT TO DO with it (Copy, Save…, Drag).
 // "Share…" opens the system share sheet on macOS (Messages, Mail, AirDrop, WhatsApp, Signal …), elsewhere an e-mail draft;
 // "Drag" is the file to take with the mouse into a chat, a mail or a folder. The chosen format is remembered.
 const fmtIcon = (inner) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
@@ -1232,7 +1240,6 @@ const OUT_FORMATS = [
 const OUT_ACTS = [
   ["copy", "Copy", fmtIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>')],
   ["save", "Save…", fmtIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')],
-  ["share", "Share…", fmtIcon('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>')],
 ];
 const OUT_KEY = "uu5studio.shareFormat";
 let outFormat = (() => { try { return OUT_FORMATS.some((f) => f.id === localStorage.getItem(OUT_KEY)) ? localStorage.getItem(OUT_KEY) : "png"; } catch { return "png"; } })();

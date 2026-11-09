@@ -143,9 +143,26 @@ export function collectUu5Tree(opts = {}) {
     const d = toData(v, key, 0);
     return d === undefined ? undefined : { $json: d };
   };
-  const withStyle = (props, classStyle, out) => {
+  /** A document does not define the custom properties of the screen (`--brand-…`): every `var(--x, fallback)` in a style is written as its value, from the element, else from the page root. */
+  const varLookup = opts.varLookup || ((name, dom) => {
+    for (const d of [dom, typeof document !== "undefined" ? document.documentElement : null]) {
+      if (!d) continue;
+      try { const v = getComputed(d).getPropertyValue(name).trim(); if (v) return v; } catch { /* detached */ }
+    }
+    return "";
+  });
+  const resolveVars = (v, dom, depth = 0) => {
+    if (typeof v !== "string" || !v.includes("var(") || depth > 8) return v;
+    const out = v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (m, name, fallback) => varLookup(name, dom) || (fallback !== undefined ? fallback.trim() : m));
+    return out === v ? v : resolveVars(out, dom, depth + 1);
+  };
+  const withStyle = (props, classStyle, out, dom) => {
     const own = props.style && typeof props.style === "object" && !Array.isArray(props.style) ? toData(props.style, "style", 0) : null;
-    if (classStyle || own) out.style = { $json: Object.assign({}, classStyle, own) };
+    if (classStyle || own) {
+      const st = Object.assign({}, classStyle, own);
+      for (const k of Object.keys(st)) st[k] = resolveVars(st[k], dom);
+      out.style = { $json: st };
+    }
   };
 
   // ---------- nodes ----------
@@ -172,7 +189,7 @@ export function collectUu5Tree(opts = {}) {
       if (typeof v === "function") { if (/^on[A-Z]/.test(k)) bump(report.fn, k); continue; }
       if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") p[k] = v;
     }
-    withStyle(props, styleOfClasses(props.className, dom), p);
+    withStyle(props, styleOfClasses(props.className, dom), p, dom);
     if (hoverOf(props.className)) report.hover++; // a uu5String cannot hold :hover: only counted, for the note
     if (!children.length && !Object.keys(p).length && !/^(br|hr|img)$/.test(tag)) return null;
     return { t: "el", name: tag, host: true, props: p, children };

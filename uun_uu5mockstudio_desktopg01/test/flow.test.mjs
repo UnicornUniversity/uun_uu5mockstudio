@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findFlowEdges } from "../src/main/flow.mjs";
-import { arrowPath } from "../src/renderer/flowLayer.js";
+import { arrowPath, sidesFor, linksOf } from "../src/renderer/flowLayer.js";
 import { buildVariantsPrompt, variantNames, variantInfo, VARIANT_ASPECTS } from "../src/renderer/variants.js";
 
 test("a screen points to another one when its source names that file as a string", () => {
@@ -10,7 +10,7 @@ test("a screen points to another one when its source names that file as a string
     "detail.html": `navigate("list.html") // and a second time "list.html"`,
     "form.html": `<p>detail.html is only mentioned in text, not as a string</p> <span>list</span>`,
   });
-  assert.deepEqual(edges, [{ from: "list.html", to: "detail.html" }, { from: "list.html", to: "form.html" }, { from: "detail.html", to: "list.html" }]);
+  assert.deepEqual(edges, [{ from: "list.html", to: "detail.html", nav: false }, { from: "list.html", to: "form.html", nav: false }, { from: "detail.html", to: "list.html", nav: false }]);
 });
 
 test("self links, other file types and similar names are not edges", () => {
@@ -18,12 +18,36 @@ test("self links, other file types and similar names are not edges", () => {
   assert.deepEqual(findFlowEdges({}), []);
 });
 
+test("links of a menu are marked as nav, a link in the content is not", () => {
+  const menu = `<nav><a href="a.html">A</a><a href="b.html">B</a></nav>`;
+  const edges = findFlowEdges({ "a.html": menu + " ".repeat(900) + `<button href="c.html">go</button>`, "b.html": menu, "c.html": `<div><a href="a.html">1</a> <a href="b.html">2</a> <a href="c.html">3</a></div>` });
+  assert.deepEqual(edges.filter((e) => e.from === "a.html"), [{ from: "a.html", to: "b.html", nav: true }, { from: "a.html", to: "c.html", nav: false }]);
+  assert.deepEqual(edges.filter((e) => e.from === "c.html").map((e) => e.nav), [true, true]); // three screen links close together are a menu
+});
+
+test("a link is nav only when all its occurrences are in a menu", () => {
+  const edges = findFlowEdges({ "a.html": `<nav><a href="b.html">B</a></nav>` + " ".repeat(900) + `<a href="b.html">again</a>`, "b.html": "" });
+  assert.deepEqual(edges, [{ from: "a.html", to: "b.html", nav: false }]);
+});
+
 test("an arrow leaves the side that faces the target and ends at its facing side", () => {
-  const a = { x: 0, y: 0, w: 1440, h: 900 }, right = { x: 1600, y: 0, w: 1440, h: 900 }, left = { x: -1800, y: 0, w: 1440, h: 900 };
-  assert.match(arrowPath(a, right).d, /^M1440,260 C/); assert.match(arrowPath(a, right).d, /1600,260$/);
-  assert.match(arrowPath(a, left).d, /^M0,260 C/); assert.match(arrowPath(a, left).d, /-360,260$/);
+  const a = { x: 0, y: 0, w: 1440, h: 900 }, right = { x: 1600, y: 0, w: 1440, h: 900 }, left = { x: -1800, y: 0, w: 1440, h: 900 }, below = { x: 0, y: 1100, w: 1440, h: 900 };
+  assert.deepEqual(sidesFor(a, right), { from: "r", to: "l" });
+  assert.deepEqual(sidesFor(a, left), { from: "l", to: "r" });
+  assert.deepEqual(sidesFor(a, below), { from: "b", to: "t" });
+  assert.deepEqual(sidesFor(below, a), { from: "t", to: "b" });
+  assert.match(arrowPath(a, right).d, /^M1440,300 C/); assert.match(arrowPath(a, right).d, /1600,300$/);
   assert.equal(arrowPath(a, right).start.x, 1440);
-  assert.match(arrowPath(a, right, 20).d, /^M1440,280 C/); // two arrows between the same screens are kept apart
+  assert.match(arrowPath(a, below).d, /^M720,900 C/); assert.match(arrowPath(a, below).d, /720,1100$/);
+  assert.notEqual(arrowPath(a, right, { from: 0.25 }).start.y, arrowPath(a, right, { from: 0.75 }).start.y); // arrows on one side get their own spots
+});
+
+test("a pair that links both ways is one link, menu links are left out unless asked", () => {
+  const edges = [{ from: "a", to: "b", nav: false }, { from: "b", to: "a", nav: false }, { from: "a", to: "c", nav: true }, { from: "c", to: "a", nav: true }];
+  assert.deepEqual(linksOf(edges, false), [{ from: "a", to: "b", both: true, nav: false }]);
+  assert.deepEqual(linksOf(edges, true).map((l) => `${l.from}${l.to}${l.both}`), ["abtrue", "actrue"]);
+  assert.deepEqual(linksOf(edges, false, "c").map((l) => `${l.from}${l.to}`), ["ab", "ac"]); // the menu links of the focused screen are drawn
+  assert.deepEqual(linksOf([{ from: "b", to: "a", nav: false }], false), [{ from: "b", to: "a", both: false, nav: false }]);
 });
 
 test("the request for variants names the files, the aspect and leaves the original alone", () => {

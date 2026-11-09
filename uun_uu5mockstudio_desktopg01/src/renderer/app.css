@@ -1056,7 +1056,7 @@ body.simple #modesw,body.simple #model,body.simple #dash-model,body.simple #dash
 
 /* flow arrows and variants */
 .flow-layer{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;color:var(--acc);z-index:0}
-.flow-layer .flow-arrow{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;opacity:.75}.flow-layer .flow-dot{fill:currentColor;opacity:.75}
+.flow-layer .flow-link{opacity:.6;transition:opacity .15s}.flow-layer .flow-arrow{fill:none;stroke:currentColor;stroke-width:4;stroke-linecap:round}.flow-layer .flow-dot{fill:currentColor}.flow-layer .flow-link.nav{opacity:.35}.flow-layer .flow-link.nav .flow-arrow{stroke-dasharray:2 12}.flow-layer .flow-link.hot{opacity:1}.flow-layer .flow-link.hot .flow-arrow{stroke-width:6}.flow-layer .flow-link.in .flow-arrow{stroke-dasharray:16 10}.flow-layer .flow-link.dim{opacity:.1}
 #varbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:48}#varbox[hidden]{display:none}
 #varbox .card{width:min(500px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 #varbox h2{margin:0;font-size:19px}#varbox .vr-text{margin:0;line-height:1.5}#varbox .vr-label{font-size:12px;color:var(--mute);margin-top:4px}

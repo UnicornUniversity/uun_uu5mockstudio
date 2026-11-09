@@ -25,6 +25,14 @@ The root is the fiber behind the `__reactContainer$…` key of `#uu5` (or of any
 
 `<uu5string/>` prefix; numbers and booleans unquoted; data as `'<uu5json/>…'`; JSX in a prop as a nested `"<uu5string/>…"` (only text → a plain string); a value takes the quotes it does not contain, else `"…"` with `\"`. Children that contain text are written on one line exactly as they are (whitespace matters inline); children that are only elements go one per line. A space at the edge of a text, next to a tag, is written as `&nbsp;`: the uu5String parsers of documents trim text at tags (`Zbývá <span>7 míst</span> za` would lose both spaces), uu5g05 renders the entity as a space.
 
+## CSS variables
+
+A document does not define the custom properties of the screen (`--brand-…`, see [07](../user/07-project-memory.md)), so `var(--x, fallback)` never goes into a uu5String: `withStyle` in `uu5StringCollect.js` writes every one in a style (class rules and inline `style`, also inside gradients) as its value, read from the element, else from the page root, else the `var()` fallback.
+
+## Backgrounds
+
+A document does not paint a `background` from the `style` of a div or a Card (a gradient hero comes out white, its white text invisible). The Web templates tell the screen to paint with `Uu5Bricks.Background` itself, so nothing needs rewriting. As a safety net for screens that paint with `style`, `backgroundLift` in `uu5String.js` moves a gradient or a dark solid colour out of the style into a `Uu5Bricks.Background` (`gradient` or `color`, `margin=0`, `borderRadius="none"`; a `borderRadius` of the element goes to the Background's `style` with `overflow: hidden`) around the element, and `notesOf` says how many. Only `div`s and `Uu5Bricks.Card`s are lifted: a Card cannot take a colour, so it becomes the Background itself (its `margin` and `borderRadius`) with a div inside that carries `contentPadding`. Buttons, texts and other components keep their style (wrapped, a button would turn into a full-width block). `background="full"` is never set: it puts the components inside into their dark-mode grey. Translucent (glass), light (white cards) and text-clip (`… text`) backgrounds stay in the style.
+
 ## Icons
 
 Documents may load an older Material Design Icons font than the screens (the screens load 7.0.96; uuBookKit / uuManagementKit pages were seen with 4.x). The serializer collects every `mdi-*` value it writes (icon props, items of action lists) and `notesOf` names those that are not in `src/renderer/mdiBaseline.js`, the 4110 icon names of `@mdi/font` 4.0.96. Regenerate it with `node scripts/mdi-baseline.mjs [version]`.

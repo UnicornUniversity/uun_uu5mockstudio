@@ -155,3 +155,45 @@ test("a component of the screen that is not rendered (an inactive tab) is called
   assert.match(text, /<Uu5Bricks\.Tabs\.Item label="T">\s*<div>\s*<Uu5Elements\.Text>Hello<\/Uu5Elements\.Text>\s*<span>a<\/span>\s*<span>b<\/span>\s*<\/div>\s*<\/Uu5Bricks\.Tabs\.Item>/);
   assert.deepEqual(tree.report.unresolved, { Hooky: 1 });
 });
+
+test("a gradient or dark background in the style of a div moves into Uu5Bricks.Background (radius kept); glass, light, text-clip and buttons stay", () => {
+  const div = (st) => ({ host: true, name: "div", props: { style: { $json: st } }, children: [{ t: "text", v: "x" }] });
+  const tree = { nodes: [
+    div({ background: "radial-gradient(1200px 600px at 85% -10%, #7c3aed 0%, transparent 60%), #0b1026", borderRadius: 32, padding: 4 }),
+    div({ background: "#0b1026" }),
+    div({ background: "rgba(255, 255, 255, 0.07)" }),
+    div({ background: "rgb(255, 255, 255)" }),
+    div({ background: "linear-gradient(90deg, #a5b4fc, #fdba74) text" }),
+    { t: "el", name: "Uu5Elements.Button", props: { style: { $json: { background: "#002882" } } }, children: [{ t: "text", v: "Go" }] },
+  ], report: {} };
+  const { text, stats, notes } = toUu5String(tree);
+  assert.match(text, /<Uu5Bricks\.Background gradient="radial-gradient\([^"]*#0b1026" margin=0 borderRadius="none" style='<uu5json\/>\{"borderRadius":32,"overflow":"hidden"\}'>/);
+  assert.match(text, /<Uu5Bricks\.Background color="#0b1026" margin=0 borderRadius="none">/);
+  assert.match(text, /"background":"rgba\(255, 255, 255, 0\.07\)"/);
+  assert.match(text, /"background":"rgb\(255, 255, 255\)"/);
+  assert.match(text, /\) text"/);
+  assert.match(text, /<Uu5Elements\.Button style='<uu5json\/>\{"background":"#002882"\}'>Go/);
+  assert.doesNotMatch(text, /full"/);
+  assert.equal(stats.backgrounds, 2);
+  assert.match(notes.join(" "), /Uu5Bricks\.Background/);
+});
+
+test("var(--…) in styles (class rules, inline, gradients) is written as its value, never as a variable", () => {
+  const vars = { "--brand-black": "#000000", "--brand-blue": "#0057b8", "--font": "Inter, sans-serif" };
+  const render = new Map();
+  const root = rootOf(el("div", { style: { background: "radial-gradient(circle at 80% 20%, var(--brand-blue) 0%, var(--brand-black) 55%)", fontFamily: "var(--font)", color: "var(--missing, #fff)" } }, "x"), render);
+  const tree = collectUu5Tree({ rootFiber: root, styleRules: [], varLookup: (n) => vars[n] ?? "" });
+  const { text } = toUu5String(tree);
+  assert.doesNotMatch(text, /var\(/);
+  assert.match(text, /radial-gradient\(circle at 80% 20%, #0057b8 0%, #000000 55%\)/);
+  assert.match(text, /"fontFamily":"Inter, sans-serif"/);
+  assert.match(text, /"color":"#fff"/);
+});
+
+test("a Card with a dark background becomes the Background (margin, radius) with its content padding in a div", () => {
+  const card = { t: "el", name: "Uu5Bricks.Card", props: { card: "full", borderRadius: "expressive", margin: "0px", contentPadding: "32px", style: { $json: { background: "#000000", overflow: "hidden" } } }, children: [{ t: "text", v: "Hi" }] };
+  const { text } = toUu5String({ nodes: [card], report: {} });
+  assert.match(text, /<Uu5Bricks\.Background color="#000000" margin="0px" borderRadius="expressive">/);
+  assert.match(text, /"padding":"32px","overflow":"hidden"/);
+  assert.doesNotMatch(text, /Uu5Bricks\.Card/);
+});
