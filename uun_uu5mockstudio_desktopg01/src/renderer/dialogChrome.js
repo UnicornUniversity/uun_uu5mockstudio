@@ -30,3 +30,8 @@ export function addDialogClose(card, onClick) {
   }
   head.append(closeButton(onClick));
 }
+
+/** Which dialog gets an Escape: `open` are the open dialogs, topmost first. null when the topmost one already has the focus (its own handler closes it) or none is open. */
+export function escapeTarget(open, target) {
+  return open.length && !open[0].contains(target) ? open[0] : null;
+}

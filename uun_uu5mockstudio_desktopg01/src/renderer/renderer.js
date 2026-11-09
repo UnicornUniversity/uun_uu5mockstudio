@@ -38,7 +38,7 @@ import { collectCode } from "./uu5StringCollect.js";
 import { toUu5String, mergeTrees, summaryOf } from "./uu5String.js";
 import { createDocCards, docsContext, territoryDialog } from "./docCards.js";
 import { kindLabel } from "./docLinks.js";
-import { addDialogClose } from "./dialogChrome.js";
+import { addDialogClose, escapeTarget } from "./dialogChrome.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -633,13 +633,14 @@ $("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitA
 for (const [box, btn] of [["sizebox", "sz-cancel"], ["confirm", "cf-cancel"], ["dialog", "dlg-cancel"], ["jsonbox", "jb-cancel"], ["setup", "setup-close"]]) addDialogClose($(box).firstElementChild, () => $(btn).click());
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "guidebox", "cmtbox", "varbox"]; // topmost first
+const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "guidebox", "cmtbox", "varbox", "branddlg"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
-  const open = MODALS.map((id) => $(id)).filter((m) => m && !m.hidden);
-  if (!open.length || open.some((m) => m.contains(e.target))) return;
+  const open = [...[...document.querySelectorAll(".docprev, .tsdbox")].reverse(), ...MODALS.map((id) => $(id))].filter((m) => m && !m.hidden);
+  const top = escapeTarget(open, e.target); // the focus is in the topmost dialog: its own handler closes it; elsewhere (also in a dialog below it, a question asked over it) the topmost closes
+  if (!top) return;
   e.preventDefault(); e.stopPropagation();
-  open[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  top.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
 }, true);
 addEventListener("keydown", (e) => {
   if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") || ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.target.matches("textarea,input,select"))) { e.preventDefault(); toggleFullscreen(canvas.selected()); return; }
@@ -1644,7 +1645,7 @@ function askText({ title, value = "", ok = "OK" }) {
     dlg.hidden = false; input.focus(); input.select();
     const done = (v) => { dlg.hidden = true; $("dlg-cancel").onclick = null; dlg.onkeydown = null; $("dialog").firstElementChild.onsubmit = null; resolve(v); };
     $("dlg-cancel").onclick = () => done(null);
-    dlg.onkeydown = (e) => { if (e.key === "Escape") done(null); };
+    dlg.onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(null); } };
     $("dialog").firstElementChild.onsubmit = (e) => { e.preventDefault(); input.value.trim() ? done(input.value.trim()) : ($("dlg-err").textContent = "Enter a name."); };
   });
 }

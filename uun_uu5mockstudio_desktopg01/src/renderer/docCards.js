@@ -71,7 +71,7 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
           el("button", { type: "button", textContent: "✕", title: "Close", onclick: close })),
         body));
     ov.tabIndex = -1;
-    ov.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     document.body.append(ov);
     ov.focus();
   }
@@ -173,7 +173,7 @@ export async function territoryDialog({ studio = window.studio, toast = () => {}
         customBox,
         el("p", {}, el("button", { type: "button", className: "primary", textContent: "Save", onclick: save })))));
   ov.tabIndex = -1;
-  ov.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); if (e.key === "Enter" && e.target.tagName === "INPUT") save(); });
+  ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } if (e.key === "Enter" && e.target.tagName === "INPUT") save(); });
   document.body.append(ov);
   (custom ? awid.input : select).focus();
 }
