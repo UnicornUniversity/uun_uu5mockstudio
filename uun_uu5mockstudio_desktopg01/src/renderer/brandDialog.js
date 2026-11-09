@@ -25,7 +25,7 @@ export function createBrandDialog({ api, toast, askAgent, onChanged }) {
     <div class="bd-sw" hidden></div>
     <textarea class="bd-code rc-code" spellcheck="false" aria-label="DESIGN_GUIDE.md" style="display:block;min-height:280px"></textarea>
     <p class="bd-err err"></p>
-    <div class="row"><button class="bd-improve" type="button" title="Claude reads the text of the manual, checks the guide and completes it (spacing, tone of voice, do and don’t)">Improve with Claude</button><span class="bd-meta mute grow"></span><button class="bd-save" type="button">Save</button></div></div>`;
+    <div class="row"><button class="bd-improve" type="button" title="Claude reads the text of the manual, checks the guide and completes it (spacing, tone of voice, do and don’t)">Improve with Claude</button><button class="bd-reset" type="button" title="Remove the chosen manuals and restore the empty design guide">Reset</button><span class="bd-meta mute grow"></span><button class="bd-save" type="button">Save</button></div></div>`;
   document.body.append(box);
   const q = (s) => box.querySelector(s), code = q(".bd-code"), err = q(".bd-err"), srcEl = q(".bd-sources");
   q(".bd-x").innerHTML = ICON_CLOSE;
@@ -60,7 +60,7 @@ export function createBrandDialog({ api, toast, askAgent, onChanged }) {
     flashTimer = setTimeout(() => { b.textContent = "Save"; b.classList.remove("bd-saved"); }, 1800);
   }
   const parseTokensCount = () => [...code.value.matchAll(new RegExp(HEX.source, "gim"))].length;
-  const setBusy = (on) => { working = on; for (const b of box.querySelectorAll(".bd-import,.bd-improve,.bd-re,.bd-rm")) b.disabled = on || (b.classList.contains("bd-improve") && !sources.length); q(".bd-prog").hidden = !on; if (on) { q(".bd-result").hidden = true; } };
+  const setBusy = (on) => { working = on; for (const b of box.querySelectorAll(".bd-import,.bd-reset,.bd-improve,.bd-re,.bd-rm")) b.disabled = on || (b.classList.contains("bd-improve") && !sources.length); q(".bd-prog").hidden = !on; if (on) { q(".bd-result").hidden = true; } };
   api.onBrandProgress((p) => {
     if (!working) return;
     const { phase, done, total, file } = p, pct = total ? Math.round((done / total) * 100) : 0;
@@ -105,6 +105,16 @@ export function createBrandDialog({ api, toast, askAgent, onChanged }) {
   });
   code.addEventListener("input", () => { dirty = true; q(".bd-meta").textContent = "Unsaved changes."; const b = q(".bd-save"); b.textContent = "Save"; b.classList.remove("bd-saved"); paintSwatches(); });
   q(".bd-save").onclick = save;
+  q(".bd-reset").onclick = async () => {
+    if (working || !window.confirm("Reset the brand guidelines? The chosen manuals are removed and the design guide returns to the empty template. Your edits in the guide are lost.")) return;
+    err.textContent = ""; q(".bd-result").hidden = true;
+    const r = await api.brandGet();
+    if (r?.error) { err.textContent = r.error; return; }
+    for (const n of r.sources ?? []) await api.brandRemove(n);
+    const w = await api.brandSet(r.template);
+    if (w?.error) { err.textContent = w.error; return; }
+    await load(); onChanged?.(); toast("Brand guidelines reset.");
+  };
   async function close() { if (working) return; if (dirty && !(await save())) return; box.hidden = true; }
   q(".bd-x").onclick = close;
   box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });

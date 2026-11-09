@@ -59,7 +59,6 @@ main{overflow:hidden}
 .tab{padding:4px 12px;border-radius:7px;background:transparent;border:1px solid transparent;color:var(--mute);cursor:pointer;white-space:nowrap}
 .tab.on{background:var(--panel);border-color:var(--line);color:var(--fg)}
 .ctl{display:flex;gap:4px;align-items:center}.ctl button,.ctl select{padding:4px 9px}.ctl button.on{background:var(--acc);border-color:var(--acc);color:#fff}
-#zpct{min-width:52px}
 #work{flex:1;display:flex;min-height:0}
 #canvas{position:relative;flex:1;overflow:hidden;background:var(--canvas);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
 #canvas.panning{cursor:grabbing}
@@ -832,10 +831,15 @@ body[data-chat="float"] #chat.collapsed #chatbubble:hover{filter:brightness(1.08
 body[data-noproject] #ptabs{display:none}
 
 /* quieter bars: one zoom pill on top, a short bar of icons over the selected screen */
-#zoompill{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
-#zoompill button{border:0;border-radius:0;background:none;padding:4px 9px}#zoompill button:hover{background:var(--bg)}
-#zoompill .zsep{width:1px;align-self:stretch;margin:5px 2px;background:var(--line)}
-#zpct{min-width:48px}
+#zoompill{position:relative;display:inline-flex;align-items:center}
+#zpct{display:inline-flex;align-items:center;gap:6px;min-width:64px;justify-content:center;border-radius:999px;padding:4px 11px;font-variant-numeric:tabular-nums}
+#zpct .zcar{width:9px;height:6px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+#zmenu{position:absolute;top:calc(100% + 6px);left:0;gap:1px;z-index:50;min-width:200px;display:flex;flex-direction:column;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#zmenu[hidden]{display:none}
+#zmenu .zm-item{display:flex;justify-content:space-between;gap:20px;align-items:center;border:0;background:none;border-radius:7px;padding:7px 10px;text-align:left;color:var(--fg);font:inherit;box-shadow:none}
+#zmenu .zm-item:hover{background:var(--bg)}
+#zmenu kbd{font:inherit;opacity:.5}
+#zmenu .zsep{height:1px;margin:4px 2px;background:var(--line)}
 #selbar button.icon{display:inline-flex;align-items:center;gap:3px;padding:4px 8px;line-height:0}#selbar .caret{font-size:9px;line-height:1;color:var(--mute)}
 
 /* a project card on the dashboard: the bin shows on hover */
@@ -1065,7 +1069,7 @@ body.simple #modesw,body.simple #model,body.simple #dash-model,body.simple #dash
 #varbox .vr-opt.on,#varbox .vr-aspect.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 #varbox .vr-custom{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 #varbox .row{display:flex;gap:8px;align-items:center;margin-top:6px}#varbox .grow{flex:1}
-#flowbtn[aria-pressed="true"]{color:var(--acc)}
+#flowbtn[aria-pressed="true"],#inspect.on{color:var(--acc)}
 .fcmt{position:relative;display:inline-flex;align-items:center;border:0;background:none;color:var(--mute);padding:0 4px;opacity:.7}.fcmt:hover{color:var(--acc);opacity:1}.fcmt.has{color:var(--acc);opacity:1}
 .fcmt .ico{width:calc(16px*var(--iz,1));height:calc(16px*var(--iz,1))}.fcmt-n{margin-left:2px;font-size:calc(11px*var(--iz,1));font-weight:600}
 .frame[data-compact="2"] .fcmt{display:none}

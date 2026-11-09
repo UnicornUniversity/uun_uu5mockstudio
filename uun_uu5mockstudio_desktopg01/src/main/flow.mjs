@@ -3,12 +3,12 @@
  * string (`href="room-detail.html"`, `location.href = "room-detail.html"`, `navigate("./room-detail.html#top")`). Used to draw arrows
  * between the frames on the canvas, and in the handoff specification.
  *
- * An edge is marked `nav: true` when every link of it is part of a menu (inside <nav>, <header>, <footer>, <aside>, or one of several
+ * An edge is marked `nav: true` when every link of it is part of a menu (inside <nav>, <header>, <footer>, <aside>, or one of a run of
  * screen links lying close together). Such links are the same on every screen, so they say nothing about the flow of the feature
  * and the canvas hides them unless asked.
  */
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const MENU_SPAN = 500; // screen links this close to each other (at least MENU_COUNT distinct screens) are a menu
+const MENU_GAP = 900; // screen links that follow each other at most this far apart form a run; a run of at least MENU_COUNT distinct screens is a menu
 const MENU_COUNT = 3;
 
 function menuRanges(src) {
@@ -26,9 +26,12 @@ export function findFlowEdges(texts) {
       for (const m of src.matchAll(new RegExp(`["'\`](?:\\.{0,2}/)?${esc(name)}(?:[#?][^"'\`]*)?["'\`]`, "g"))) hits.push({ name, at: m.index });
     }
     hits.sort((a, b) => a.at - b.at);
-    for (const h of hits) {
-      const near = new Set(hits.filter((o) => Math.abs(o.at - h.at) <= MENU_SPAN).map((o) => o.name));
-      h.nav = ranges.some(([s, e]) => h.at >= s && h.at < e) || near.size >= MENU_COUNT;
+    for (let i = 0; i < hits.length;) { // runs of links lying close together
+      let j = i + 1;
+      while (j < hits.length && hits[j].at - hits[j - 1].at <= MENU_GAP) j++;
+      const run = hits.slice(i, j), menu = new Set(run.map((h) => h.name)).size >= MENU_COUNT;
+      for (const h of run) h.nav = menu || ranges.some(([s, e]) => h.at >= s && h.at < e);
+      i = j;
     }
     for (const to of names) {
       if (to === from) continue;

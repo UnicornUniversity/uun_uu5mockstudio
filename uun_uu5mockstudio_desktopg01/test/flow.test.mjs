@@ -20,13 +20,19 @@ test("self links, other file types and similar names are not edges", () => {
 
 test("links of a menu are marked as nav, a link in the content is not", () => {
   const menu = `<nav><a href="a.html">A</a><a href="b.html">B</a></nav>`;
-  const edges = findFlowEdges({ "a.html": menu + " ".repeat(900) + `<button href="c.html">go</button>`, "b.html": menu, "c.html": `<div><a href="a.html">1</a> <a href="b.html">2</a> <a href="c.html">3</a></div>` });
+  const edges = findFlowEdges({ "a.html": menu + " ".repeat(1200) + `<button href="c.html">go</button>`, "b.html": menu, "c.html": `<div><a href="a.html">1</a> <a href="b.html">2</a> <a href="c.html">3</a></div>` });
   assert.deepEqual(edges.filter((e) => e.from === "a.html"), [{ from: "a.html", to: "b.html", nav: true }, { from: "a.html", to: "c.html", nav: false }]);
   assert.deepEqual(edges.filter((e) => e.from === "c.html").map((e) => e.nav), [true, true]); // three screen links close together are a menu
 });
 
+test("links one after another with some markup between them are a menu, even at the ends of the run", () => {
+  const item = (f) => `<Button\n  label="x"\n  ${" ".repeat(430)}href={BASE + "${f}"} />\n`;
+  const edges = findFlowEdges({ "a.html": item("b.html") + item("c.html") + item("d.html") + item("a.html"), "b.html": "", "c.html": "", "d.html": "" });
+  assert.deepEqual(edges.map((e) => e.nav), [true, true, true]);
+});
+
 test("a link is nav only when all its occurrences are in a menu", () => {
-  const edges = findFlowEdges({ "a.html": `<nav><a href="b.html">B</a></nav>` + " ".repeat(900) + `<a href="b.html">again</a>`, "b.html": "" });
+  const edges = findFlowEdges({ "a.html": `<nav><a href="b.html">B</a></nav>` + " ".repeat(1200) + `<a href="b.html">again</a>`, "b.html": "" });
   assert.deepEqual(edges, [{ from: "a.html", to: "b.html", nav: false }]);
 });
 

@@ -89,8 +89,8 @@ body[data-glass] .docprev .docprev-body.shot{background:#fff}
 
 /* ---------- controls become capsules ---------- */
 /* not inside the attachment cards, chips and hints of the composer: their buttons have colours of their own (blue Sign in, the dark ✕) */
-body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.viewtog),select):not(:is(#attachments,#chips,#mentions,#screenctx,#pickhint) *){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
-body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.viewtog)):hover{background:var(--glass-thick)!important}
+body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog),select):not(:is(#attachments,#chips,#mentions,#screenctx,#pickhint) *){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog)):hover{background:var(--glass-thick)!important}
 body[data-glass] #previewbar .primary{background:var(--glass-accent)!important;color:#fff;border-color:rgba(255,255,255,.5)!important}
 body[data-glass] #chat #stop{background:linear-gradient(180deg,#f06a6e,#e5484d)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;color:#fff;box-shadow:0 4px 14px rgba(229,72,77,.4),inset 0 1px 0 rgba(255,255,255,.5)}
 body[data-glass] #chat #send{background:var(--glass-accent)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;box-shadow:0 4px 14px rgba(59,108,240,.45),inset 0 1px 0 rgba(255,255,255,.5)}
@@ -113,10 +113,11 @@ body[data-glass] #inspector{border-left:1px solid var(--glass-edge)!important;bo
 /* the selection bar of a screen sits below the floating toolbar and description strip, not behind them */
 body[data-glass] #selbar{top:calc(var(--glass-top,0px) + 12px)}
 /* the zoom pill is one capsule with plain buttons in it (not a capsule per button) */
-body[data-glass] #bar #zoompill{background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);padding:2px}
-body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3){background:none!important;border:0!important;box-shadow:none!important;border-radius:999px!important;padding:3px 9px}
-body[data-glass] #bar #zoompill button:not(#x1):not(#x2):not(#x3):hover{background:var(--glass-hover)!important}
-body[data-glass] #bar #zoompill .zsep{margin:6px 1px;background:var(--glass-edge)}
+body[data-glass] #bar #zoompill #zpct{background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #bar #zoompill #zpct:hover{background:var(--glass-hover)!important}
+body[data-glass] #zmenu{background:var(--glass-thick,var(--panel));border:1px solid var(--glass-edge);backdrop-filter:blur(20px) saturate(1.4)}
+body[data-glass] #zmenu .zm-item:hover{background:var(--glass-hover)}
+body[data-glass] #zmenu .zsep{background:var(--glass-edge)}
 /* presenting: the corner controls are glass buttons */
 body[data-glass] #fsctl{background:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
 body[data-glass] :is(#fsclose,#fsdevbtn){background:var(--glass-regular);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);color:var(--fg);border:1px solid var(--glass-edge);border-radius:999px;box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}

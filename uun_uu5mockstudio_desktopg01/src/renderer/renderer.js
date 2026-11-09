@@ -565,7 +565,7 @@ const canvas = createCanvas({
   onTemplate: (file) => saveAsTemplate(file),
   onRequestSize: askSize,
   onGone: (file) => { window.studio.unregisterView(file); renderTabs(); },
-  onChange: (what) => { $("zpct").textContent = canvas.zoomPercent() + "%"; if (what === "layout" || what === "move") flow?.draw(); if (what === "layout" || what === "move" || what === "camera") vlayer?.draw(); if (what === "layout") persistLayout(); },
+  onChange: (what) => { $("zval").textContent = canvas.zoomPercent() + "%"; if (what === "layout" || what === "move") flow?.draw(); if (what === "layout" || what === "move" || what === "camera") vlayer?.draw(); if (what === "layout") persistLayout(); },
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
@@ -628,7 +628,16 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   if (fresh.length) canvas.focus(fresh[fresh.length - 1]);
 });
 $("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.zoomBy(0.8);
-$("zpct").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
+$("z100").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
+// one pill: the percentage opens a small menu (zoom in / out, 100 %, fit)
+{
+  const menu = $("zmenu"), pill = $("zpct");
+  const setOpen = (on) => { menu.hidden = !on; pill.setAttribute("aria-expanded", String(on)); };
+  pill.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
+  menu.addEventListener("click", (e) => { if (e.target.closest("#zin,#zout")) return; setOpen(false); }); // + / − stay open so they can be repeated
+  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !e.target.closest("#zoompill")) setOpen(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
+}
 // every dialog closes with the same cross in its header; in the static ones it does what their Cancel / Close button does
 for (const [box, btn] of [["sizebox", "sz-cancel"], ["confirm", "cf-cancel"], ["dialog", "dlg-cancel"], ["jsonbox", "jb-cancel"], ["setup", "setup-close"]]) addDialogClose($(box).firstElementChild, () => $(btn).click());
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that

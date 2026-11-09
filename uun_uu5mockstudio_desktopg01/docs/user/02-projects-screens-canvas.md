@@ -30,7 +30,7 @@ The projects live in **Documents → uu5Mock Studio** (change it in **Project �
 
 Each screen is a **frame** on the canvas.
 
-- **Zoom** with ⌘ + scroll (or pinch), the zoom pill in the top bar (− 71 % + | Fit), or **View → Zoom In / Out**. **Show All Screens (⌘0)** or **Fit** shows everything. **Arrange Screens** puts the frames in a tidy row.
+- **Zoom** with ⌘ + scroll (or pinch), the zoom pill in the top bar (click the percentage for Zoom in / out, Actual size and Fit), or **View → Zoom In / Out**. **Show All Screens (⌘0)** or **Fit** shows everything. **Arrange Screens** puts the frames in a tidy row.
 - **Pan** by scrolling over the background or dragging it. Scrolling over a screen scrolls that screen; hold **⌥** to move the canvas instead (the same with the inspector on).
 - **Select** a screen by clicking it. A short bar of icons appears above it: **Export**, **Share**, **⋯** (the inspector and the project description are icons in the top bar). The bar can be moved by its grip (a double click puts it back).
 - **Device size**: the size button in the title of a frame (when the frame is too small on the screen for its title to show it: **⋯ / right-click → Device size…**) (**View → Device for All Screens** sets all frames at once) (Desktop 1440×900, Laptop, Tablet, Mobile, **Custom size…**). **Height to fit** makes the frame as tall as its content. Frames can also be resized by their corners.
