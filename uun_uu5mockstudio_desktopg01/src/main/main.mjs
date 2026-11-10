@@ -123,7 +123,7 @@ app.whenReady().then(async () => {
   let usableAgents = null; // ids of the AI providers the user can use (claude, codex), once known: the menu shows only what applies
   let repoLinked = false; // does the open project have a linked repository? (enables the Git items of the Project menu)
   function rebuildMenu(list) {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate({
+    const appMenu = Menu.buildFromTemplate(buildMenuTemplate({
       platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged, agents: usableAgents,
       send: (action) => {
         if (action === "project:reveal" && current) shell.openPath(dir());
@@ -132,7 +132,11 @@ app.whenReady().then(async () => {
         else if (action === "view:glass") toggleGlass();
         else emit("menu:action", action);
       },
-    })));
+    }));
+    // a menu-bar menu opening must close the renderer's own dropdowns (project menu…), the web page gets no event for it
+    // (on macOS the event of a menu-bar menu fires on the root menu, not on the submenu that opens, so listen on both)
+    for (const m of [appMenu, ...appMenu.items.map((it) => it.submenu)]) m?.on("menu-will-show", () => emit("menu:opened"));
+    Menu.setApplicationMenu(appMenu);
   }
   /** The folder that holds all projects: open it in the file manager, or pick another one (applied by restarting the app). */
   async function projectsFolder(op) {

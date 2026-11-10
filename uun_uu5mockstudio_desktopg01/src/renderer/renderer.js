@@ -1961,6 +1961,7 @@ $("projmenu").onclick = async (e) => {
   else if (act === "projects-open" || act === "projects-change") { const r = await window.studio.projectsFolder(act.slice(9)); if (r?.error) toast(r.error, { err: true }); }
 };
 addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projmenu").hidden = true; });
+window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-bar menu opened: hide the dropdown
 
 // ---------- application menu actions (the menu itself lives in main; it only sends action ids) ----------
 {

@@ -129,6 +129,7 @@ contextBridge.exposeInMainWorld("studio", {
   templatesZip: (id) => invoke("templates:zip", id),
   closeProject: () => invoke("projects:close"),
   onMenu: on("menu:action"),
+  onMenuOpened: on("menu:opened"),
   onGlass: on("glass:set"),
   toggleGlass: () => invoke("glass:toggle"),
   openProject: (name) => invoke("projects:open", name),
