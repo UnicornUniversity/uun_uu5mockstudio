@@ -274,11 +274,37 @@ export function sitemapOutline(sm, { limit = 6000 } = {}) {
 // ---------------------------------------------------------------- the map as a picture (to share it)
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const cut = (t, n) => (String(t).length > n ? `${String(t).slice(0, n - 1)}…` : String(t));
+/** The kinds of nodes the picture tells apart, in the order of the legend (what each one means for the user reading the picture). */
+export const SVG_LEGEND = [
+  { key: "built", type: "page", label: "Page, its screen is built" },
+  { key: "planned", type: "page", label: "Page, no screen yet" },
+  { key: "section", type: "section", label: "Section, part of the page above" },
+  { key: "group", type: "group", label: "Group, only a menu item" },
+  { key: "external", type: "external", label: "Link out of the site" },
+  { key: "stub", type: "stub", label: "Page not solved here" },
+  { key: "folded", type: "page", label: "Folded branch, pages below" },
+];
+/** One node as SVG: the box, the accent bar, the mark (✔ ○ ↗ –), the title and, for a folded branch, the number below. */
+function nodeSvg({ x, y, w, h, type: t, built, title = "", folded = 0, maxChars = 31 }) {
+  const out = [], accent = t === "external" ? "#e0912f" : t === "page" ? "#2f6df6" : t === "group" ? "#98a2b3" : "#cdd3dd";
+  const dash = t === "group" ? ` stroke-dasharray="5 3"` : "";
+  const sec = t === "section"; // a block of a page: a tinted pill in full colour, without the bar of a page (grey is for what is not solved here)
+  const fill = t === "stub" ? "#f4f5f7" : sec ? "#eef3fe" : "#ffffff", ink = t === "stub" || t === "group" ? "#667085" : "#1d1f24";
+  out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${sec ? h / 2 : 8}" fill="${fill}" stroke="${sec ? "#b9cdfb" : "#d6dbe4"}"${dash}/>`);
+  if (!sec) out.push(`<rect x="${x}" y="${y + 6}" width="3" height="${h - 12}" rx="1.5" fill="${accent}"/>`);
+  let mark = "", col = "#667085";
+  if (t === "external") mark = "↗"; else if (t === "stub") mark = "–"; else if (t === "page") { mark = built ? "✔" : "○"; col = built ? "#2f8f49" : "#667085"; }
+  if (mark) out.push(`<text x="${x + 14}" y="${y + h / 2 + 4.5}" fill="${col}">${mark}</text>`);
+  if (title) out.push(`<text x="${x + (mark ? 32 : 14)}" y="${y + h / 2 + 4.5}" fill="${ink}"${sec ? ` font-size="12"` : ""}>${esc(cut(title, (mark ? maxChars - 3 : maxChars) - (folded ? 5 : 0)))}</text>`);
+  if (folded) out.push(`<text x="${x + w - 12}" y="${y + h / 2 + 4}" text-anchor="end" fill="#667085" font-size="12">▸ ${folded}</text>`);
+  return out.join("");
+}
 /**
  * The whole map (every branch unfolded) as an SVG picture, the root on the left and the pages to the right, as in the app. Review comments are not drawn.
- * `isScreen(file)` marks the pages that have a screen; the branches in `collapsed` (ids) stay folded, with the number of pages below, exactly as in the app. Returns { svg, width, height }.
+ * `isScreen(file)` marks the pages that have a screen; the branches in `collapsed` (ids) stay folded, with the number of pages below, exactly as in the app.
+ * Below the map a legend explains the kinds of nodes the map uses (only those; `legend: false` leaves it out). Returns { svg, width, height }.
  */
-export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set() } = {}) {
+export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), legend = true } = {}) {
   const NW = 236, NH = 34, GX = 44, GY = 12, PAD = 28;
   if (!sm?.root) return { svg: "", width: 0, height: 0 };
   let cursor = 0, maxDepth = 0; const flat = [], edges = [];
@@ -289,22 +315,38 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set() }
     for (const k of kids) edges.push([box, k]); flat.push(box); return box;
   };
   lay(sm.root, 0);
-  const width = PAD * 2 + (maxDepth + 1) * NW + maxDepth * GX, height = PAD * 2 + Math.max(NH, cursor - GY);
+  const mapHeight = PAD * 2 + Math.max(NH, cursor - GY);
+  let width = PAD * 2 + (maxDepth + 1) * NW + maxDepth * GX;
+  // ----- the legend: the kinds used by this map, as small nodes with a text, in rows as wide as the map
+  const used = new Set();
+  for (const { n, folded } of flat) {
+    used.add(n.type === "page" ? (n.file && isScreen(n.file) ? "built" : "planned") : n.type);
+    if (folded) used.add("folded");
+  }
+  const items = legend ? SVG_LEGEND.filter((l) => used.has(l.key)) : [];
+  const LW = 64, LH = 26, LGAP = 10, LROW = LH + 10, textW = (t) => Math.ceil(t.length * 6.6);
+  width = Math.max(width, items.length ? PAD * 2 + LW + LGAP + Math.max(...items.map((l) => textW(l.label))) : 0);
+  const placed = []; let lx = PAD, ly = 0;
+  for (const l of items) {
+    const w = LW + LGAP + textW(l.label);
+    if (lx > PAD && lx + w > width - PAD) { lx = PAD; ly += LROW; }
+    placed.push({ ...l, x: lx, y: ly }); lx += w + 28;
+  }
+  const legendTop = mapHeight, legendHeight = placed.length ? 24 + 18 + ly + LH + PAD : 0, height = mapHeight + legendHeight;
   const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" font-size="13">`, `<rect width="100%" height="100%" fill="#ffffff"/>`];
   for (const [a, b] of edges) { const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, xm = x1 + GX / 2; out.push(`<path d="M${x1} ${y1}H${xm}V${y2}H${x2}" fill="none" stroke="#cdd3dd" stroke-width="1.5"/>`); }
-  for (const { n, x, y, folded } of flat) {
-    const t = n.type, accent = t === "external" ? "#e0912f" : t === "page" ? "#2f6df6" : t === "group" ? "#98a2b3" : "#cdd3dd";
-    const dash = t === "group" ? ` stroke-dasharray="5 3"` : "";
-    const sec = t === "section"; // a block of a page: a tinted pill in full colour, without the bar of a page (grey is for what is not solved here)
-    const fill = t === "stub" ? "#f4f5f7" : sec ? "#eef3fe" : "#ffffff", ink = t === "stub" || t === "group" ? "#667085" : "#1d1f24";
-    out.push(`<rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="${sec ? NH / 2 : 8}" fill="${fill}" stroke="${sec ? "#b9cdfb" : "#d6dbe4"}"${dash}/>`);
-    if (!sec) out.push(`<rect x="${x}" y="${y + 6}" width="3" height="${NH - 12}" rx="1.5" fill="${accent}"/>`);
-    let mark = "", col = "#667085";
-    if (t === "external") mark = "↗"; else if (t === "stub") mark = "–"; else if (t === "page") { const ok = n.file && isScreen(n.file); mark = ok ? "✔" : "○"; col = ok ? "#2f8f49" : "#667085"; }
-    if (mark) out.push(`<text x="${x + 14}" y="${y + NH / 2 + 4.5}" fill="${col}">${mark}</text>`);
-    out.push(`<text x="${x + (mark ? 32 : 14)}" y="${y + NH / 2 + 4.5}" fill="${ink}"${t === "section" ? ` font-size="12"` : ""}>${esc(cut(n.title, (mark ? 28 : 31) - (folded ? 5 : 0)))}</text>`);
-    if (folded) out.push(`<text x="${x + NW - 12}" y="${y + NH / 2 + 4}" text-anchor="end" fill="#667085" font-size="12">▸ ${descendants(n)}</text>`);
+  for (const { n, x, y, folded } of flat) out.push(nodeSvg({ x, y, w: NW, h: NH, type: n.type, built: Boolean(n.file && isScreen(n.file)), title: n.title, folded: folded ? descendants(n) : 0 }));
+  if (placed.length) {
+    const top = legendTop + 4;
+    out.push(`<g class="legend"><line x1="${PAD}" y1="${top}" x2="${width - PAD}" y2="${top}" stroke="#e4e7ec"/>`);
+    out.push(`<text x="${PAD}" y="${top + 24}" fill="#667085" font-size="11" font-weight="600" letter-spacing=".06em">LEGEND</text>`);
+    for (const l of placed) {
+      const y = top + 24 + 14 + l.y;
+      out.push(nodeSvg({ x: l.x, y, w: LW, h: LH, type: l.type, built: l.key === "built", folded: l.key === "folded" ? "N" : 0 }));
+      out.push(`<text x="${l.x + LW + LGAP}" y="${y + LH / 2 + 4}" fill="#344054" font-size="12">${esc(l.label)}</text>`);
+    }
+    out.push("</g>");
   }
   out.push("</svg>");
   return { svg: out.join(""), width, height };

@@ -215,7 +215,7 @@ test("sitemapSvg draws every page once, escapes titles and leaves the comments o
   const { svg, width, height } = sitemapSvg(sm, { isScreen: (f) => f === "one.html" });
   assert.ok(svg.startsWith("<svg") && svg.endsWith("</svg>") && width > 0 && height > 0);
   assert.ok(svg.includes("Portal &lt;A&amp;B&gt;"));
-  assert.equal((svg.match(/<rect x=/g) ?? []).length, 8); // 4 nodes: a box and an accent bar each
+  assert.equal((svg.split('<g class="legend">')[0].match(/<rect x=/g) ?? []).length, 8); // 4 nodes: a box and an accent bar each
   assert.ok(svg.includes("✔") && !svg.includes("secret review"));
   assert.equal(sitemapSvg(null).svg, "");
 });
@@ -226,6 +226,17 @@ test("sitemapSvg keeps the folded branches folded, with the number of pages belo
   assert.ok(all.includes("A1") && !folded.includes(">A1<"));
   assert.ok(folded.includes("▸ 1") && !all.includes("▸ 1"));
   assert.ok(sitemapSvg(sm, { collapsed: new Set([sm.root.children[1].id]) }).svg.includes(">B<")); // a page without children is not folded
+});
+
+test("sitemapSvg explains in a legend only the kinds of nodes the map uses", () => {
+  const sm = normalizeSitemap({ root: { title: "Portal", children: [{ title: "One", file: "one.html" }, { title: "Out", type: "external" }, { title: "Box", type: "group", children: [{ title: "Deep", file: "deep.html" }] }] } });
+  const { svg, height } = sitemapSvg(sm, { isScreen: (f) => f === "one.html" });
+  const legend = svg.split('<g class="legend">')[1] ?? "";
+  for (const t of ["Page, its screen is built", "Page, no screen yet", "Link out of the site", "Group, only a menu item"]) assert.ok(legend.includes(t), t);
+  for (const t of ["Section", "not solved here", "Folded branch"]) assert.ok(!legend.includes(t), t);
+  assert.ok(sitemapSvg(sm, { collapsed: new Set([sm.root.children[2].id]) }).svg.includes("Folded branch"));
+  const bare = sitemapSvg(sm, { legend: false });
+  assert.ok(!bare.svg.includes("legend") && bare.height < height);
 });
 
 import { duplicateNode } from "../src/renderer/sitemap.js";

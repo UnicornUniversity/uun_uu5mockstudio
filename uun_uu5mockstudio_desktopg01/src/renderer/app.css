@@ -1138,10 +1138,15 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .pc-edit{flex:1;width:100%;box-sizing:border-box;border:0;outline:none;resize:none;padding:14px 18px;background:var(--panel);color:var(--fg);font:13px/1.55 ui-monospace,Menlo,monospace;cursor:text}
 .pc-edit[hidden],.pc-view[hidden]{display:none}
 .pc-rs{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,var(--line) 50%)}
-.plan-open{margin-left:auto;font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:2px 9px;cursor:pointer}.plan-open:hover{background:var(--code)}
+.plan-tail{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.plan-tail .plan-count{margin-left:0}
+.plan-open{font:inherit;font-size:12px;font-weight:500;border:0;background:var(--code);color:var(--fg);border-radius:6px;padding:3px 10px;cursor:pointer;line-height:1.4}.plan-open:hover{background:color-mix(in srgb,var(--fg) 14%,var(--code))}
+.plan-open.ghost{background:transparent;color:var(--mute)}.plan-open.ghost:hover{background:var(--code);color:var(--fg)}
+.plan-open:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.plan-peek{max-height:7.5em;overflow:hidden;cursor:pointer;-webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
+.plan-peek:hover{-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
 #world{z-index:1}
 .plan-head{flex-wrap:wrap}.plan-state,.plan-count,.plan-open{white-space:nowrap}
-.plan-ref{margin:.3em 0;font-size:12.5px}
 .plan-toggle{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:3px 10px;cursor:pointer;margin:.3em 0}.plan-toggle:hover{background:var(--code)}
 .plancard[hidden]{display:none}
 .pc-ctl .pc-hide{border-color:transparent;padding:3px 7px;color:var(--mute)}

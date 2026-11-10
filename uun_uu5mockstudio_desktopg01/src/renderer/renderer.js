@@ -407,8 +407,8 @@ const planCtx = {
   discard: (e) => { e.state = "discarded"; e.editing = false; paint(e); persist(); },
   build: (e) => buildPlan(e),
   answer: (e) => answerPlan(e),
-  showOnCanvas: (e) => e.planSlug && planCards.focus(e.planSlug),
-  showSitemap: () => planCards.focus("@sitemap"),
+  openPlan: (e) => e.planSlug && planCards.focus(e.planSlug),
+  openSitemap: () => planCards.focus("@sitemap"),
   showDetail: async (name, host) => {
     const old = host.querySelector(":scope > .pn-detail"); if (old) return old.remove();
     const d = await window.studio.docsDetail(name).catch(() => null); if (!d) return;

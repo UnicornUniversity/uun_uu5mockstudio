@@ -28,19 +28,31 @@ export function renderPlan(entry, ctx) {
 
   // ----- header
   const stateText = entry.state === "superseded" ? "replaced by a newer plan" : entry.state === "approved" ? ((entry.sitemap || entry.sitemapMoved) && !entry.tree ? "map approved" : "approved, building") : entry.state === "discarded" ? "discarded" : entry.editing ? "editing" : "proposed";
-  root.append(el("div", { className: "plan-head" }, el("b", { textContent: "Plan" }), el("span", { className: "plan-state", textContent: stateText }), entry.sitemap ? el("span", { className: "plan-count mute", textContent: `${countPages(entry.sitemap)} pages` }) : entry.sitemapMoved ? el("span", { className: "plan-count mute", textContent: "map in the project" }) : null, entry.tree ? el("span", { className: "plan-count mute", textContent: `${countNodes(entry.tree)} components` }) : null, entry.sitemapMoved && ctx.showSitemap ? el("button", { type: "button", className: "plan-open", textContent: "Show sitemap", title: "The sitemap of the project", onclick: () => ctx.showSitemap() }) : null, entry.planSlug && ctx.showOnCanvas ? el("button", { type: "button", className: "plan-open", textContent: "Show on canvas", title: `plans/${entry.planSlug}.md`, onclick: () => ctx.showOnCanvas(entry) }) : null));
+  // the full plan (the file) and the sitemap open in the large view, like "Open Full Plan" in VS Code; the chat card stays a short preview
+  const count = entry.sitemap ? `${countPages(entry.sitemap)} pages` : entry.tree ? `${countNodes(entry.tree)} components` : "";
+  const openBtn = (label, title, fn, cls = "") => el("button", { type: "button", className: `plan-open ${cls}`.trim(), textContent: label, title, onclick: fn });
+  const canOpen = Boolean(entry.planSlug && ctx.openPlan);
+  root.append(el("div", { className: "plan-head" },
+    el("b", { textContent: "Plan" }), el("span", { className: "plan-state", textContent: stateText }),
+    el("span", { className: "plan-tail" },
+      count ? el("span", { className: "plan-count mute", textContent: count }) : null,
+      entry.sitemapMoved && ctx.openSitemap ? openBtn("Sitemap", "Open the sitemap of the project", () => ctx.openSitemap(), "ghost") : null,
+      canOpen && entry.state !== "superseded" ? openBtn("Open full plan", `Open plans/${entry.planSlug}.md`, () => ctx.openPlan(entry)) : null)));
 
   if (entry.state === "superseded") return root;
   // ----- text
-  const onCanvas = Boolean(entry.planSlug && ctx.showOnCanvas) && !editable;
+  const onCanvas = canOpen && !editable; // the plan is a file: the chat shows a preview, the whole text is one click away
   if (editable) {
     const ta = el("textarea", { className: "plan-edit", value: entry.text, spellcheck: false, rows: 8, "aria-label": "Text of the plan" });
     ta.oninput = () => { entry.text = ta.value; ctx.persist?.(entry); };
     root.append(ta);
   } else if (entry.text) {
-    // a plan that is a file shows its text on the canvas card: here only a pointer, so the same text is not read twice
-    if (onCanvas) root.append(el("p", { className: "plan-ref mute", textContent: "The text of the plan is on the canvas card (read it or edit it there)." }));
-    else root.append(el("div", { className: "plan-text", innerHTML: markdown(entry.text) }));
+    // a plan that is a file: the beginning of the text, faded out; a click opens the whole plan
+    if (onCanvas) {
+      const prev = el("div", { className: "plan-text plan-peek", innerHTML: markdown(entry.text), title: "Open the full plan" });
+      prev.onclick = (e) => { if (!(e.target instanceof Element && e.target.closest("a,button"))) ctx.openPlan(entry); };
+      root.append(prev);
+    } else root.append(el("div", { className: "plan-text", innerHTML: markdown(entry.text) }));
   }
 
   // ----- questions of the agent
