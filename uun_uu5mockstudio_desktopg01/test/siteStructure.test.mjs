@@ -130,6 +130,9 @@ test("the picked pages become a sitemap with their sources, or an outline for th
   assert.match(out, /\n {4}- A1 — https:\/\/\S+code=a1\n/);
   assert.doesNotMatch(out, /A2/);
   assert.match(structureContext({ url: BOOK.url, title: "Book", outline: out, count: 2 }), /2 pages picked[\s\S]*`source`[\s\S]*- A1/);
+  const ext = structureContext({ url: BOOK.url, title: "Book", outline: out, count: 2, existing: true });
+  assert.match(ext, /ALREADY HAS a sitemap[\s\S]*do not replace it[\s\S]*WHOLE revised map[\s\S]*- A1/);
+  assert.doesNotMatch(ext, /Start the sitemap from it/);
   // a web page a portal links to leads out of it; what the content links to waits for the user
   const portal = eccToTree({ sections: ['<uu5string/><Uu5Bricks.P>Some longer text of the page, and then a link to <Uu5Bricks.Link href="https://unicorn.com/">Unicorn</Uu5Bricks.Link> in it.</Uu5Bricks.P>'], title: "Portal" }, ECC);
   assert.deepEqual(defaultChecked(portal), [portal.id]);

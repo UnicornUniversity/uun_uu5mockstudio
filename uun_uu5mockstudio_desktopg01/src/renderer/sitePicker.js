@@ -14,7 +14,7 @@ const HINT = { bookkit: "the menu of the book", mkEcc: "the pages of the documen
 
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
-export function openSitePicker({ studio = window.studio, toast = () => {}, url = "", replaces = false, useLabel = "Use as the sitemap", onUse, onAgent } = {}) {
+export function openSitePicker({ studio = window.studio, toast = () => {}, url = "", replaces = false, useLabel = replaces ? "Replace the sitemap" : "Use as the sitemap", agentLabel = replaces ? "Hand to the agent to extend the sitemap" : "Hand to the agent", onUse, onAgent } = {}) {
   let state = "idle", error = "", tree = null, kind = null, source = "";
   const checked = new Set(), collapsed = new Set(), loading = new Set();
 
@@ -24,7 +24,7 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
   const body = el("div", { className: "sp-body" });
   const count = el("span", { className: "sp-count" });
   const useBtn = el("button", { type: "button", className: "primary", textContent: useLabel, title: replaces ? "The picked pages replace the sitemap of the project (the current one is kept and can be restored)" : "The picked pages become the sitemap of the project as they are", onclick: () => finish(onUse, false) });
-  const agentBtn = el("button", { type: "button", textContent: "Hand to the agent", title: "The picked pages go to the agent in Plan mode: it proposes the sitemap from them and you approve it", onclick: () => finish(onAgent, true) });
+  const agentBtn = el("button", { type: "button", textContent: agentLabel, title: replaces ? "The picked pages are attached to your next message: the agent goes through them and proposes how to extend or change the sitemap of the project; nothing is replaced until you approve it" : "The picked pages are attached to your next message in Plan mode: the agent proposes the sitemap from them and you approve it", onclick: () => finish(onAgent, true) });
   const head = el("h2", { textContent: "Sitemap from a link" });
 
   async function load({ login = false } = {}) {

@@ -114,7 +114,7 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
         d.append(seg);
         if (use === "sitemap") {
           const n = card.pick?.count;
-          d.append(el("div", { className: `doc-s${card.pickState === "error" ? " doc-err" : ""}`, textContent: card.pickState === "loading" ? "Reading the structure of the pages…" : card.pickState === "error" ? card.pickError : `${n} page${n === 1 ? "" : "s"} for the sitemap` }));
+          d.append(el("div", { className: `doc-s${card.pickState === "error" ? " doc-err" : ""}`, textContent: card.pickState === "loading" ? "Reading the structure of the pages…" : card.pickState === "error" ? card.pickError : `${n} page${n === 1 ? "" : "s"} ${card.pick?.chosen ? "you picked" : "found"} · go with the message` }));
           if (card.pickState === "error") d.append(el("button", { type: "button", className: "doc-a doc-map", textContent: "Retry", onclick: (e) => { e.stopPropagation(); loadPick(card); } }));
           else if (structure && card.pickState !== "loading") d.append(el("button", { type: "button", className: "doc-a doc-map", textContent: "Choose the pages…", title: "Pick all or some of the pages, and unfold a page to go deeper", onclick: (e) => { e.stopPropagation(); structure(card); } }));
         }
@@ -148,7 +148,7 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
     count: () => cards.length,
     busy: () => cards.some((c) => c.state === "loading" || (c.use === "sitemap" && c.pickState === "loading")),
     /** The pages chosen in the picker for the card of `url`: the card is for the sitemap now. */
-    setPick(url, pick) { const c = cards.find((x) => x.url === url); if (c) { set(c.id, { use: "sitemap", pick, pickState: "ready", pickError: "" }); onUse("sitemap"); } return Boolean(c); },
+    setPick(url, pick) { const c = cards.find((x) => x.url === url); if (c) { set(c.id, { use: "sitemap", pick: { ...pick, chosen: true }, pickState: "ready", pickError: "" }); onUse("sitemap"); } return Boolean(c); },
     /** The documents that could not be read (shown so that the user decides: remove them, or sign in). A web page that did not open does not stop the message: its link stays in the text. */
     blocked: () => cards.filter((c) => c.state !== "ready" && c.state !== "loading" && c.kind !== "web"),
     /** The documents read, for the message; the cards are cleared. */

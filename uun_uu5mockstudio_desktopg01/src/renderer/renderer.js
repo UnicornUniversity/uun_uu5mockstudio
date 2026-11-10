@@ -816,9 +816,12 @@ function pickFromLink(url = "", card = false) {
       setProjectSitemap(r); planCards.focus("@sitemap");
     },
     onAgent: (pick) => {
-      if (card && docCards.setPick(url, pick)) return; // opened from the card of a pasted link: the pages stay on that card
+      const t = $("prompt"), has = Boolean(projectSitemap);
+      // nothing is sent yet: say so, the picker just closed
+      toast(`${pick.count} page${pick.count === 1 ? "" : "s"} of “${pick.title}” ${pick.count === 1 ? "is" : "are"} attached to your next message. ${has ? "The agent will propose how to extend the sitemap with them" : "The agent will propose the sitemap from them"}: add what you want and send.`);
+      if (card && docCards.setPick(url, pick)) { t.focus(); return; } // opened from the card of a pasted link: the pages stay on that card
       sitePick = pick; renderAttachments(); setPlanMode(true);
-      const t = $("prompt"); if (!t.value.trim()) t.value = `Propose the sitemap of the pages from the attached structure of “${pick.title}”: `;
+      if (!t.value.trim()) t.value = has ? `Go through the attached pages of “${pick.title}” and propose how to extend the sitemap of the project with them: ` : `Propose the sitemap of the pages from the attached structure of “${pick.title}”: `;
       t.focus(); t.setSelectionRange(t.value.length, t.value.length);
     },
   });
@@ -1911,7 +1914,7 @@ function renderDashAttachments() {
   if (dashPick) box.append(sitePickCard(dashPick, () => { dashPick = null; renderDashAttachments(); }));
   box.hidden = !dashDocs.count() && !dashPick; $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count();
 }
-const dashDocs = createDocCards({ onChange: () => renderDashAttachments(), toast, structure: (card) => openSitePicker({ toast, url: card.url, onUse: (pick) => { dashPick = pick; renderDashAttachments(); }, onAgent: (pick) => { dashDocs.setPick(card.url, pick); } }), offerStructure: () => dashboard.scope() === "site" }); // Plus4U documents pasted on the dashboard
+const dashDocs = createDocCards({ onChange: () => renderDashAttachments(), toast, structure: (card) => openSitePicker({ toast, url: card.url, onUse: (pick) => { dashPick = pick; renderDashAttachments(); }, onAgent: (pick) => { dashDocs.setPick(card.url, pick); toast(`${pick.count} page${pick.count === 1 ? "" : "s"} of “${pick.title}” go to the agent with your first message.`); } }), offerStructure: () => dashboard.scope() === "site" }); // Plus4U documents pasted on the dashboard
 const dashboard = createDashboard({
   api: window.studio, docs: dashDocs, toast,
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
@@ -2293,8 +2296,8 @@ $("form").onsubmit = async (e) => {
     libBlock,
     noteBlock,
     docsContext(docs.filter((d) => !d.pick)),
-    ...docs.filter((d) => d.pick).map((d) => structureContext({ ...d.pick, file: d.file, shot: d.shot })), // a link marked "Sitemap" on its card: the structure behind it, not a page to redesign
-    pages && structureContext(pages),
+    ...docs.filter((d) => d.pick).map((d) => structureContext({ ...d.pick, file: d.file, shot: d.shot, existing: Boolean(projectSitemap) })), // a link marked "Sitemap" on its card: the structure behind it, not a page to redesign
+    pages && structureContext({ ...pages, existing: Boolean(projectSitemap) }), // with a sitemap in the project the pages extend it, they never replace it
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
     assetPaths.length && `Pictures to USE IN THE DESIGN (not just references; e.g. a logo): ${assetPaths.join(", ")}. They are already files in the project, so do not copy or re-create them: place each into the screen with exactly that relative path (src="${assetPaths[0]}"), at its natural proportions. Open one with the Read tool only to see what it shows.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,

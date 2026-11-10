@@ -82,7 +82,9 @@ When the pages already exist somewhere, start from them: **From a link…** (the
 2. **Pick the pages.** A tick takes a page with everything below it; **Alt+click** ticks only the page itself. The menu and the pages of a book or document are ticked at first, the rest waits for you. **Load its pages** on a row reads the links of that page and puts its pages below it, so you go as deep as you need.
 3. Choose what happens with them:
    - **Use as the sitemap**: the picked pages become the sitemap of the project as they are (a sitemap that exists is kept and can be restored). A page you did not tick but whose sub-pages you did stays as a group, so the pages keep their place.
-   - **Hand to the agent**: the pages are attached to your next message in Plan mode. Say what you want (regroup them, add pages, drop some) and the agent proposes the sitemap from them.
+   - **Hand to the agent**: the pages are attached to your next message in Plan mode (nothing is sent yet: a note says so). Say what you want (regroup them, add pages, drop some) and the agent proposes the sitemap from them.
+
+   When the project already has a sitemap, the buttons read **Replace the sitemap** and **Hand to the agent to extend the sitemap**: the agent then goes through the pages and proposes how to extend or change the map you have, and nothing is replaced until you approve its plan.
 
 No content is read at this point. Every page remembers its address (**Source** in the page editor); when you create its screen, the app reads the page first and the agent builds the screen from its content.
 
