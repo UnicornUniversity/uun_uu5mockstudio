@@ -24,11 +24,13 @@ import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { gatherHandoff, buildHandoff } from "./handoff.mjs";
 import { findFlowEdges } from "./flow.mjs";
+import { SITEMAP_FILE, readSitemap, writeSitemap, restoreSitemap } from "./sitemapFile.mjs";
+import { PLANS_DIR, listPlans, readPlan, writePlan, savePlan, removePlan, withStatus, STATUSES } from "./plans.mjs";
 import { readComments, changeComments, screensWithComments, defaultAuthor } from "./comments.mjs";
 import { findAssets, writeUu5Assets } from "./assets.mjs";
 import { resolveProjectsRoot } from "./paths.mjs";
 import { createThumbs } from "./thumbs.mjs";
-import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
+import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVELS, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
 import { zipSync } from "fflate";
 import { captureWithFallback } from "./screenshot.mjs";
 import { createProjects, readState, updateState, writeState } from "./projects.mjs";
@@ -347,8 +349,17 @@ app.whenReady().then(async () => {
   let lastRules = "";
   const startWatch = () => {
     const name = current, changed = new Set();
-    let rulesDirty = false, notesDirty = false, projectDirty = false, brandDirty = false;
-    watcher = fs.watch(dir(), (_evt, file) => {
+    let rulesDirty = false, notesDirty = false, projectDirty = false, brandDirty = false, sitemapDirty = false;
+    // the plans (<project>/plans/*.md) are in a subfolder, which the non-recursive watch of the project does not see; it may appear later (the first plan)
+    let plansWatch = null, plansTimer;
+    const watchPlans = () => {
+      if (plansWatch) return;
+      try { plansWatch = fs.watch(path.join(dir(), PLANS_DIR), () => { clearTimeout(plansTimer); plansTimer = setTimeout(async () => { if (name === current) emit("plans:changed", { project: name, plans: await listPlans(dir()) }); }, 250); }); plansWatch.on("error", () => { plansWatch = null; }); } catch { /* no plans yet */ }
+    };
+    watchPlans();
+    const rootWatch = fs.watch(dir(), (_evt, file) => {
+      if (file === SITEMAP_FILE) sitemapDirty = true;
+      if (file === PLANS_DIR) { watchPlans(); clearTimeout(plansTimer); plansTimer = setTimeout(async () => { if (name === current) emit("plans:changed", { project: name, plans: await listPlans(dir()) }); }, 250); }
       if (file?.endsWith(".html")) changed.add(file);
       if (file === RULES_FILE) rulesDirty = true;
       if (file === "PROJECT.md") projectDirty = true;
@@ -358,12 +369,14 @@ app.whenReady().then(async () => {
       watchTimer = setTimeout(async () => {
         if (name !== current) return;
         emit("preview:changed", { project: name, screens: listScreens(), changed: [...changed] }); changed.clear();
+        if (sitemapDirty) { sitemapDirty = false; emit("sitemap:changed", { project: name, ...((await readSitemap(dir())) ?? { sitemap: null, hasPrev: false }) }); }
         if (rulesDirty) { rulesDirty = false; const now = await readRules(dir()), s = summarizeChange(lastRules, now); lastRules = now; if (s.added.length || s.removed.length) emit("memory:changed", { project: name, kind: "rules", ...s }); }
         if (brandDirty) { brandDirty = false; emit("memory:changed", { project: name, kind: "brand" }); }
         if (projectDirty) { projectDirty = false; emit("memory:changed", { project: name, kind: "project" }); }
         if (notesDirty) { notesDirty = false; emit("memory:changed", { project: name, kind: "notes", screens: screensWithNotes(dir()) }); }
       }, 250);
     });
+    watcher = { close: () => { rootWatch.close(); plansWatch?.close(); clearTimeout(plansTimer); } };
   };
   /** The repository linked to the open project as the UI shows it: { path, name, branch } or { path, name, error } when it is gone. */
   const repoView = async (state) => {
@@ -371,7 +384,12 @@ app.whenReady().then(async () => {
     try { return { ...(await validateRepo(p)), view: state.repo.view ?? null, readDir: (await repoReadDir(state)) ?? p }; } catch (e) { return { path: p, name: path.basename(p), error: e.message }; }
   };
   /** The level the open project was started on ("page" gets the environments); from the template it was made from, else guessed from its screens. */
-  const projectEnv = () => {
+  const projectEnv = (state) => {
+    const kind = state?.kind, scope = kind?.scope === "site" || kind?.scope === "single" ? kind.scope : null; // what the dashboard was told: one page, or the whole web site / portal
+    const r = templateEnv();
+    return { ...r, level: LEVELS.includes(kind?.level) ? kind.level : r.level, scope };
+  };
+  const templateEnv = () => {
     try { const t = JSON.parse(fs.readFileSync(path.join(dir(), ".studio", "template", "template.json"), "utf8")); return { level: t.level ?? null, environment: t.environment ?? null }; } catch { /* no template */ }
     try { return { level: guessLevel(listScreens().map((n) => fs.readFileSync(path.join(dir(), n), "utf8"))), environment: null }; } catch { return { level: null, environment: null }; }
   };
@@ -383,7 +401,7 @@ app.whenReady().then(async () => {
     if (!current) { currentChatId = null; return { ...base, screens: [], chat: [], chatId: null, chats: [], layout: null }; }
     const state = await loadChats(dir());
     currentChatId = state.currentChatId;
-    return { ...base, screens: listScreens(), chat: chats.current(state).entries, chatId: state.currentChatId, chats: chats.list(state), layout: state.layout, ...projectEnv(), repo: await repoView(state), notes: screensWithNotes(dir()) };
+    return { ...base, screens: listScreens(), chat: chats.current(state).entries, chatId: state.currentChatId, chats: chats.list(state), layout: state.layout, ...projectEnv(state), repo: await repoView(state), notes: screensWithNotes(dir()) };
   };
   /** Close the open project: back to the start screen, nothing runs for it any more. */
   const closeProject = async () => {
@@ -501,6 +519,13 @@ app.whenReady().then(async () => {
   ipcMain.handle("projects:thumb", guard((_e, name) => thumbs.get(String(name))));
   ipcMain.handle("projects:close", guard(() => closeProject()));
   ipcMain.handle("projects:open", guard((_e, name) => openProject(name)));
+  // what a project was started as on the dashboard: the level and, for Web and Document, one page or the whole site (decides where the sitemap is offered)
+  ipcMain.handle("project:setKind", guard(async (_e, kind) => {
+    if (!current) throw new Error("No project is open.");
+    const level = LEVELS.includes(kind?.level) ? kind.level : null, scope = (level === "web" || level === "page") && (kind?.scope === "site" || kind?.scope === "single") ? kind.scope : null;
+    await updateState(dir(), (s) => { s.kind = { level, scope }; return s; });
+    return { level, scope };
+  }));
   ipcMain.handle("projects:create", guard(async (_e, name) => openProject(await projects.create(name))));
   ipcMain.handle("projects:rename", guard(async (_e, from, to) => {
     const wasCurrent = from === current;
@@ -897,6 +922,21 @@ app.whenReady().then(async () => {
     const r = await dialog.showSaveDialog(win, { defaultPath: name, filters: [{ name: label, extensions: [ext] }] });
     return r.canceled ? null : r.filePath;
   };
+  // A picture or text made by the renderer (the sitemap as PNG / SVG): saved through the same dialog.
+  ipcMain.handle("export:data", guard(async (_e, o) => {
+    const ext = o?.ext === "svg" ? "svg" : "png", name = (path.basename(String(o?.name ?? `export.${ext}`)).replace(/[^\w.\- ]+/g, "_") || `export.${ext}`).replace(/\.[^.]*$/, "") + `.${ext}`;
+    const dest = await pickDest(name, ext, ext === "svg" ? "SVG" : "PNG");
+    if (!dest) return { canceled: true };
+    await fs.promises.writeFile(dest, ext === "svg" ? String(o?.text ?? "") : Buffer.from(String(o?.base64 ?? ""), "base64"));
+    return { path: dest };
+  }));
+  ipcMain.handle("clipboard:image", guard(async (_e, base64) => {
+    const buf = Buffer.from(String(base64 ?? ""), "base64");
+    if (nativeImage.createFromBuffer(buf).isEmpty()) return { error: "The picture could not be read." };
+    // this Electron has no clipboard.writeImage: the clipboard takes ClipboardItems (as for the PNG of a screen)
+    await clipboard.write([new ClipboardItem({ "image/png": new Blob([buf], { type: "image/png" }) })]);
+    return { ok: true };
+  }));
   ipcMain.handle("export:html", guard(async (_e, file) => {
     const dest = await pickDest(path.basename(file), "html", "HTML");
     return dest ? { path: await exportHtml(dir(), file, dest) } : { canceled: true };
@@ -952,6 +992,17 @@ app.whenReady().then(async () => {
     emit("memory:changed", { project: current, kind: "project" });
     return r;
   }));
+  // the sitemap of the project: <project>/sitemap.json (see sitemapFile.mjs)
+  ipcMain.handle("sitemap:read", guard(async () => (await readSitemap(dir())) ?? { sitemap: null, hasPrev: false }));
+  ipcMain.handle("sitemap:write", guard(async (_e, sitemap, opts) => { await writeSitemap(dir(), sitemap, { backup: Boolean(opts?.backup) }); return (await readSitemap(dir())); }));
+  ipcMain.handle("sitemap:restore", guard(async () => (await restoreSitemap(dir())) ?? { error: "There is nothing to take back." }));
+  // plans: Markdown files in <project>/plans (see plans.mjs)
+  ipcMain.handle("plans:list", guard(() => listPlans(dir())));
+  ipcMain.handle("plans:read", guard((_e, slug) => readPlan(dir(), slug)));
+  ipcMain.handle("plans:write", guard(async (_e, slug, text) => { await writePlan(dir(), slug, text); return true; }));
+  ipcMain.handle("plans:status", guard(async (_e, slug, status) => { if (!STATUSES.includes(status)) throw new Error("Unknown status."); await writePlan(dir(), slug, withStatus((await readPlan(dir(), slug)).text, status)); return true; }));
+  ipcMain.handle("plans:save", guard((_e, plan) => savePlan(dir(), { slug: plan?.slug, title: plan?.title, markdown: plan?.markdown, status: plan?.status })));
+  ipcMain.handle("plans:remove", guard(async (_e, slug) => { await removePlan(dir(), slug, { trash: (p) => shell.trashItem(p) }); return true; }));
   ipcMain.handle("flow:edges", guard(() => findFlowEdges(Object.fromEntries(listScreens().map((f) => [f, fs.readFileSync(path.join(dir(), f), "utf8")])))));
   ipcMain.handle("comments:get", guard((_e, file) => readComments(dir(), file)));
   ipcMain.handle("comments:all", guard(async () => Object.fromEntries(await Promise.all(screensWithComments(dir()).map(async (f) => [f, await readComments(dir(), f)])))));

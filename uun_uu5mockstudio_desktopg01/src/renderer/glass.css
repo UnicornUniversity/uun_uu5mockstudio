@@ -49,7 +49,7 @@ body[data-glass] > main{position:relative;background:var(--canvas)}
 /* ---------- material recipes ---------- */
 /* regular: bars and panels over the canvas */
 body[data-glass][data-chat="float"] #chat:not(.collapsed),
-body[data-glass] :is(#bar,#descstrip,#inspector,#selbar,#previewbar,#fsctl){
+body[data-glass] :is(#bar,#descstrip,#inspector,#smside,#selbar,#previewbar,#fsctl){
   background:var(--glass-regular)!important;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 /* thick: menus, popovers, toasts */
 body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#toast,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip,.catalog-drag-ghost){
@@ -89,8 +89,8 @@ body[data-glass] .docprev .docprev-body.shot{background:#fff}
 
 /* ---------- controls become capsules ---------- */
 /* not inside the attachment cards, chips and hints of the composer: their buttons have colours of their own (blue Sign in, the dark ✕) */
-body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog),select):not(:is(#attachments,#chips,#mentions,#screenctx,#pickhint) *){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
-body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog)):hover{background:var(--glass-thick)!important}
+body[data-glass] :is(#bar,#selbar,#chat header,#chat #form,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog),select):not(:is(#attachments,#chips,#mentions,#screenctx,#pickhint,#plansmenu,#mapmenu) *){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] :is(#bar,#selbar,#chat header,#previewbar) :is(button:not(#send):not(#stop):not(#projbtn):not(.mm-item):not(.zm-item):not(.viewtog):not(:is(#plansmenu,#mapmenu) *)):hover{background:var(--glass-thick)!important}
 body[data-glass] #previewbar .primary{background:var(--glass-accent)!important;color:#fff;border-color:rgba(255,255,255,.5)!important}
 body[data-glass] #chat #stop{background:linear-gradient(180deg,#f06a6e,#e5484d)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;color:#fff;box-shadow:0 4px 14px rgba(229,72,77,.4),inset 0 1px 0 rgba(255,255,255,.5)}
 body[data-glass] #chat #send{background:var(--glass-accent)!important;border:1px solid rgba(255,255,255,.5)!important;border-radius:999px!important;box-shadow:0 4px 14px rgba(59,108,240,.45),inset 0 1px 0 rgba(255,255,255,.5)}
@@ -98,7 +98,7 @@ body[data-glass] #chat #send{background:var(--glass-accent)!important;border:1px
 body[data-glass] #chat header #projbtn{background:transparent!important;border-color:transparent!important;box-shadow:none!important;border-radius:12px!important}
 body[data-glass] #chat header #projbtn:hover{background:var(--glass-hover)!important}
 /* an active toggle (inspector, component picker, the inspector switch above a screen) stays blue: a white capsule would hide its white icon */
-body[data-glass] :is(#bar,#chat #form,#selbar) button.on:not(#x1):not(#x2):not(#x3):not(#x4){background:var(--glass-accent)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
+body[data-glass] :is(#bar,#chat #form,#selbar) button.on:not(.viewtog):not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7){background:var(--glass-accent)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
 /* open tabs on the toolbar */
 body[data-glass] #bar .tab{border-radius:999px}
 body[data-glass] #bar .tab.on{background:var(--glass-thick);border-color:var(--glass-edge);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
@@ -109,7 +109,7 @@ body[data-glass] #descstrip{position:absolute;top:var(--glass-bar,46px);left:0;r
 body[data-glass] #descstrip button:hover{background:var(--glass-hover)}
 body[data-glass] main > #updates{position:absolute;top:var(--glass-updates,46px);left:0;right:0;z-index:24}
 body[data-glass] :is(main,#dash) #updates > div{background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-color:var(--glass-edge)!important;border-radius:16px!important;box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}
-body[data-glass] #inspector{border-left:1px solid var(--glass-edge)!important;box-shadow:-8px 0 30px -14px rgba(25,35,80,.25);padding-top:calc(var(--glass-top,0px) + 14px)}
+body[data-glass] :is(#inspector,#smside){border-left:1px solid var(--glass-edge)!important;box-shadow:-8px 0 30px -14px rgba(25,35,80,.25);padding-top:calc(var(--glass-top,0px) + 14px)}
 /* the selection bar of a screen sits below the floating toolbar and description strip, not behind them */
 body[data-glass] #selbar{top:calc(var(--glass-top,0px) + 12px)}
 /* the zoom pill is one capsule with plain buttons in it (not a capsule per button) */
@@ -156,9 +156,9 @@ body[data-glass] #dash-nav button.on{background:var(--glass-thin);box-shadow:var
 body[data-glass] #dash-where{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:14px;box-shadow:inset 0 1px 0 var(--glass-hi)}
 body[data-glass] #dash-where button{background:var(--glass-thick);border-color:var(--glass-edge);border-radius:999px}
 body[data-glass] #dash-pane{background:var(--glass-wash),var(--panel)}
-body[data-glass] :is(#dash-levels,#dash-views){background:var(--glass-thin);border:1px solid var(--glass-stroke);border-radius:999px;box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-shadow-sm);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
-body[data-glass] :is(#dash-levels,#dash-views) button{border-radius:999px}
-body[data-glass] :is(#dash-levels,#dash-views) button.on{background:var(--glass-thick);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] :is(#dash-levels,#dash-scope,#dash-views){background:var(--glass-thin);border:1px solid var(--glass-stroke);border-radius:999px;box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-shadow-sm);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
+body[data-glass] :is(#dash-levels,#dash-scope,#dash-views) button{border-radius:999px}
+body[data-glass] :is(#dash-levels,#dash-scope,#dash-views) button.on{background:var(--glass-thick);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
 body[data-glass] #dash-tpl{border-radius:999px}body[data-glass] #dash-tpl:hover{background:var(--glass-thin)}
 body[data-glass] .idea{background:var(--glass-thin);border-color:var(--glass-stroke);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
 body[data-glass] .idea:hover{background:var(--glass-thick)}
@@ -189,3 +189,13 @@ body[data-glass] #selmenu .fmt-acts button.primary:hover{background:var(--acc);c
 
 /* the ⋯ button of the selection bar while its menu is open: the glass accent is pale, so a white icon vanished (the colour follows the text instead) */
 body[data-glass] #selbar#selbar button.on:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5){background:var(--glass-thick)!important;color:var(--fg)!important;border-color:var(--glass-edge)!important}
+
+/* the view of a plan or the sitemap lies where the canvas lies: the same wash and the grey of the canvas, not a flat white sheet, so that the floating chat (glass) has something to blur over it */
+body[data-glass] #docview{background:var(--glass-wash),var(--canvas)}
+body[data-glass] #docview .sm-node{background:var(--glass-thin);-webkit-backdrop-filter:none;backdrop-filter:none}
+body[data-glass] #docview .sm-node.t-section{background:color-mix(in srgb,var(--acc) 12%,var(--glass-thin))}
+
+/* the floating chat is frosted glass: thinner tint and a blur that still shows the shapes of what lies under it (over a light, sparse page 62 % white just looked like a grey sheet) */
+body[data-glass][data-chat="float"] #chat:not(.collapsed){
+  background:color-mix(in srgb,var(--glass-regular) 62%,transparent)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(190%) brightness(1.02);backdrop-filter:blur(18px) saturate(190%) brightness(1.02)}

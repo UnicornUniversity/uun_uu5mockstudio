@@ -28,3 +28,27 @@ test("only https links become anchors", () => {
   assert.ok(!markdown("[x](javascript:alert(1))").includes("<a"));
   assert.ok(!markdown("[x](http://example.com)").includes("<a"));
 });
+
+import { markdownDoc } from "../src/renderer/markdown.js";
+
+test("markdownDoc: heading levels, nested lists, checklists", () => {
+  assert.equal(markdownDoc("# A\n### C"), "<h1>A</h1><h3>C</h3>");
+  assert.equal(markdownDoc("- a\n  - b\n- c"), "<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>");
+  assert.match(markdownDoc("- [x] done\n- [ ] open"), /<li class="task"><input type="checkbox" disabled checked aria-label="done"> done<\/li><li class="task"><input type="checkbox" disabled aria-label="open"> open<\/li>/);
+});
+
+test("markdownDoc: tables, quotes, rules and escaping", () => {
+  assert.equal(markdownDoc("| a | b |\n|---|---|\n| 1 | <x> |"), "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>&lt;x&gt;</td></tr></tbody></table>");
+  assert.equal(markdownDoc("> q\n\n---"), "<blockquote>q</blockquote><hr>");
+  assert.ok(!markdownDoc("<script>x</script>").includes("<script"));
+});
+
+test("markdownDoc: [[screen.html]] links focus a screen, a missing one is plain", () => {
+  assert.match(markdownDoc("see [[index.html]]"), /<a data-screen="index\.html">index<\/a>/);
+  assert.match(markdownDoc("see [[gone.html]]", { known: () => false }), /<code>gone\.html<\/code>/);
+});
+
+test("markdownDoc: ordered after unordered list and code fences", () => {
+  assert.equal(markdownDoc("- a\n\n1. b"), "<ul><li>a</li></ul><ol><li>b</li></ol>");
+  assert.equal(markdownDoc("```js\nx<y\n```"), "<pre><code>x&lt;y</code></pre>");
+});

@@ -23,6 +23,7 @@ The renderer calls `window.studio.<function>(…)` (`preload.cjs`), which does `
 | `templatesList` (`templates:list`) | → `{ templates, levels, sources }` |
 | `templatesReveal` (`templates:reveal`) | opens the folder of my templates |
 | `templatesApply(id)` (`templates:apply`) | copies the starter files into the open project → `{ written, skipped, screens }` |
+| `projectSetKind({ level, scope })` (`project:setKind`) | stores what the open project was started as (`state.kind`; `scope` only for the levels `web` / `page`) → `{ level, scope }`; the project payload then carries `level` and `scope` |
 
 ### Projects and screens
 
@@ -88,3 +89,11 @@ All take the **file name** of the screen; `ordinals` is the chain of ordinals (`
 | `onClaudeProgress`, `onCdnProgress`, `onUpdate`, `onGlass` | `claude:progress`, `cdn:progress`, `update:event`, `glass:set` | progress and state |
 
 For the exact signatures read `src/main/preload.cjs` (one line per function) and the handler of the same channel in `main.mjs`.
+
+## Plans (`plans/*.md`)
+
+`plans:list` → `[{ slug, title, status, created, mtime }]`; `plans:read(slug)` → `{ slug, text, meta, body, title, status }`; `plans:write(slug, text)` (whole text of an existing plan); `plans:status(slug, status)`; `plans:save({ slug?, title, markdown, status? })` → `{ slug, created }` (a new plan, or a new version of `slug`; `created` is kept); `plans:remove(slug)` (to the trash). Event `plans:changed` `{ project, plans }` (a watch on `<project>/plans`, started also when the folder appears later).
+
+## Sitemap (`sitemap.json`)
+
+`sitemap:read` → `{ sitemap, hasPrev }` (`sitemap` is null without a valid file); `sitemap:write(sitemap, { backup? })` → `{ sitemap, hasPrev }` (normalized; `backup` keeps the file it replaces); `sitemap:restore` → the result of taking the last replacement back, or `{ error }`. Event `sitemap:changed` `{ project, sitemap, hasPrev }` (the watch of the project folder).

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { memoryPrompt, studioPrompt } from "../src/main/claudeService.mjs";
+import { memoryPrompt, studioPrompt, kindPrompt } from "../src/main/claudeService.mjs";
 
 test("the prompt tells the agent to keep BUSINESS_RULES.md and carries its current content as data", () => {
   const p = memoryPrompt({ cwd: "/p/Demo", repoDir: null, rules: "# Business rules\n- R-001 Codes are unique.\n" });
@@ -51,4 +51,18 @@ test("the Economy mode adds a short rule and the screenshot for the agent is sma
 
 test("the agent is told to write components with their namespace, without aliases", () => {
   assert.match(studioPrompt({ cwd: "/p", urlBase: "http://x" }), /Do not alias or destructure a library/);
+});
+
+test("the sitemap of the project is part of the memory of the agent, and never to be edited by it", () => {
+  const out = memoryPrompt({ cwd: "/p", rules: "", sitemapBlock: "- Portal -> index.html\n  - About" });
+  assert.match(out, /sitemap\.json in \/p is the sitemap/); assert.match(out, /<<<SITEMAP\n- Portal -> index\.html/); assert.match(out, /never edit the file/);
+  assert.doesNotMatch(memoryPrompt({ cwd: "/p", rules: "" }), /SITEMAP/);
+});
+
+test("a whole web site starts with its sitemap, an application or one page gets none unless asked", () => {
+  assert.match(kindPrompt({ level: "web", scope: "site" }), /its sitemap comes first/);
+  assert.match(kindPrompt({ level: "page", scope: "single" }), /one page, not a web site or portal: do not propose a sitemap/);
+  assert.match(kindPrompt({ level: "app" }), /an application, not a web site/);
+  assert.match(kindPrompt({ level: "component" }), /unless the user asks for a sitemap/);
+  assert.equal(kindPrompt({ level: "web" }), ""); assert.equal(kindPrompt(null), ""); // an older Web project: as before
 });

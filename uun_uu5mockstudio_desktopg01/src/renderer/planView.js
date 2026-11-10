@@ -1,6 +1,7 @@
 import { KINDS, CHANGES, getNode, updateNode, addChild, addSibling, removeNode, duplicateNode, moveNode, indentNode, outdentNode, moveTo, countNodes } from "./planTree.js";
 import { markdown } from "./markdown.js";
 import { renderDiagram } from "./planDiagram.js";
+import { countPages } from "./sitemap.js";
 import { isAnswered, unanswered } from "./planTree.js";
 
 const el = (tag, props = {}, ...kids) => {
@@ -22,21 +23,25 @@ export function renderPlan(entry, ctx) {
   const editable = entry.state === "proposed" && entry.editing;
   const known = new Set(entry.known ?? []);
   entry.sel ??= [];
-  const drag = { from: null };
 
   const touch = (tree, sel) => { entry.tree = tree; entry.collapsed = []; if (sel) entry.sel = sel; ctx.checkNames?.(entry); ctx.change(entry); };
 
   // ----- header
-  const stateText = entry.state === "superseded" ? "replaced by a newer plan" : entry.state === "approved" ? "approved, building" : entry.state === "discarded" ? "discarded" : entry.editing ? "editing" : "proposed";
-  root.append(el("div", { className: "plan-head" }, el("b", { textContent: "Plan" }), el("span", { className: "plan-state", textContent: stateText }), entry.tree ? el("span", { className: "plan-count mute", textContent: `${countNodes(entry.tree)} components` }) : null));
+  const stateText = entry.state === "superseded" ? "replaced by a newer plan" : entry.state === "approved" ? ((entry.sitemap || entry.sitemapMoved) && !entry.tree ? "map approved" : "approved, building") : entry.state === "discarded" ? "discarded" : entry.editing ? "editing" : "proposed";
+  root.append(el("div", { className: "plan-head" }, el("b", { textContent: "Plan" }), el("span", { className: "plan-state", textContent: stateText }), entry.sitemap ? el("span", { className: "plan-count mute", textContent: `${countPages(entry.sitemap)} pages` }) : entry.sitemapMoved ? el("span", { className: "plan-count mute", textContent: "map in the project" }) : null, entry.tree ? el("span", { className: "plan-count mute", textContent: `${countNodes(entry.tree)} components` }) : null, entry.sitemapMoved && ctx.showSitemap ? el("button", { type: "button", className: "plan-open", textContent: "Show sitemap", title: "The sitemap of the project", onclick: () => ctx.showSitemap() }) : null, entry.planSlug && ctx.showOnCanvas ? el("button", { type: "button", className: "plan-open", textContent: "Show on canvas", title: `plans/${entry.planSlug}.md`, onclick: () => ctx.showOnCanvas(entry) }) : null));
 
   if (entry.state === "superseded") return root;
   // ----- text
+  const onCanvas = Boolean(entry.planSlug && ctx.showOnCanvas) && !editable;
   if (editable) {
     const ta = el("textarea", { className: "plan-edit", value: entry.text, spellcheck: false, rows: 8, "aria-label": "Text of the plan" });
     ta.oninput = () => { entry.text = ta.value; ctx.persist?.(entry); };
     root.append(ta);
-  } else if (entry.text) root.append(el("div", { className: "plan-text", innerHTML: markdown(entry.text) }));
+  } else if (entry.text) {
+    // a plan that is a file shows its text on the canvas card: here only a pointer, so the same text is not read twice
+    if (onCanvas) root.append(el("p", { className: "plan-ref mute", textContent: "The text of the plan is on the canvas card (read it or edit it there)." }));
+    else root.append(el("div", { className: "plan-text", innerHTML: markdown(entry.text) }));
+  }
 
   // ----- questions of the agent
   if (entry.questions?.length) root.append(questionsView());
@@ -68,79 +73,11 @@ export function renderPlan(entry, ctx) {
     return box;
   }
 
-  // ----- tree: a diagram (default) or an outline
+  // ----- tree: a diagram (default) or an outline (renderTree below, shared with the plan card on the canvas)
   entry.mode ??= "diagram";
   const movable = entry.state === "proposed"; // the boxes of a plan that waits for approval can be dragged at once, without "Edit plan"
-  const pickDetail = (name) => ctx.showDetail?.(name, detailHost);
-  const detailHost = el("div", { className: "pd-detail" });
-  const treeHost = el("div", { className: `pd-wrap${entry.full ? " full" : ""}` });
-  if (entry.tree) {
-    const switcher = el("div", { className: "rc-scope plan-view", role: "radiogroup", "aria-label": "How the tree is shown" },
-      ...[["diagram", "Diagram"], ["outline", "Outline"]].map(([m, label]) => el("button", { type: "button", textContent: label, className: entry.mode === m ? "on" : "", role: "radio", "aria-checked": String(entry.mode === m), onclick: () => { entry.mode = m; ctx.change(entry); } })));
-    if (entry.mode === "diagram") {
-      const toggleFull = () => { entry.full = !entry.full; ctx.change(entry); };
-      const diagram = renderDiagram({
-        entry, editable: movable, known, fullscreen: entry.full, onFullscreen: toggleFull,
-        onSelect: (path) => {
-          if (!editable) { const n = getNode(entry.tree, path); if (n?.kind === "library" && known.has(n.name)) pickDetail(n.name); return; } // not editing: a click shows what the component is
-          entry.sel = path; ctx.change(entry);
-        },
-        onMove: (from, to, pos) => { const r = moveTo(entry.tree, from, to, pos); if (r.tree !== entry.tree) touch(r.tree, r.path); },
-        onCollapse: (key) => { const c = new Set(entry.collapsed ?? []); if (!c.delete(key)) c.add(key); entry.collapsed = [...c]; ctx.change(entry); },
-        onDetail: pickDetail,
-        onKey: (path, e) => {
-          if (e.key === "Delete" || e.key === "Backspace") { if (path.length && editable) { e.preventDefault(); touch(removeNode(entry.tree, path), path.slice(0, -1)); } return; }
-          if (!e.altKey) return;
-          const f = { ArrowLeft: () => outdentNode(entry.tree, path), ArrowRight: () => indentNode(entry.tree, path), ArrowUp: () => moveNode(entry.tree, path, -1), ArrowDown: () => moveNode(entry.tree, path, 1) }[e.key];
-          if (f) { e.preventDefault(); const r = f(); if (r.tree !== entry.tree) touch(r.tree, r.path); }
-        },
-      });
-      treeHost.append(el("div", { className: "pd-top" }, switcher, entry.full ? el("button", { type: "button", className: "dlg-x", textContent: "✕", title: "Close the large view", "aria-label": "Close the large view", onclick: () => { entry.full = false; ctx.change(entry); } }) : null), diagram);
-      if (movable) treeHost.append(el("p", { className: "mute pd-hint", textContent: "Drag a box onto another: left edge = before, right edge = after, middle = inside. Ctrl/⌘ + wheel zooms, drag the background to move." }));
-      treeHost.append(detailHost);
-      if (editable && entry.full) { const side = el("div", { className: "pd-side" }); side.append(nodeEditor()); treeHost.append(side); }
-      root.append(treeHost);
-    } else {
-      root.append(switcher, outline());
-    }
-  }
-  function outline() {
-    const node = (n, path) => {
-      const k = pathKey(path), sel = editable && k === pathKey(entry.sel);
-      const unknown = n.kind === "library" && !known.has(n.name);
-      const card = el("div", { className: `pn k-${n.kind}${n.change ? ` c-${n.change}` : ""}${sel ? " sel" : ""}`, draggable: editable && path.length > 0 });
-      card.append(el("span", { className: "pk", textContent: KIND_LABEL[n.kind] ?? n.kind }), el("code", { className: "pname", textContent: n.name }));
-      if (n.change) card.append(el("span", { className: "pc", textContent: n.change }));
-      if (unknown) card.append(el("span", { className: "pu", title: "This name is not in the documentation of the uu5-development plugin: check it or mark it as new.", textContent: "not in the docs" }));
-      for (const [on, text, title] of [[n.relation, "×N", "Rendered once per item (1:N)"], [n.render, "R", `Rendered only when: ${n.render}`], [n.disabled, "D", `Disabled when: ${n.disabled}`], [n.label, `// ${n.label}`, "The data it shows"], [n.low, "low", "Low importance"]]) if (on) card.append(el("span", { className: "pc", textContent: text, title }));
-      if (n.data) card.append(el("span", { className: "pnote", textContent: `← ${n.data}` }));
-      if (n.note) card.append(el("span", { className: "pnote", textContent: n.note }));
-      if (editable) {
-        card.onclick = () => { entry.sel = path; ctx.change(entry); };
-        card.ondragstart = (e) => { drag.from = path; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", pathKey(path)); card.classList.add("dragging"); };
-        card.ondragend = () => { drag.from = null; card.classList.remove("dragging"); for (const x of root.querySelectorAll(".drop-before,.drop-after,.drop-inside")) x.classList.remove("drop-before", "drop-after", "drop-inside"); };
-        card.ondragover = (e) => {
-          if (!drag.from) return;
-          const pos = zone(e, card); e.preventDefault(); e.dataTransfer.dropEffect = "move";
-          card.classList.remove("drop-before", "drop-after", "drop-inside"); card.classList.add(`drop-${pos}`);
-        };
-        card.ondragleave = () => card.classList.remove("drop-before", "drop-after", "drop-inside");
-        card.ondrop = (e) => {
-          if (!drag.from) return;
-          e.preventDefault();
-          const r = moveTo(entry.tree, drag.from, path, zone(e, card)); drag.from = null;
-          if (r.tree !== entry.tree) touch(r.tree, r.path);
-        };
-      } else if (n.kind === "library" && !unknown) {
-        card.classList.add("click"); card.title = "Show the description of this component";
-        card.onclick = () => ctx.showDetail?.(n.name, li);
-      }
-      const li = el("li", {}, card);
-      if (n.children?.length) li.append(el("ul", {}, ...n.children.map((c, i) => node(c, [...path, i]))));
-      return li;
-    };
-    return el("ul", { className: "plan-tree" }, node(entry.tree, []));
-  }
+  if (entry.tree && onCanvas) root.append(el("button", { type: "button", className: "plan-toggle", textContent: entry.treeOpen ? "Hide the component tree" : `Show the component tree (${countNodes(entry.tree)})`, "aria-expanded": String(Boolean(entry.treeOpen)), onclick: () => { entry.treeOpen = !entry.treeOpen; ctx.change(entry); } }));
+  if (entry.tree && (!onCanvas || entry.treeOpen)) root.append(renderTree(entry, ctx, { editable, movable, known, nodeEditor: () => nodeEditor() }));
 
   // ----- the editor of the selected node
   if (editable && entry.tree && !(entry.mode === "diagram" && entry.full)) root.append(nodeEditor());
@@ -198,11 +135,95 @@ export function renderPlan(entry, ctx) {
     const given = (entry.questions ?? []).filter((q) => isAnswered(entry.answers?.[q.id])).length;
     if (given) actions.append(btn("Update the plan with my answers", () => ctx.answer(entry), "pa-wide"));
     if (editable) left.append(btn("Revise…", () => ctx.revise(entry)));
-    right.append(btn("Discard", () => ctx.discard(entry), "danger"), btn(editable ? "Build the edited plan" : "Build this", () => ctx.build(entry), "primary"));
+    right.append(btn("Discard", () => ctx.discard(entry), "danger"), btn(entry.sitemap && !entry.tree ? "Approve the map" : editable ? "Build the edited plan" : "Build this", () => ctx.build(entry), "primary"));
     actions.append(left, right);
     root.append(actions);
   }
   return root;
+}
+
+/**
+ * The component tree of a plan as a diagram or an outline (a switch), with the description of a library component on click.
+ * Used by the plan card in the chat and by the plan card on the canvas. `entry` = { tree, mode, collapsed, sel, full }, `ctx` = { change(entry), checkNames?(entry), showDetail?(name, host), chooseComponent? };
+ * `o` = { editable (nodes can be selected and the outline dragged), movable (boxes can be dragged), known (Set of library names that exist), nodeEditor() (the form of the selected node, for the large view), fullscreenable }.
+ */
+export function renderTree(entry, ctx, o = {}) {
+  const { editable = false, movable = false, known = new Set(), nodeEditor = null, fullscreenable = true } = o;
+  const wrap = el("div", { className: "pd-section" });
+  const drag = { from: null };
+  entry.sel ??= []; entry.mode ??= "diagram";
+  const touch = (tree, sel) => { entry.tree = tree; entry.collapsed = []; if (sel) entry.sel = sel; ctx.checkNames?.(entry); ctx.change(entry); };
+  const pickDetail = (name) => ctx.showDetail?.(name, detailHost);
+  const detailHost = el("div", { className: "pd-detail" });
+  const treeHost = el("div", { className: `pd-wrap${entry.full ? " full" : ""}` });
+  {
+    const switcher = el("div", { className: "rc-scope plan-view", role: "radiogroup", "aria-label": "How the tree is shown" },
+      ...[["diagram", "Diagram"], ["outline", "Outline"]].map(([m, label]) => el("button", { type: "button", textContent: label, className: entry.mode === m ? "on" : "", role: "radio", "aria-checked": String(entry.mode === m), onclick: () => { entry.mode = m; ctx.change(entry); } })));
+    if (entry.mode === "diagram") {
+      const toggleFull = () => { entry.full = !entry.full; ctx.change(entry); };
+      const diagram = renderDiagram({
+        entry, editable: movable, known, fullscreen: entry.full, onFullscreen: fullscreenable ? toggleFull : undefined,
+        onSelect: (path) => {
+          if (!editable) { const n = getNode(entry.tree, path); if (n?.kind === "library" && known.has(n.name)) pickDetail(n.name); return; } // not editing: a click shows what the component is
+          entry.sel = path; ctx.change(entry);
+        },
+        onMove: (from, to, pos) => { const r = moveTo(entry.tree, from, to, pos); if (r.tree !== entry.tree) touch(r.tree, r.path); },
+        onCollapse: (key) => { const c = new Set(entry.collapsed ?? []); if (!c.delete(key)) c.add(key); entry.collapsed = [...c]; ctx.change(entry); },
+        onDetail: pickDetail,
+        onKey: (path, e) => {
+          if (e.key === "Delete" || e.key === "Backspace") { if (path.length && editable) { e.preventDefault(); touch(removeNode(entry.tree, path), path.slice(0, -1)); } return; }
+          if (!e.altKey) return;
+          const f = { ArrowLeft: () => outdentNode(entry.tree, path), ArrowRight: () => indentNode(entry.tree, path), ArrowUp: () => moveNode(entry.tree, path, -1), ArrowDown: () => moveNode(entry.tree, path, 1) }[e.key];
+          if (f) { e.preventDefault(); const r = f(); if (r.tree !== entry.tree) touch(r.tree, r.path); }
+        },
+      });
+      treeHost.append(el("div", { className: "pd-top" }, switcher, entry.full ? el("button", { type: "button", className: "dlg-x", textContent: "✕", title: "Close the large view", "aria-label": "Close the large view", onclick: () => { entry.full = false; ctx.change(entry); } }) : null), diagram);
+      if (movable) treeHost.append(el("p", { className: "mute pd-hint", textContent: "Drag a box onto another: left edge = before, right edge = after, middle = inside. Ctrl/⌘ + wheel zooms, drag the background to move." }));
+      treeHost.append(detailHost);
+      if (editable && entry.full && nodeEditor) { const side = el("div", { className: "pd-side" }); side.append(nodeEditor()); treeHost.append(side); }
+      wrap.append(treeHost);
+    } else {
+      wrap.append(switcher, outline());
+    }
+  }
+  function outline() {
+    const node = (n, path) => {
+      const k = pathKey(path), sel = editable && k === pathKey(entry.sel);
+      const unknown = n.kind === "library" && !known.has(n.name);
+      const card = el("div", { className: `pn k-${n.kind}${n.change ? ` c-${n.change}` : ""}${sel ? " sel" : ""}`, draggable: editable && path.length > 0 });
+      card.append(el("span", { className: "pk", textContent: KIND_LABEL[n.kind] ?? n.kind }), el("code", { className: "pname", textContent: n.name }));
+      if (n.change) card.append(el("span", { className: "pc", textContent: n.change }));
+      if (unknown) card.append(el("span", { className: "pu", title: "This name is not in the documentation of the uu5-development plugin: check it or mark it as new.", textContent: "not in the docs" }));
+      for (const [on, text, title] of [[n.relation, "×N", "Rendered once per item (1:N)"], [n.render, "R", `Rendered only when: ${n.render}`], [n.disabled, "D", `Disabled when: ${n.disabled}`], [n.label, `// ${n.label}`, "The data it shows"], [n.low, "low", "Low importance"]]) if (on) card.append(el("span", { className: "pc", textContent: text, title }));
+      if (n.data) card.append(el("span", { className: "pnote", textContent: `← ${n.data}` }));
+      if (n.note) card.append(el("span", { className: "pnote", textContent: n.note }));
+      if (editable) {
+        card.onclick = () => { entry.sel = path; ctx.change(entry); };
+        card.ondragstart = (e) => { drag.from = path; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", pathKey(path)); card.classList.add("dragging"); };
+        card.ondragend = () => { drag.from = null; card.classList.remove("dragging"); for (const x of wrap.querySelectorAll(".drop-before,.drop-after,.drop-inside")) x.classList.remove("drop-before", "drop-after", "drop-inside"); };
+        card.ondragover = (e) => {
+          if (!drag.from) return;
+          const pos = zone(e, card); e.preventDefault(); e.dataTransfer.dropEffect = "move";
+          card.classList.remove("drop-before", "drop-after", "drop-inside"); card.classList.add(`drop-${pos}`);
+        };
+        card.ondragleave = () => card.classList.remove("drop-before", "drop-after", "drop-inside");
+        card.ondrop = (e) => {
+          if (!drag.from) return;
+          e.preventDefault();
+          const r = moveTo(entry.tree, drag.from, path, zone(e, card)); drag.from = null;
+          if (r.tree !== entry.tree) touch(r.tree, r.path);
+        };
+      } else if (n.kind === "library" && !unknown) {
+        card.classList.add("click"); card.title = "Show the description of this component";
+        card.onclick = () => ctx.showDetail?.(n.name, li);
+      }
+      const li = el("li", {}, card);
+      if (n.children?.length) li.append(el("ul", {}, ...n.children.map((c, i) => node(c, [...path, i]))));
+      return li;
+    };
+    return el("ul", { className: "plan-tree" }, node(entry.tree, []));
+  }
+  return wrap;
 }
 
 /** Where on the card a drop lands: the upper quarter puts the node before it, the lower quarter after it, the middle inside it. */

@@ -1,3 +1,4 @@
+import { extractSitemap, serializeSitemap } from "./sitemap.js";
 /**
  * The component tree of a plan (decomposition of a screen into components, or the parts a bigger change touches) and everything that can be
  * done with it without a DOM: reading it from the answer of the agent, editing it, and telling the agent what the user changed.
@@ -84,9 +85,10 @@ export function normalizeQuestions(obj) {
 const fenced = (text, lang) => new RegExp("```" + lang + "[^\\n]*\\n([\\s\\S]*?)```").exec(text);
 const cut = (text, m) => (text.slice(0, m.index) + text.slice(m.index + m[0].length)).replace(/\n{3,}/g, "\n\n").trim();
 
-/** The answer of the agent -> { text: without the blocks, tree: or null, questions: [] }. A drawn (ASCII) tree is read too. */
+/** The answer of the agent -> { text: without the blocks, tree: or null, questions: [], sitemap: or null }. A drawn (ASCII) tree is read too. */
 export function extractPlan(answer) {
-  let text = String(answer ?? ""), tree = null, questions = [];
+  const sm = extractSitemap(answer), sitemap = sm.sitemap;
+  let text = sm.text, tree = null, questions = [];
   const q = fenced(text, "uu5-questions");
   if (q) { try { questions = normalizeQuestions(JSON.parse(q[1])); } catch { /* not valid JSON: stays text */ } if (questions.length) text = cut(text, q); }
   const m = fenced(text, "uu5-tree");
@@ -98,7 +100,7 @@ export function extractPlan(answer) {
       if (t && countNodes(t) > 1) { tree = t; text = cut(text, f); break; }
     }
   }
-  return { text: text.trim(), tree, questions };
+  return { text: text.trim(), tree, questions, sitemap };
 }
 export const extractTree = (answer) => { const { text, tree } = extractPlan(answer); return { text, tree }; };
 
@@ -113,6 +115,16 @@ export function answersText(questions, answers) {
 }
 
 export const serializeTree = (tree) => JSON.stringify(tree, null, 2);
+/** The text of a plan without its `uu5-tree` block (a plan that needs no component tree). */
+export function removeTreeBlock(text) {
+  const src = String(text ?? ""), m = fenced(src, "uu5-tree");
+  return m ? (src.slice(0, m.index) + src.slice(m.index + m[0].length)).replace(/\n{3,}/g, "\n\n").trimEnd() + "\n" : src;
+}
+/** The text of a plan with its `uu5-tree` block replaced (or appended when there was none). */
+export function replaceTreeBlock(text, tree) {
+  const block = "```uu5-tree\n" + serializeTree(tree) + "\n```", src = String(text ?? ""), m = fenced(src, "uu5-tree");
+  return m ? src.slice(0, m.index) + block + src.slice(m.index + m[0].length) : `${src.trimEnd()}\n\n${block}\n`;
+}
 export const countNodes = (tree) => 1 + (tree.children ?? []).reduce((s, c) => s + countNodes(c), 0);
 
 // ---------------------------------------------------------------- reading and editing by path (every function returns a new tree)
@@ -281,19 +293,24 @@ export function describeEdits(original, edited) {
  * The message that approves a plan. When the user changed the plan, the whole edited plan goes with it (the agent follows it exactly) and
  * a list of the differences; otherwise a short approval is enough, the agent has the plan in the conversation.
  */
-export function approvalMessage({ text, tree, original, questions = [], answers = {} }) {
+export function approvalMessage({ text, tree, original, questions = [], answers = {}, sitemap = null }) {
   const edits = describeEdits(original?.tree ?? null, tree), textChanged = original && String(original.text).trim() !== String(text).trim();
   const given = answersText(questions, answers), open = unanswered(questions, answers);
   const answered = [
     ...(given ? ["", "Answers of the user to your questions:", given] : []),
     ...(open.length && given ? ["", "Not answered (decide yourself and say what you chose):", ...open.map((q) => `- ${q.question}`)] : []),
   ];
-  if (!edits.length && !textChanged) return ["Plan approved: build it exactly as planned.", ...answered].join("\n");
+  const mapChanged = JSON.stringify(original?.sitemap ?? null) !== JSON.stringify(sitemap ?? null);
+  const mapRule = sitemap ? ["", "The sitemap is the structure the user agreed on, not an order to build its pages: build only what the component tree describes (nothing at all when there is no tree), do not create the other pages, and say which pages can be created next."] : [];
+  if (!edits.length && !textChanged && !mapChanged) return ["Plan approved: build it exactly as planned.", ...mapRule, ...answered].join("\n");
   return [
     "Plan approved. The user edited the plan, so follow this edited version exactly, not your first proposal.",
     "",
     String(text).trim(),
     ...(tree ? ["", "Component tree (JSON):", "```uu5-tree", serializeTree(tree), "```"] : []),
+    ...(sitemap ? ["", "Sitemap (JSON):", "```uu5-sitemap", serializeSitemap(sitemap), "```"] : []),
+    ...(mapChanged ? ["", "The sitemap was edited too (it is the agreed structure, not an order to build its pages)."] : []),
+    ...mapRule,
     ...(edits.length ? ["", "What the user changed in the tree:", ...edits.map((l) => `- ${l}`)] : []),
     ...(textChanged ? ["", "The text of the plan was edited too."] : []),
     ...answered,

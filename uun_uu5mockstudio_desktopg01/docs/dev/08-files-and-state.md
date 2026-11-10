@@ -9,7 +9,7 @@
 | `<projects>/GLOBAL_RULES.md` | the agent (only when told a rule holds always), the rules dialog | the same, with `G-nnn` ids |
 | `<project>/PROJECT.md` | the description dialogs | `# Project description`, text, `## Screen: <name>` blocks |
 | `<project>/<screen>.notes.md` | the notes | `# Notes: <screen>`, then `<!-- note <id> -->` + text per note |
-| `<project>/.studio/state.json` | main | `{ chats: [{ id, title, createdAt, updatedAt, sessionId, entries }], currentChatId, layout: { frames } }` |
+| `<project>/.studio/state.json` | main | `{ chats: [{ id, title, createdAt, updatedAt, sessionId, entries }], currentChatId, layout: { frames }, kind?: { level, scope } }` (`kind`: what the project was started as on the dashboard; `scope` is `site` \| `single` \| `null`) |
 | `<project>/.studio/thumb.jpg` | main (`thumbs.mjs`) | picture of the whole canvas for the dashboard (`thumb.json` holds the signature of screens + layout), redone when either changes |
 | `<project>/.studio/template/` | main (`templates.mjs`) | `template.json` + `TEMPLATE.md` of the template the project was started from (read by the agent) |
 | `<project>/.studio/attachments/` | main | images attached to messages (read by the agent, never edited) |
@@ -38,6 +38,8 @@ An item is `- R-nnn [(screen: name)] text`; the next id is the highest plus one 
 
 ## In the renderer
 
+- **Sitemap**: `<project>/sitemap.json` (`{ root: { id, title, type, file?, note?, comment?, children } }`, normalized by `sitemap.js`), the version before the last replacement in `.studio/sitemap.prev.json`; the position of its card is in `state.layout.plans["@sitemap"]`.
+- **Plans**: `<project>/plans/<slug>.md`, front matter (`title`, `status`, `created`) and Markdown; the positions of their cards are in `state.layout.plans` (`{ slug: { x, y, w, h } }`).
 - **Chat entries** are saved in `state.json`: `{ kind: "user", text, images? }`, `{ kind: "ai", text }`, `{ kind: "steps", steps }`, `{ kind: "note" | "err", text }`, `{ kind: "usage", in, out, cacheRead, cacheWrite, models, cum, ctx, sofar? }` (tokens of one request, `cum` the cumulative counters, `ctx` the context size; see `usage.js`), `{ kind: "plan", text, tree, questions, answers, original, state, mode, sel, … }`. Transient flags are not saved (`planning`, `full`).
 - **localStorage** (view preferences only; nothing the user would miss): `uu5studio.planMode`, `uu5studio.chat` / `uu5studio.chatfs` (chat dock geometry and state, normal and fullscreen), `uu5studio.fsnote2` (notes panel in fullscreen), `uu5studio.selbarPos` (bar over a screen), `uu5studio.rulesMode`, `uu5studio.rulesScope`, `uu5studio.rulesCollapsed` (rolled up sections), `uu5studio.defaultModel`, theme keys.
 - **Canvas layout** (positions and sizes of frames, device per frame, camera) is saved per project with `layout:save` into `state.json`.

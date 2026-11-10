@@ -23,6 +23,13 @@ ICONS.article = ICONS.news; // templates saved earlier with the kind article
 const iconOf = (t) => ICONS[t.kind] ?? ICONS[t.icon] ?? ICONS[t.level] ?? ICONS.other;
 const LEVELS = [["app", "Application"], ["route", "Route"], ["component", "Component"], ["web", "Web"], ["page", "Document"]];
 export const LEVEL_KEY = "uu5studio.dashLevel";
+export const SCOPE_KEY = "uu5studio.dashScope";
+/** The second choice of Web and Document: one page, or the whole site (its sitemap comes first). [label, hint, placeholder] of the choice "site". */
+const SITE = {
+  web: ["Whole web site", "A web site of several pages: the agent proposes its sitemap first, you approve it, then the pages are built", "Describe the web site: who it is for and what it should cover. The agent proposes the sitemap first."],
+  page: ["Portal (several pages)", "A portal of several document pages: the agent proposes its sitemap first, you approve it, then the pages are built", "Describe the portal: who it is for and what it should cover. The agent proposes the sitemap first."],
+};
+const PLACEHOLDER = "Design anything… A project is created for it and the chat goes on there.";
 const TRASH = svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>');
 const VIEW_KEY = "uu5studio.dashView";
 
@@ -59,15 +66,22 @@ export function projectNameFromTitle(title, taken = []) {
  * The first view of the app: write what to design (a project is made for it and the chat goes on there) or open a project from the recent ones.
  * `api` = window.studio (projectThumb, projectsFolder); the callbacks do the work in the renderer.
  */
-export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates, onLevel }) {
+export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates, onLevel, onScope }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
-  let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null;
-  try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; } catch { /* default */ }
+  let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null, scope = "single";
+  try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; if (localStorage.getItem(SCOPE_KEY) === "site") scope = "site"; } catch { /* default */ }
+  /** "site" only where the level has the choice (Web, Document), else null: an application, a route or a component has no scope. */
+  const scopeNow = () => (SITE[level] ? scope : null);
+  let wasSite = false;
 
   const refreshSend = () => { $("dash-send").disabled = !prompt.value.trim() && !docs?.count(); };
   function setPlan(on) {
-    plan = on;
-    for (const b of root.querySelectorAll("#dash-mode button")) { const o = (b.dataset.mode === "plan") === on; b.classList.toggle("on", o); b.setAttribute("aria-checked", String(o)); }
+    plan = on; paintMode();
+  }
+  /** The Agent / Plan switch: a whole site is always planned first, so the switch shows Plan and is locked meanwhile. */
+  function paintMode() {
+    const site = scopeNow() === "site", eff = plan || site;
+    for (const b of root.querySelectorAll("#dash-mode button")) { const o = (b.dataset.mode === "plan") === eff; b.classList.toggle("on", o); b.setAttribute("aria-checked", String(o)); b.disabled = site; if (site) b.title = "A whole site starts with a plan: its sitemap"; else b.title = b.dataset.mode === "plan" ? "Get a plan with a component tree to approve first" : "The agent builds the screen"; }
   }
   function setView(v) {
     view = v; try { localStorage.setItem(VIEW_KEY, v); } catch { /* not remembered */ }
@@ -86,7 +100,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     if (docs?.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
     if (!text && !docs?.count()) return;
     if (!text) text = "Use the attached document.";
-    onStart({ docs: docs ? docs.takeCards() : [], text, plan, model: $("dash-model").value, template: selected?.id ?? null, templateLevel: selected?.level ?? null });
+    onStart({ docs: docs ? docs.takeCards() : [], text, plan: plan || scopeNow() === "site", level, scope: scopeNow(), model: $("dash-model").value, template: selected?.id ?? null, templateLevel: selected?.level ?? null });
   }
   async function loadThumbs(shown, my) {
     for (const p of shown) { // one after another: the main process paints them one at a time anyway
@@ -132,8 +146,22 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   $("dash-newbtn").onclick = onNew;
   $("dash-reveal").onclick = () => onFolder("open");
   $("dash-change").onclick = () => onFolder("change");
+  /** The second row of Web and Document: one page or the whole site. A whole site is planned first (the sitemap), whatever the Agent / Plan switch says. */
+  function paintScope() {
+    const box = $("dash-scope"), site = SITE[level]; box.hidden = !site;
+    if (site) { const b = box.querySelector('[data-scope="site"]'); b.textContent = site[0]; b.title = site[1]; }
+    for (const b of box.querySelectorAll("button")) { const on = b.dataset.scope === scope; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
+    prompt.placeholder = scopeNow() === "site" ? site[2] : PLACEHOLDER;
+    const now = scopeNow() === "site"; if (wasSite && !now) plan = false; wasSite = now; // leaving the whole site (one page, or another level): back to Agent, the plan belonged to the sitemap
+    paintMode();
+  }
+  function setScope(s) {
+    scope = s === "site" ? "site" : "single"; try { localStorage.setItem(SCOPE_KEY, scope); } catch { /* not remembered */ }
+    paintScope(); onScope?.(scopeNow());
+  }
   /** The template chips of the chosen level, the badge of the chosen template. */
   function paintTemplates() {
+    paintScope();
     for (const b of root.querySelectorAll("#dash-levels button")) { const on = b.dataset.level === level; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
     const chips = templates.filter((t) => t.level === level).map((t) => {
       const b = el("button", `idea${selected?.id === t.id ? " on" : ""}`); b.type = "button"; b.innerHTML = iconOf(t); b.append(t.title);
@@ -168,6 +196,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     paintTemplates();
   }
   for (const b of root.querySelectorAll("#dash-levels button")) b.onclick = () => { setLevel(b.dataset.level); onLevel?.(b.dataset.level); }; // a click of the user (not the preset of a role)
+  for (const b of root.querySelectorAll("#dash-scope button")) b.onclick = () => { setScope(b.dataset.scope); prompt.focus(); };
   $("dash-tpl").onclick = async () => { await onTemplates?.(); loadTemplates(); }; // templates put into the folder meanwhile show up
   setPlan(false); refreshSend(); setView(view);
 
@@ -176,7 +205,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     hide() { root.hidden = true; seq++; },
     reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },
     focus() { prompt.focus(); },
-    setLevel, setPlan, level: () => level,
+    setLevel, setPlan, setScope, level: () => level, scope: scopeNow,
     /** The text of the message field (links in it get their cards); optionally a template by id (its level is chosen too). */
     fill(text, templateId = null) {
       if (templateId) { const t = templates.find((x) => x.id === templateId); if (t) { setLevel(t.level); selected = t; } }

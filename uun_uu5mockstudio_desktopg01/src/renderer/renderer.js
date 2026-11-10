@@ -30,6 +30,10 @@ import { createDashboard, LEVEL_KEY, newProjectName, projectNameFromScreen, proj
 import { createActionListEditor } from "./actionListEditor.js";
 import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
+import { createPlanCards } from "./planCards.js";
+import { createPlansMenu } from "./plansMenu.js";
+import { parsePlan, serializePlan, slugify, withStatus } from "./planDoc.js";
+import { serializeSitemap, extractSitemap, normalizeSitemap, countPages, countBuilt, sitemapFromScreens, sitemapSvg, sitemapOffered } from "./sitemap.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
@@ -103,6 +107,7 @@ let saveTimer;
 const chatSnapshot = () => entries.filter((e) => e.kind !== "steps" || e.steps.length).map((e) => (e.full || e.planning ? { ...e, full: false, planning: false } : e)); // the large view of a plan and a hidden answer are not remembered
 const persist = () => {
   if (loading) return;
+  for (const e of entries) if (e.kind === "plan" && e.planSlug) queueFileSync(e); // the plan file follows the card in the chat
   const p = project, cid = chatId, snap = chatSnapshot(); // captured now: the user may switch project or conversation before the timer fires
   clearTimeout(saveTimer); saveTimer = setTimeout(() => window.studio.saveChat(p, cid, snap), 400);
 };
@@ -185,10 +190,10 @@ const proposedPlan = () => [...entries].reverse().find((e) => e.kind === "plan" 
 /** In Plan mode with a plan waiting and an empty message field, the send button builds that plan (the button of the plan card does the same); typing a message makes it "Plan" again. */
 function updateBuildBtn() {
   const build = planMode && Boolean(proposedPlan()) && !$("prompt").value.trim();
-  const label = planMode ? (build ? "Build plan" : "Plan") : "Send";
+  const label = planMode ? (build ? (mapOnly(proposedPlan()) ? "Approve map" : "Build plan") : "Plan") : "Send";
   $("send-lbl").textContent = label; $("send").setAttribute("aria-label", label);
   $("send").dataset.build = build ? "1" : "";
-  $("send").title = build ? "Approve the plan above (with your edits and answers) and let the agent build it" : "";
+  $("send").title = build ? (mapOnly(proposedPlan()) ? "Approve the map above: nothing is built, the screens are created page by page" : "Approve the plan above (with your edits and answers) and let the agent build it") : "";
 }
 /** The library components of a tree that the documentation of the plugin knows (the others are flagged in the plan). */
 async function refreshKnown(e) {
@@ -201,10 +206,132 @@ async function refreshKnown(e) {
 function convertPlan() {
   let i = entries.length - 1; while (i >= 0 && entries[i].kind !== "ai") { if (entries[i].kind === "user") return; i--; }
   const ai = entries[i]; if (!ai) return;
-  const { text, tree, questions } = extractPlan(ai.text);
-  if (!text.trim() && !tree && !questions.length) return;
-  const plan = { kind: "plan", text, tree, questions, answers: {}, mode: "diagram", original: { text, tree: tree ? JSON.parse(JSON.stringify(tree)) : null }, state: "proposed", editing: false, sel: [], known: [] };
-  nodes.get(ai)?.remove(); entries[i] = plan; paint(plan); persist(); refreshKnown(plan);
+  const { text, tree, questions, sitemap } = extractPlan(ai.text);
+  if (!text.trim() && !tree && !questions.length && !sitemap) return;
+  const plan = { kind: "plan", text, tree, questions, sitemap, answers: {}, mode: "diagram", original: { text, tree: tree ? JSON.parse(JSON.stringify(tree)) : null, sitemap: sitemap ? JSON.parse(JSON.stringify(sitemap)) : null }, state: "proposed", editing: false, sel: [], known: [] };
+  // a revised plan (answers, "Revise…") replaces the plan before it: the same file and card, not a second one
+  const prev = [...entries].reverse().find((x) => x.kind === "plan" && x.planSlug && (x.state === "proposed" || x.state === "superseded"));
+  if (prev) { plan.planSlug = prev.planSlug; /* the title follows the text of the revised plan */ delete prev.planSlug; prev.synced = null; prev.state = "superseded"; prev.editing = false; paint(prev); }
+  nodes.get(ai)?.remove(); entries[i] = plan; paint(plan); persist(); refreshKnown(plan); savePlanFile(plan);
+}
+// ---------- plans as files: every plan of the chat is also plans/<name>.md and a card on the canvas; the file is the truth (edited there, by the agent or in an editor)
+const PLAN_STATUS = { proposed: "draft", approved: "approved", discarded: "discarded", superseded: "discarded" };
+const planBody = (e) => [e.text.trim(), e.tree ? `\`\`\`uu5-tree\n${serializeTree(e.tree)}\n\`\`\`` : "", e.sitemap ? `\`\`\`uu5-sitemap\n${serializeSitemap(e.sitemap)}\n\`\`\`` : "", e.questions?.length ? `\`\`\`uu5-questions\n${JSON.stringify({ questions: e.questions }, null, 2)}\n\`\`\`` : ""].filter(Boolean).join("\n\n");
+const planTitleOf = (e) => (e.text.match(/^#{1,6}\s+(.+)$/m)?.[1] ?? e.text.split("\n").find((l) => l.trim()) ?? "Plan").replace(/[#*`_>]/g, "").trim().slice(0, 60) || "Plan";
+const fileTimers = new Map();
+async function savePlanFile(e) {
+  const body = planBody(e), status = PLAN_STATUS[e.state] ?? "draft";
+  const r = await window.studio.plansSave({ slug: e.planSlug, title: e.planTitle ?? planTitleOf(e), markdown: body, status });
+  if (r?.error || !r?.slug) return;
+  e.planSlug = r.slug; e.synced = { body, status }; paint(e); persist();
+  const list = await window.studio.plansList(); if (!list.error) await planCards.setPlans(list);
+  planCards.focus(r.slug);
+}
+/** The entry of the chat goes to the file (after a short pause) when it differs from what the file last held. */
+function queueFileSync(e) {
+  const body = planBody(e), status = PLAN_STATUS[e.state] ?? "draft";
+  if (e.synced && e.synced.body.trim() === body.trim() && e.synced.status === status) return;
+  clearTimeout(fileTimers.get(e)); fileTimers.set(e, setTimeout(async () => {
+    const b = planBody(e), st = PLAN_STATUS[e.state] ?? "draft";
+    e.synced = { body: b, status: st }; // set before the write: the change event of the file then finds nothing new
+    const r = await window.studio.plansSave({ slug: e.planSlug, title: e.planTitle, markdown: b, status: st });
+    if (r?.error) e.synced = null;
+  }, 600));
+}
+/** What changed in the file (a card, the agent, an editor) comes into the entry of the chat. Returns true when the entry changed. */
+async function pullEntry(e) {
+  const r = await window.studio.plansRead(e.planSlug).catch(() => null);
+  if (!r || r.error) return false;
+  const body = r.body.trim(), changed = !e.synced || e.synced.body.trim() !== body, status = r.status;
+  if (!changed && e.synced.status === status) return false;
+  if (changed) {
+    const x = extractPlan(body), old = e.answers ?? {};
+    e.text = x.text; e.tree = x.tree; e.sitemap = x.sitemap; e.questions = x.questions; e.answers = Object.fromEntries(x.questions.map((q) => [q.id, old[q.id] ?? { choices: [] }]));
+    e.planTitle = r.meta.title; e.sel = [];
+  }
+  if (status !== e.synced?.status) e.state = status === "approved" ? "approved" : status === "discarded" ? "discarded" : e.state === "approved" || e.state === "discarded" ? "proposed" : e.state;
+  e.synced = { body, status };
+  paint(e); persist(); refreshKnown(e); updateBuildBtn();
+  return true;
+}
+async function onPlansChanged(list) {
+  plansCache = list; plansMenu?.render?.();
+  await planCards.setPlans(list); syncEmptyForCards();
+  const slugs = new Set(list.map((p) => p.slug));
+  for (const e of entries) {
+    if (e.kind !== "plan" || !e.planSlug) continue;
+    if (!slugs.has(e.planSlug)) { delete e.planSlug; e.synced = null; paint(e); persist(); continue; } // the file is gone: the card of the chat stays alone
+    await pullEntry(e);
+  }
+}
+/** A request for a revision of a plan from its card (e.g. add the sitemap): sent in Plan mode, the answer replaces the text of the same file. */
+async function revisePlanFromCard(message, label) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+  push({ kind: "user", text: label });
+  setPlanMode(true);
+  if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
+  setBusy(true); sentModel = $("model").value; planPending = true;
+  window.studio.send(message, sentModel || undefined, { plan: true, economy });
+}
+/** Where the map is: the file of the project, or the plan that proposes it. */
+const sitemapWhere = (slug) => (slug ? `proposed in plans/${slug}.md` : "sitemap.json");
+/** Several selected pages become screens (at most 8, after a confirmation): the agent builds exactly these, one after the other. */
+async function createScreensFromPages({ slug, items }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+  if (!items.length || items.length > 8) return;
+  if (!confirm(`Create ${items.length} screens: ${items.map((i) => i.node.title).join(", ")}?`)) return;
+  setPlanMode(false);
+  const list = items.map((i) => `- ${i.file}: the page "${i.node.title}" (place in the map: ${i.where}${i.node.note ? `; what it is for: ${i.node.note}` : ""})`).join("\n");
+  const message = `Create these screens for pages of the sitemap of the project (${sitemapWhere(slug)}), and no other screen:\n${list}\nTheir navigation follows the sitemap: link to the parent and sibling pages, and to the screens that exist, by their file names.`;
+  push({ kind: "user", text: `Create ${items.length} screens: ${items.map((i) => i.node.title).join(", ")}.` });
+  if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; }
+  setBusy(true); sentModel = $("model").value;
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+}
+/** One page of a sitemap becomes a screen: the agent builds just this page, in the place the map gives it. */
+async function createScreenFromPage({ slug, node, file, where }) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+  setPlanMode(false);
+  const message = `Create the screen ${file} for the page "${node.title}" of the sitemap of the project (${sitemapWhere(slug)}) (place in the map: ${where}${node.note ? `; what it is for: ${node.note}` : ""}${(node.children ?? []).some((c) => c.type === "section") ? `; its sections, which are parts of this page, not screens: ${node.children.filter((c) => c.type === "section").map((c) => c.title).join(", ")}` : ""}). Build only this screen. Its navigation follows the sitemap: link to its parent and sibling pages, and to the screens that exist, by their file names.`;
+  push({ kind: "user", text: `Create the screen for the page “${node.title}”.` });
+  if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; }
+  setBusy(true); sentModel = $("model").value;
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+}
+/** The map in the file of a plan (a plan without a chat card, or an older one) becomes the sitemap of the project; the plan keeps its text and a note. */
+async function adoptFromFile(slug) {
+  const r = await window.studio.plansRead(slug); if (r.error) { toast(r.error, { err: true }); return false; }
+  const x = extractPlan(r.body); if (!x.sitemap) return false;
+  const w = await window.studio.sitemapWrite(x.sitemap, { backup: true }); if (!w || w.error) { toast(w?.error ?? "The sitemap could not be saved.", { err: true }); return false; }
+  setProjectSitemap(w); planCards.focus("@sitemap");
+  const p = parsePlan(r.text), body = `${extractSitemap(p.body).text.trim()}\n\n> The sitemap of this plan was approved: it is now the sitemap of the project (the Sitemap card).\n`;
+  await window.studio.plansWrite(slug, serializePlan({ meta: p.meta, body }));
+  return true;
+}
+/** "Use as the sitemap of the project" on the card of a plan. */
+async function adoptPlanMap(slug) {
+  const e = entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.sitemap);
+  if (e) { await pullEntry(e); if (e.sitemap && await adoptSitemap(e)) { paint(e); persist(); toast("The map is now the sitemap of the project."); } return; }
+  if (await adoptFromFile(slug)) toast("The map is now the sitemap of the project.");
+}
+async function approvePlanFile(slug) {
+  const e = entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.state === "proposed");
+  if (e) { await pullEntry(e); return buildPlan(e); }
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+  const r = await window.studio.plansRead(slug); if (r.error) return toast(r.error, { err: true });
+  const x = extractPlan(r.body);
+  if (x.sitemap) {
+    if (!(await adoptFromFile(slug))) return;
+    await window.studio.plansStatus(slug, "approved");
+    if (!x.tree) return toast("The map is approved and is now the sitemap of the project. Nothing was built: create the screens page by page.");
+  }
+  setPlanMode(false);
+  const message = `Plan approved: build it as written in plans/${slug}.md. The user may have edited it, so follow this version exactly:\n\n${r.body.trim()}`;
+  await window.studio.plansStatus(slug, "approved");
+  push({ kind: "user", text: "Build the plan." });
+  if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; }
+  setBusy(true); sentModel = $("model").value;
+  window.studio.send(message, sentModel || undefined, { plan: false, economy });
 }
 /** The bar over the canvas after a rearrangement of components: the screen shows the result; keep it or undo it. */
 let previewPending = null;
@@ -238,9 +365,19 @@ async function stepScreen(file, way) {
   toast(r.error ?? `${way === "undo" ? "Undone" : "Redone"}: ${r.label}${r.file ? ` (${r.file.replace(/\.html$/, "")})` : ""}.`, { err: Boolean(r.error) });
 }
 /** Edit > Undo / Redo (⌘Z): the typing in a text field, otherwise the last change of the screen. */
+/** The sitemap keeps the one map it replaced, so Undo and Redo swap them: `smUndone` says on which side we are (a new change of the map resets it). */
+let smUndone = false;
+async function sitemapStep(way) {
+  if ((way === "undo") === smUndone) return toast(way === "undo" ? "Nothing to undo in the sitemap." : "Nothing to redo in the sitemap.");
+  const r = await window.studio.sitemapRestore().catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) return toast(r.error, { err: true });
+  smUndone = way === "undo"; setProjectSitemap(r);
+  toast(way === "undo" ? "Undone: the last change of the sitemap." : "Redone: the change of the sitemap.");
+}
 function editStep(way) {
   const a = document.activeElement;
   if (a && ((a.isContentEditable) || ((a.tagName === "INPUT" || a.tagName === "TEXTAREA") && !a.readOnly && !a.disabled))) return void document.execCommand(way);
+  if (planCards.sitemapFocused()) return void sitemapStep(way);
   // an arrangement of the screens that is newer than the last change of a screen's content is stepped back first
   const h = canvas.layoutHistory();
   if (h[way] && h.at >= lastScreenChange && (way === "undo" ? canvas.undoLayout() : canvas.redoLayout())) return void toast(`${way === "undo" ? "Undone" : "Redone"}: position of the screens.`);
@@ -255,6 +392,8 @@ const planCtx = {
   discard: (e) => { e.state = "discarded"; e.editing = false; paint(e); persist(); },
   build: (e) => buildPlan(e),
   answer: (e) => answerPlan(e),
+  showOnCanvas: (e) => e.planSlug && planCards.focus(e.planSlug),
+  showSitemap: () => planCards.focus("@sitemap"),
   showDetail: async (name, host) => {
     const old = host.querySelector(":scope > .pn-detail"); if (old) return old.remove();
     const d = await window.studio.docsDetail(name).catch(() => null); if (!d) return;
@@ -277,10 +416,37 @@ async function answerPlan(e) {
   setBusy(true); sentModel = $("model").value; planPending = true;
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
 }
+const syncEmptyForCards = () => $("empty")?.classList.toggle("has-cards", planCards.visibleCount() > 0);
+/** The sitemap of the project (sitemap.json) as the card shows it: { sitemap, hasPrev } or null. */
+let projectSitemap = null;
+function setProjectSitemap(r) { projectSitemap = r?.sitemap ? r : null; planCards.setSitemap(projectSitemap); syncEmptyForCards(); updateMapBtn(); plansMenu?.render?.(); sitemapMenu?.render?.(); }
+/** Whether this project gets the sitemap offered: it has one, or it was started as a whole web site or portal (sitemap.js). */
+const mapOffered = () => Boolean(project) && sitemapOffered({ hasSitemap: Boolean(projectSitemap), scope: projectScope, level: projectLevel });
+/** The Sitemap button of the toolbar is there only where a sitemap is offered; elsewhere it is made from the Plans menu. */
+function updateMapBtn() { const on = mapOffered(); if ($("mapw").hidden !== !on) { $("mapw").hidden = !on; if (!on) sitemapMenu?.close?.(); planCards?.refresh?.(); } }
+/** An approved plan with a map: the map becomes the sitemap of the project (the one it replaces is kept), and the plan keeps only a note about it. */
+async function adoptSitemap(e) {
+  const r = await window.studio.sitemapWrite(e.sitemap, { backup: true });
+  if (!r || r.error) { toast(r?.error ?? "The sitemap could not be saved.", { err: true }); return false; }
+  setProjectSitemap(r); planCards.focus("@sitemap");
+  e.sitemap = null; e.sitemapMoved = true; if (e.original) e.original.sitemap = null;
+  e.text = `${e.text.trim()}\n\n> The sitemap of this plan was approved: it is now the sitemap of the project (the Sitemap card).`;
+  return true;
+}
+/** A plan that is only a sitemap (no component tree) has nothing to build: approving it agrees on the structure; the screens are created page by page. */
+const mapOnly = (e) => Boolean(e?.sitemap && !e.tree);
 async function buildPlan(e) {
+  if (mapOnly(e)) {
+    if (!(await adoptSitemap(e))) return;
+    e.state = "approved"; e.editing = false; paint(e); persist(); updateBuildBtn();
+    if (isSimple()) setPlanMode(false); // the Simple view has no Agent / Plan switch: after the map the pages are built
+    push({ kind: "note", text: "The map is approved and is now the sitemap of the project (the plan card is off the canvas: the Plans button brings it back). Nothing was built: create the screens page by page (select a page of the map and choose Create the screen), or a few at a time." });
+    return;
+  }
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   setPlanMode(false); // building is the agent's work: the message field goes back to Agent
-  const message = approvalMessage({ text: e.text, tree: e.tree, original: e.original, questions: e.questions, answers: e.answers });
+  const message = approvalMessage({ text: e.text, tree: e.tree, sitemap: e.sitemap, original: e.original, questions: e.questions, answers: e.answers });
+  if (e.sitemap && !(await adoptSitemap(e))) return;
   e.state = "approved"; e.editing = false; paint(e); persist();
   push({ kind: "user", text: message.startsWith("Plan approved: build") && !message.includes("Answers of the user") ? "Build the plan." : "Build the plan, as I edited it and answered." });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; } // the automated checks read the message instead of starting the agent
@@ -422,13 +588,13 @@ window.studio.onEvent(onAgentEvent);
 window.__feed = onAgentEvent; // lets automated checks play events of the agent without running it
 
 // ---------- canvas (frames, zoom/pan, devices) ----------
-let saveLayoutTimer, savedLayout = {}, rules = null, desc = null, flow = null, vlayer = null; let flowHover = null;
+let planCards = null, saveLayoutTimer, savedLayout = {}, rules = null, desc = null, flow = null, vlayer = null; let flowHover = null;
 // environments (uuManagementKit around the content): offered on every screen
-let projectLevel = null, defaultEnv = null, envInfo = null;
+let projectLevel = null, projectScope = null, defaultEnv = null, envInfo = null;
 async function refreshEnvs() { const r = await window.studio.envList(); if (!r.error) { envInfo = r; for (const f of canvas.all()) f.syncEnv?.(); } }
 const persistLayout = () => {
   if (loading || !project) return;
-  const p = project, layout = { frames: canvas.layout(), camera: canvas.camera() };
+  const p = project, layout = { frames: canvas.layout(), camera: canvas.camera(), plans: planCards?.layout() ?? {} };
   clearTimeout(saveLayoutTimer); saveLayoutTimer = setTimeout(() => window.studio.saveLayout(p, layout), 500);
 };
 /** What the file cannot do by itself (a move into a condition, a list, another component) is given to the agent with both places named. */
@@ -569,19 +735,57 @@ const canvas = createCanvas({
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
-  // what a fit must keep clear: the floating toolbar (Glass Effect) on top, a floating chat on its side of the canvas
-  getInset: () => {
-    const top = document.body.dataset.glass ? parseFloat(document.body.style.getPropertyValue("--glass-top")) || 0 : 0, out = { top, left: 0, right: 0 };
-    if (document.body.dataset.chat !== "float") return out;
-    const c = $("chat").getBoundingClientRect(), k = $("canvas").getBoundingClientRect();
-    if (c.width < 40 || c.height < 40 || dock.collapsed()) return out; // hidden or collapsed to a bar
-    if (c.left + c.width / 2 < k.left + k.width / 2) out.left = Math.max(0, c.right - k.left + 12); else out.right = Math.max(0, k.right - c.left + 12);
-    return out;
-  },
   onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
   onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
+  getExtraRects: () => planCards?.rects() ?? [],
+  getInset: () => canvasInset(),
 });
+/** What a fit must keep clear: the floating toolbar (Glass Effect) on top, a floating chat on its side of the canvas. */
+function canvasInset() {
+  const top = document.body.dataset.glass ? parseFloat(document.body.style.getPropertyValue("--glass-top")) || 0 : 0, out = { top, left: 0, right: 0 };
+  if (document.body.dataset.chat !== "float") return out;
+  const c = $("chat").getBoundingClientRect(), k = $("canvas").getBoundingClientRect();
+  if (c.width < 40 || c.height < 40 || dock.collapsed()) return out; // hidden or collapsed to a bar
+  if (c.left + c.width / 2 < k.left + k.width / 2) out.left = Math.max(0, c.right - k.left + 12); else out.right = Math.max(0, k.right - c.left + 12);
+  return out;
+}
+// the plans of the project as cards on the canvas (plans/*.md)
+planCards = createPlanCards({
+  root: $("canvas"), world: $("world"), canvas,
+  api: { read: (slug) => window.studio.plansRead(slug), write: (slug, text) => window.studio.plansWrite(slug, text) },
+  ctx: { saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), exportSitemap: (kind, sm, collapsed) => exportSitemapAs(kind, sm, collapsed), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); }, getInset: () => canvasInset() },
+});
+// the Plans menu of the toolbar: the sitemap and the plans of the project, to show, hide or make
+let plansCache = [];
+const menuState = () => ({
+  sitemap: projectSitemap ? { pages: countPages(projectSitemap.sitemap), built: countBuilt(projectSitemap.sitemap, (f) => Boolean(canvas.get(f))), hidden: planCards.isHidden("@sitemap") } : null,
+  plans: plansCache.map((p) => ({ ...p, hidden: planCards.isHidden(p.slug) })), screens: canvas.files().length, viewing: planCards.viewKey(), offered: mapOffered(),
+});
+const menuActions = {
+  closeView: () => planCards.closeView(),
+  toggleView: (key) => { if (planCards.viewKey() === key) planCards.closeView(); else planCards.openView(key); },
+  arrange: () => { planCards.arrange(); canvas.fitAll(true); },
+  show: (key) => { if (!planCards.openView(key)) toast("This plan has no card on the canvas. Open the plan file plans/" + key + ".md or delete the plan.", { err: true }); },
+  remove: (slug, title) => deletePlan(slug, title),
+
+  toggle: (key) => planCards.setHidden(key, !planCards.isHidden(key)),
+  fromScreens: async () => {
+    const edges = await window.studio.flowEdges().catch(() => []), sm = sitemapFromScreens({ screens: canvas.files(), edges: Array.isArray(edges) ? edges : [] });
+    if (!sm) return;
+    const r = await window.studio.sitemapWrite(sm); if (r?.error) return toast(r.error, { err: true });
+    setProjectSitemap(r); planCards.focus("@sitemap");
+  },
+  empty: async () => {
+    const r = await window.studio.sitemapWrite({ root: { title: project || "Home", type: "page", children: [] } }); if (r?.error) return toast(r.error, { err: true });
+    setProjectSitemap(r); planCards.focus("@sitemap");
+  },
+  askAgent: () => { setPlanMode(true); const t = $("prompt"); t.value = "Propose the sitemap of the pages (a map of the web site or portal): "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+};
+const plansMenu = createPlansMenu({ button: $("plansbtn"), menu: $("plansmenu"), state: menuState, actions: menuActions, show: "plans" });
+const sitemapMenu = createPlansMenu({ button: $("mapbtn"), menu: $("mapmenu"), state: menuState, actions: menuActions, show: "sitemap" });
+window.studio.onPlansChanged(({ project: p, plans }) => { if (p === project) onPlansChanged(plans); });
+window.studio.onSitemapChanged(({ project: p, sitemap, hasPrev }) => { if (p === project) setProjectSitemap(sitemap ? { sitemap, hasPrev } : null); });
 function syncFrames(screens) {
   const added = [];
   for (const f of screens) if (!canvas.get(f)) {
@@ -591,7 +795,9 @@ function syncFrames(screens) {
   }
   for (const f of canvas.files()) if (!screens.includes(f)) canvas.removeFrame(f);
   for (const f of added) { const v = !savedLayout[f] && variantInfo(f, canvas.files()); if (v) vlayer?.arrange(v.base); } // new variants are put in a row below their original
-  $("empty").hidden = screens.length > 0; renderTabs(); desc?.refreshScreens(); vlayer?.draw(); if (flow) updateFlowBtn();
+  planCards?.refresh(); $("empty").hidden = screens.length > 0;
+  // the Edit mode edits the screens: with none on the canvas there is nothing to edit
+  $("inspect").hidden = screens.length === 0; if (screens.length === 0 && inspector.on) setInspect(false); renderTabs(); desc?.refreshScreens(); vlayer?.draw(); if (flow) updateFlowBtn();
 }
 function renderTabs() {
   const keep = $("tabs").scrollLeft; // replaceChildren would reset the strip to the left
@@ -605,6 +811,34 @@ function renderTabs() {
 }
 // a mouse wheel scrolls the tab strip sideways (trackpads already send horizontal deltas)
 $("tabs").addEventListener("wheel", (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); $("tabs").scrollLeft += e.deltaY; } }, { passive: false });
+/** The notes on the whole map (not yet sent to the agent) are kept per project and map, so that they survive a restart. */
+const notesKey = (key) => `uu5studio.mapnotes:${project}:${key}`;
+function loadMapNotes(key) { try { const l = JSON.parse(localStorage.getItem(notesKey(key)) ?? "[]"); return Array.isArray(l) ? l.filter((t) => typeof t === "string") : []; } catch { return []; } }
+function saveMapNotes(key, list) { try { if (list.length) localStorage.setItem(notesKey(key), JSON.stringify(list)); else localStorage.removeItem(notesKey(key)); } catch { /* not kept */ } }
+/** The sitemap as a picture to share: "png" and "svg" are saved (dialog), "copy" puts the PNG on the clipboard. */
+async function exportSitemapAs(kind, sm, collapsed) {
+  const { svg, width, height } = sitemapSvg(sm, { isScreen: (f) => Boolean(canvas.get(f)), collapsed }); // as it is shown: the folded branches stay folded
+  if (!svg) return toast("There is no sitemap to export.", { err: true });
+  const base = `${project || "project"}-sitemap`;
+  if (kind === "svg") { const r = await window.studio.exportData({ name: base, ext: "svg", text: svg }); if (r?.error) toast(r.error, { err: true }); else if (r?.path) toast(`Saved ${r.path.split("/").pop()}.`); return; }
+  const img = new Image(); img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  try { await img.decode(); } catch { return toast("The picture could not be made.", { err: true }); }
+  const k = Math.min(2, 8000 / Math.max(width, height)), cv = document.createElement("canvas"); cv.width = Math.round(width * k); cv.height = Math.round(height * k);
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+  const base64 = cv.toDataURL("image/png").split(",")[1];
+  if (kind === "copy") {
+    const r = await window.studio.copyImage(base64).catch((e) => ({ error: /No handler/i.test(String(e?.message)) ? "Restart the app: it was started before this feature was added." : String(e?.message ?? e) }));
+    return r?.error ? toast(r.error, { err: true }) : toast("The sitemap is on the clipboard as a picture.");
+  }
+  const r = await window.studio.exportData({ name: base, ext: "png", base64 }); if (r?.error) toast(r.error, { err: true }); else if (r?.path) toast(`Saved ${r.path.split("/").pop()}.`);
+}
+/** Delete a plan: the same dialog as for a screen; the file goes to the trash. */
+async function deletePlan(slug, title) {
+  const ok = await askConfirm({ title: `Delete the plan “${title}”?`, detail: `The file plans/${slug}.md will be removed from the project “${project}”. It is moved to the trash, so you can restore it.`, ok: "Delete" });
+  if (!ok) return;
+  const r = await window.studio.plansRemove(slug);
+  if (r?.error) toast(r.error, { err: true }); else toast(`The plan “${title}” was deleted (the file is in the trash).`);
+}
 async function deleteScreen(file) {
   const name = file.replace(/\.html$/, "");
   const info = await window.studio.screenDeleteInfo(file).catch(() => null);
@@ -635,7 +869,7 @@ $("z100").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitA
   const setOpen = (on) => { menu.hidden = !on; pill.setAttribute("aria-expanded", String(on)); };
   pill.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
   menu.addEventListener("click", (e) => { if (e.target.closest("#zin,#zout")) return; setOpen(false); }); // + / − stay open so they can be repeated
-  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !e.target.closest("#zoompill")) setOpen(false); });
+  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !e.target.closest("#zoompill")) setOpen(false); }, true); // capture: the cards of the canvas stop the event on their way up
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
 }
 // every dialog closes with the same cross in its header; in the static ones it does what their Cancel / Close button does
@@ -1164,13 +1398,11 @@ const FLOW_KEY = "uu5studio.flow";
 /** The button says what is on the canvas: unavailable with fewer than two screens, pressed only while arrows are drawn. */
 function updateFlowBtn() {
   const b = $("flowbtn"), few = canvas.files().length < 2, shown = flow.isOn() && flow.count() > 0;
-  b.disabled = few; b.setAttribute("aria-pressed", String(!few && shown));
-  b.title = few ? "Screen flow: needs at least two screens" : "Show or hide the arrows between linked screens";
-  const nb = $("flownavbtn"); nb.hidden = few || !flow.isOn() || flow.navCount() === 0; nb.setAttribute("aria-pressed", String(flow.navOn()));
-  nb.title = flow.navOn() ? "Hide the menu links again" : `Also draw the ${flow.navCount()} link${flow.navCount() === 1 ? "" : "s"} of the menu (hidden, they are on every screen)`;
+  b.hidden = few; b.disabled = few; b.setAttribute("aria-pressed", String(!few && shown)); // a flow needs two screens: with fewer there is nothing to show, so no button
+  b.title = "Show or hide the arrows between linked screens";
 }
-$("flownavbtn").onclick = () => { flow.setNav(!flow.navOn()); try { localStorage.setItem("uu5studio.flownav", flow.navOn() ? "1" : "0"); } catch { /* not remembered */ } };
-try { flow.setNav(localStorage.getItem("uu5studio.flownav") === "1"); } catch { /* menu links stay hidden */ }
+// the links of the menu are on every screen: they are drawn only for the screen in focus, never all at once
+try { localStorage.removeItem("uu5studio.flownav"); } catch { /* nothing to forget */ }
 // the focused screen: the selected one, or the one under the pointer; its arrows are strong, the others fade
 const flowFocus = () => flow.setFocus(flowHover ?? canvas.selected());
 $("world").addEventListener("pointerover", (ev) => { const f = ev.target.closest?.(".frame")?.querySelector(".fname")?.title ?? null; if (f !== flowHover) { flowHover = f; flowFocus(); } });
@@ -1544,16 +1776,19 @@ window.studio.onUpdate((u) => {
 function loadProject(info) {
   closeFullscreen();
   loading = true;
+  planCards?.closeView?.(); // the plan or the map of the project before is not shown over the new one
   port = info.port; webviewPreload = info.webviewPreload; project = info.project; projectList = info.projects ?? projectList;
   setBusy(false); clearChips(); resetMarked();
   chatId = info.chatId; chatList = info.chats ?? [];
   entries = info.chat ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
   log.replaceChildren(); entries.forEach(paint); ctxNow = 0; updateCtxWarn();
-  projectLevel = info.level ?? null; defaultEnv = info.environment ?? null; refreshEnvs();
-  canvas.removeAll(); savedLayout = info.layout?.frames ?? {};
+  projectLevel = info.level ?? null; projectScope = info.scope ?? null; defaultEnv = info.environment ?? null; refreshEnvs(); updateMapBtn();
+  canvas.removeAll(); planCards.clear(); planCards.load(info.layout?.plans); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
   showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); refreshBrandFlag(); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
+  window.studio.plansList().then((list) => { if (!list.error && project === info.project) onPlansChanged(list); });
+  window.studio.sitemapRead().then((r) => { if (project === info.project) setProjectSitemap(r?.error ? null : r); });
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
   $("projbtn").textContent = project ? `${project} ▾` : "No project ▾"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
   updateNoProject();
@@ -1631,11 +1866,13 @@ const dashboard = createDashboard({
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
   onTemplates: () => templatesDialog.open(),
   onLevel: (l) => { if (meta.role) dashboard.setPlan(planFirst(meta.role, l)); }, // the architect plans an application or a route first
-  onStart: async ({ text, plan, model, template, templateLevel, docs = [] }) => {
+  onStart: async ({ text, plan, model, template, templateLevel, level, scope, docs = [] }) => {
     if (!ready) return toast(NO_AI, { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
     if (!project || r?.error) return;
     if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); else { projectLevel = a.level ?? null; defaultEnv = a.environment ?? null; } }
+    const kind = await window.studio.projectSetKind({ level, scope }).catch(() => null); // what was chosen on the dashboard: decides where the sitemap is offered
+    if (kind && !kind.error) { projectLevel = kind.level ?? projectLevel; projectScope = kind.scope ?? null; updateMapBtn(); }
     autoNamed = project; autoLevel = templateLevel; // once the agent has made a screen, the project is renamed after it
     if (docs.length) docCards.adopt(docs, await window.studio.docAdopt().catch(() => null)); // the documents read on the dashboard move into the new project
     dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
@@ -1646,7 +1883,7 @@ const dashboard = createDashboard({
 async function flushSaves() {
   clearTimeout(saveTimer); clearTimeout(saveLayoutTimer);
   if (!project) return;
-  await Promise.all([window.studio.saveChat(project, chatId, chatSnapshot()), window.studio.saveLayout(project, { frames: canvas.layout(), camera: canvas.camera() })]);
+  await Promise.all([window.studio.saveChat(project, chatId, chatSnapshot()), window.studio.saveLayout(project, { frames: canvas.layout(), camera: canvas.camera(), plans: planCards?.layout() ?? {} })]);
 }
 async function changeProject(action) {
   await flushSaves();
@@ -1808,6 +2045,7 @@ function setView(v) {
   const simple = v === "simple";
   document.body.classList.toggle("simple", simple); try { localStorage.setItem(VIEW_KEY, simple ? "simple" : "advanced"); } catch { /* not remembered */ }
   for (const b of document.querySelectorAll(".viewtog")) { b.classList.toggle("on", !simple); b.setAttribute("aria-pressed", String(!simple)); }
+  if (simple) { $("plansmenu").hidden = true; $("plansbtn").setAttribute("aria-expanded", "false"); const k = planCards.viewKey(); if (k && k !== "@sitemap") planCards.closeView(); } // Plans belong to Advanced: the switch is hidden (app.css), so an open plan would have no way back
   syncModelNow();
 }
 for (const b of document.querySelectorAll(".viewtog")) b.onclick = () => setView(isSimple() ? "advanced" : "simple");

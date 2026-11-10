@@ -12,8 +12,11 @@ export function findIconsDir({ pluginsFile = path.join(os.homedir(), ".claude", 
     for (const [key, installs] of Object.entries(reg)) {
       if (!/^uugds@/.test(key)) continue;
       for (const inst of [...installs].reverse()) {
-        const dir = path.join(inst.installPath, "skills", "uugds-icons", "data");
-        if (fs.existsSync(path.join(dir, "icons.json"))) return dir;
+        // the plugin kept the catalog in `data/` (0.x) and moved it to `references/` (1.0)
+        for (const sub of ["references", "data"]) {
+          const dir = path.join(inst.installPath, "skills", "uugds-icons", sub);
+          if (fs.existsSync(path.join(dir, "icons.json"))) return dir;
+        }
       }
     }
   } catch { /* plugin registry missing */ }

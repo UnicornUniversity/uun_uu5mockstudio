@@ -59,7 +59,7 @@ function openDevMenu(f, anchor, envs, mode = "size") {
   setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
 }
 
-export function createCanvas({ root, world, onComments, onNavigate, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs }) {
+export function createCanvas({ root, world, onComments, onNavigate, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs, getExtraRects }) {
   const envsFor = () => getEnvs?.() ?? null; // { environments, refresh } or null
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
@@ -164,14 +164,15 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
     for (const f of frames.values()) f.shield.hidden = inspecting || f.file === selected;
   }
 
-  function fitBounds(list, animate = true) {
-    if (!list.length) return;
+  function fitBounds(list, animate = true, extra = []) {
+    if (!list.length && !extra.length) return;
     const b = list.reduce((a, f) => {
       const d = size(f);
       const n = { x1: Math.min(a.x1, f.x), y1: Math.min(a.y1, f.y - TITLE_H), x2: Math.max(a.x2, f.x + d.w), y2: Math.max(a.y2, f.y + d.h) };
       for (const [id, el] of f.noteEls) { const p = notePos(f, id); n.y1 = Math.min(n.y1, f.y + p.y); n.x2 = Math.max(n.x2, f.x + p.x + el.offsetWidth); n.y2 = Math.max(n.y2, f.y + p.y + el.offsetHeight); } // the notes beside a screen belong to the picture
       return n;
     }, { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity });
+    for (const r of extra) { b.x1 = Math.min(b.x1, r.x); b.y1 = Math.min(b.y1, r.y); b.x2 = Math.max(b.x2, r.x + r.w); b.y2 = Math.max(b.y2, r.y + r.h); } // things that are not screens (the plans)
     // inset: the parts of the canvas hidden under a floating toolbar (Glass Effect, top) or a floating chat (left or right); a number means the top only
     const ins = getInset?.() ?? 0, top = typeof ins === "number" ? ins : ins.top ?? 0, left = typeof ins === "number" ? 0 : ins.left ?? 0, right = typeof ins === "number" ? 0 : ins.right ?? 0;
     const r = root.getBoundingClientRect(), pad = 48, aw = r.width - left - right, ah = r.height - top;
@@ -341,7 +342,8 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
   // ----- canvas gestures: wheel = pan, ctrl/cmd+wheel (and trackpad pinch) = zoom, drag background/shield = pan, click shield = select
   root.addEventListener("wheel", (e) => {
     if (e.target.closest("webview") || (e.target !== root && !e.target.closest("#world"))) return;
-    if (e.target.closest(".fnote") && !(e.ctrlKey || e.metaKey)) return; // scrolling inside a note
+    if (e.target.closest(".pd") && (e.ctrlKey || e.metaKey)) return; // the diagram of a plan zooms itself
+    if (e.target.closest(".fnote, .pc-body") && !(e.ctrlKey || e.metaKey) && !e.altKey) return; // scrolling inside a note or a plan; Alt / Option moves the canvas, as over a screen
     e.preventDefault();
     const r = root.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) zoomAt(e.clientX - r.left, e.clientY - r.top, cam.z * Math.exp(-Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
@@ -384,7 +386,7 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
     removeAll: () => { for (const f of [...frames.keys()]) removeFrame(f); },
     selected: () => selected,
     reload: (file) => frames.get(file)?.reloadSoft(),
-    fitAll: (animate) => fitBounds([...frames.values()], animate),
+    fitAll: (animate) => fitBounds([...frames.values()], animate, getExtraRects?.() ?? []),
     focus: (file) => { const f = frames.get(file); if (!f) return; select(file); fitBounds([f]); },
     zoomBy: (k) => { const r = root.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, cam.z * k); },
     panBy: (dx, dy) => { cam.x += dx; cam.y += dy; applyCam(false); },

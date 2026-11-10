@@ -23,7 +23,10 @@
 | `planView.js`, `planDiagram.js` | The plan card (questions, outline, editor) and the interactive SVG/HTML diagram with zoom, collapse and drag and drop. |
 | `structureDialog.js` | The component tree of a screen or of one component; logs the moves for the file; Regenerate. |
 | `setup.js`, `tour.js` | First-run setup dialog; the welcome tour. |
-| `markdown.js` | A small, safe Markdown subset for chat messages (everything is escaped first). |
+| `planView.js` (`renderTree`) | The tree section (diagram / outline switch, detail on click) is `renderTree(entry, ctx, opts)`, used by the chat card and by the plan card on the canvas. |
+| `sitemap.js`, `sitemapView.js` | The sitemap of a portal (pure model and edits by path; the map with the page editor). |
+| `planCards.js`, `planDoc.js` | The plans of the project as cards in `#world` (view / edit mode, drag, resize, Approve & build; layout in `state.layout.plans`, included in the fit through the canvas option `getExtraRects`); front matter, slug and status helpers shared with the main process. |
+| `markdown.js` | A small, safe Markdown subset for chat messages (everything is escaped first); `markdownDoc` is the richer one for plan cards (h1–h4, nested lists, checklists, tables, quotes, `[[screen.html]]` links). |
 | `icons.js` | Shared SVG icons. |
 | `uu5StringCollect.js`, `uu5String.js`, `mdiBaseline.js` | Copy as uu5String: the tree collected from the rendered screen and its serialization, see [14](14-uu5string.md). |
 

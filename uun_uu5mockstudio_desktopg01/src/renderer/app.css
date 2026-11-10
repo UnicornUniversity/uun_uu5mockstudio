@@ -647,8 +647,8 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .plan-opt .ot{display:flex;flex-direction:column;gap:2px;min-width:0}.plan-opt .ot b{font-size:12.5px;font-weight:600}.plan-opt .ot small{font-size:11.5px;color:var(--mute)}
 .plan-other{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:12px}
 .pd-wrap{display:flex;flex-direction:column;gap:6px}.pd-top{display:flex;align-items:center;gap:8px}.pd-hint{font-size:11px;margin:0}
-.pd-wrap.full{position:fixed;inset:0;z-index:46;background:var(--bg);padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-rows:auto minmax(0,1fr) auto auto;gap:8px}
-.pd-wrap.full .pd-top{grid-column:1/3}.pd-wrap.full .pd{grid-column:1;grid-row:2/5;height:auto!important;resize:none}.pd-wrap.full .pd-hint,.pd-wrap.full .pd-detail{grid-column:1}.pd-wrap.full .pd-side{grid-column:2;grid-row:2/5;overflow:auto}
+.pd-wrap.full{position:fixed;inset:0;z-index:46;background:var(--bg);padding:20px 14px 14px;display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-rows:auto minmax(0,1fr) auto auto;gap:8px}
+.pd-wrap.full .pd-top{grid-column:1/3;min-height:30px;padding-left:84px}/* one row with the window buttons: the switch right of them, the close cross at the very top right */.pd-wrap.full .pd{grid-column:1;grid-row:2/5;height:auto!important;resize:none}.pd-wrap.full .pd-hint,.pd-wrap.full .pd-detail{grid-column:1}.pd-wrap.full .pd-side{grid-column:2;grid-row:2/5;overflow:auto}
 .pd-top .dlg-x{margin-left:auto}
 .pd{position:relative;height:340px;min-height:160px;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--panel);resize:vertical;cursor:grab;touch-action:none}
 .pd.panning{cursor:grabbing}.pd.dragging,.pd.dragging *{cursor:grabbing!important}
@@ -783,8 +783,11 @@ body[data-chat="float"] #chat.collapsed #chatbubble:hover{filter:brightness(1.08
 #dash-main{width:min(1080px,calc(100% - 64px));margin:0 auto;padding:30px 0 56px;display:flex;flex-direction:column;align-items:center}
 #dash-main{overflow:clip;overflow-clip-margin:40px} /* main{overflow:hidden} above is for the app's canvas area; here it cut off the shadows of the cards at the edges */
 #dash-levels-row{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:16px}
-#dash-levels{display:inline-flex;padding:3px;gap:2px;background:var(--bg);border-radius:10px}
-#dash-levels button{border:0;background:none;padding:5px 14px;border-radius:8px;color:var(--mute)}#dash-levels button:hover{color:var(--fg)}#dash-levels button.on{background:var(--panel);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+#dash-levels-row{flex-wrap:wrap;row-gap:8px}
+:is(#dash-levels,#dash-scope){display:inline-flex;padding:3px;gap:2px;background:var(--bg);border-radius:10px}
+:is(#dash-levels,#dash-scope) button{border:0;background:none;padding:5px 14px;border-radius:8px;color:var(--mute)}:is(#dash-levels,#dash-scope) button:hover{color:var(--fg)}:is(#dash-levels,#dash-scope) button.on{background:var(--panel);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+#dash-scope[hidden]{display:none}#dash-scope button{padding:5px 11px;font-size:12.5px}
+#dash-mode button:disabled{cursor:default}#dash-mode button.on:disabled{opacity:1;color:var(--fg)}
 #dash-tpl{border-color:transparent;background:none;color:var(--mute);padding:5px 10px}#dash-tpl:hover{color:var(--fg);background:var(--bg)}
 #dash-ideas{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:48px}
 #dash-badge{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;padding:4px 6px 4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:12px;font-weight:600}#dash-badge[hidden]{display:none}#dash-badge .ico{width:15px;height:15px}#dash-badge button{border:0;background:none;padding:0 4px;color:var(--mute);line-height:1;border-radius:999px}#dash-badge button:hover{color:var(--fg)}
@@ -1019,7 +1022,7 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 .modelnow{display:none;color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;cursor:default}
 body.simple .modelnow{display:inline}
 #form .row .modelnow{margin-left:auto;padding-left:12px}.dash-row .modelnow{margin-left:6px}
-body.simple #modesw,body.simple #model,body.simple #dash-model,body.simple #dash-mode,body.simple .usage:not(.big){display:none}
+body.simple #modesw,body.simple #plansw,body.simple #model,body.simple #dash-model,body.simple #dash-mode,body.simple .usage:not(.big){display:none}
 .usage-hint{display:none}body.simple .usage-hint{display:inline}
 @media (max-width:560px){#rolebox .rl-cards{grid-template-columns:1fr}}
 
@@ -1110,3 +1113,209 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 /* the cross of a dialog whose title is not the first line: the top right corner of the card */
 .card:has(> .dlg-x.corner){position:relative}.card > .dlg-x.corner{position:absolute;top:12px;right:12px;margin:0}
 
+/* plans on the canvas: a card per plans/*.md (read it, or edit its Markdown) */
+.plancard{position:absolute;z-index:4;display:flex;flex-direction:column;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.28);overflow:hidden}
+.plancard[data-status="discarded"] .pc-view{color:var(--mute)}
+.pc-title{display:flex;align-items:center;gap:8px;height:34px;flex:none;padding:0 8px 0 12px;border-bottom:1px solid var(--line);cursor:grab;user-select:none;font-size:13px}
+.pc-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pc-status{flex:none;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--code);color:var(--mute)}
+.plancard[data-status="approved"] .pc-status{background:rgba(79,140,255,.18);color:var(--acc)}
+.plancard[data-status="built"] .pc-status{background:rgba(52,199,89,.18);color:#34c759}
+.pc-ctl{margin-left:auto;display:flex;gap:4px;flex:none}
+.pc-ctl button{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:3px 9px;cursor:pointer}
+.pc-ctl button:hover{background:var(--code)}
+.pc-ctl .pc-build{background:var(--acc);border-color:var(--acc);color:#fff}
+.pc-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.pc-view{flex:1;overflow:auto;padding:14px 18px;font-size:14px;line-height:1.55;user-select:text;cursor:auto}
+.pc-view h1{font-size:20px;margin:.2em 0 .5em}.pc-view h2{font-size:17px;margin:1em 0 .4em}.pc-view h3{font-size:15px;margin:.9em 0 .3em}.pc-view h4{font-size:13px;margin:.9em 0 .3em;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.pc-view ul ul,.pc-view ol ul,.pc-view ul ol{margin:.1em 0}
+.pc-view li.task{list-style:none;margin-left:-1.2em}
+.pc-view table{border-collapse:collapse;margin:.5em 0;font-size:13px}.pc-view th,.pc-view td{border:1px solid var(--line);padding:4px 9px;text-align:left}.pc-view th{background:var(--code)}
+.pc-view blockquote{margin:.5em 0;padding:2px 12px;border-left:3px solid var(--line);color:var(--mute)}
+.pc-view hr{border:0;border-top:1px solid var(--line)}
+.pc-view pre{background:var(--pre);padding:10px 12px;border-radius:8px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace}
+.pc-view a[data-screen]{color:var(--acc);cursor:pointer;text-decoration:underline}
+.pc-edit{flex:1;width:100%;box-sizing:border-box;border:0;outline:none;resize:none;padding:14px 18px;background:var(--panel);color:var(--fg);font:13px/1.55 ui-monospace,Menlo,monospace;cursor:text}
+.pc-edit[hidden],.pc-view[hidden]{display:none}
+.pc-rs{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,var(--line) 50%)}
+.plan-open{margin-left:auto;font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:2px 9px;cursor:pointer}.plan-open:hover{background:var(--code)}
+#world{z-index:1}
+.plan-head{flex-wrap:wrap}.plan-state,.plan-count,.plan-open{white-space:nowrap}
+.plan-ref{margin:.3em 0;font-size:12.5px}
+.plan-toggle{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:3px 10px;cursor:pointer;margin:.3em 0}.plan-toggle:hover{background:var(--code)}
+.plancard[hidden]{display:none}
+.pc-ctl .pc-hide{border-color:transparent;padding:3px 7px;color:var(--mute)}
+/* sitemap: the map of the pages (root on the left, pages to the right) and the editor of the selected page */
+.sm-scroll{overflow:auto;padding:8px 12px 14px}
+.sm-tree,.sm-tree ul{list-style:none;margin:0;padding:0}
+.sm-tree{display:inline-block;min-width:100%;box-sizing:border-box;padding-right:12px} /* the selection ring of the pages at the edge is not cut off */
+.sm-tree ul{display:flex;flex-direction:column;padding-left:30px;position:relative}
+.sm-tree li{display:flex;align-items:center;position:relative;padding:4px 0}
+.sm-tree li>.sm-node{margin-right:0}
+.sm-tree li>ul::before{content:"";position:absolute;left:0;top:50%;width:15px;border-top:1px solid var(--line)} /* from the right edge of the parent to the vertical line of its children */
+.sm-tree ul>li::before{content:"";position:absolute;left:-15px;top:50%;width:15px;border-top:1px solid var(--line)}
+.sm-tree ul>li::after{content:"";position:absolute;left:-15px;top:0;bottom:0;border-left:1px solid var(--line)}
+.sm-tree ul>li:first-child::after{top:50%}.sm-tree ul>li:last-child::after{bottom:50%}.sm-tree ul>li:only-child::after{display:none}
+.sm-node{display:flex;align-items:center;gap:6px;max-width:240px;font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:5px 10px;cursor:pointer;text-align:left;white-space:nowrap}
+.sm-node:hover{background:var(--code)}.sm-node.sel{outline:2px solid var(--acc);outline-offset:0}
+.sm-node.t-group{border-left-color:var(--mute);border-style:dashed;color:var(--mute)}.sm-node.t-external{border-left-color:#e0912f}
+.sm-title{overflow:hidden;text-overflow:ellipsis}
+.sm-st{font-size:12px;flex:none}.sm-st.ok{color:#34c759}.sm-st.todo{color:var(--mute)}.sm-st.ext{color:#e0912f}
+.sm-hint{font-size:12.5px;margin:.4em 0}
+.sm-edit{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--code)}
+.sm-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sm-f{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--mute)}
+.sm-f input,.sm-f select{font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 8px;min-width:0}
+.sm-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sm-acts button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:3px 10px;cursor:pointer}
+.sm-acts button:disabled{opacity:.4;cursor:default}.sm-acts button.primary{background:var(--acc);border-color:var(--acc);color:#fff;margin-left:auto}.sm-acts button.danger{color:#e5484d}
+.pc-tree{margin-top:6px}.pc-treehead{display:flex;align-items:center;gap:10px}.pc-treehead h4{margin:.6em 0 .3em}
+.pc-tree .plan-toggle{margin:0}
+.pc-tree .pd{height:380px}
+.pc-mini{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:2px 9px;cursor:pointer;white-space:nowrap}.pc-mini:hover{background:var(--code)}
+.pc-mini.accent{background:var(--acc);border-color:var(--acc);color:#fff}.pc-mini.accent:hover{filter:brightness(1.08)}
+.pc-treehead .pc-mini:first-of-type{margin-left:auto}.pc-treehead{border-bottom:1px solid var(--line);margin-bottom:6px}.pc-treehead h4{margin:.8em 0 .4em!important}
+.pc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin:0 0 12px;padding:6px 10px;border:1px dashed var(--line);border-radius:9px;font-size:12.5px;color:var(--mute)}
+/* a block of a page: part of the design like a page (full colour), but no screen of its own, so a small tinted pill without the bar of a page; grey is kept for what is not solved here */
+.sm-node.t-section{border:1px solid color-mix(in srgb,var(--acc) 32%,var(--line));border-radius:999px;background:color-mix(in srgb,var(--acc) 9%,var(--panel));font-size:12px;color:var(--fg);padding:3px 11px}.sm-node.t-section:hover{background:color-mix(in srgb,var(--acc) 16%,var(--panel))}
+.sm-cm{flex:none;width:15px;height:15px;border-radius:50%;background:#e0912f;color:#fff;font:700 10px/15px system-ui,sans-serif;text-align:center}
+.sm-node.has-cm{box-shadow:0 0 0 1px #e0912f55}
+.sm-review{display:flex;gap:8px;align-items:center;margin:0 0 8px}.sm-wish{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
+.pc-mini:disabled{opacity:.45;cursor:default}
+.sm-edit>.sm-f{margin-bottom:8px}
+.sm-multi{display:flex;flex-direction:column;gap:2px;margin-bottom:8px;font-size:12.5px}.sm-multi .mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the map card: switch and review bar on top, the map scrolls by itself, the editor of the selected page stays at the bottom */
+.sm-treewrap{position:relative;display:inline-block;min-width:100%}
+.sm-links{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.sm-link{fill:none;stroke:#e0912f;stroke-width:1.5;stroke-dasharray:5 4;opacity:.9}
+.sm-diff{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;color:#c97a14}
+.pc-mini.on{background:var(--code);border-color:var(--acc);color:var(--acc)}
+.pc-bar-acts{display:flex;gap:6px;flex-wrap:wrap}
+.sm-tgl{flex:none;margin-left:2px;padding:0 5px;border-radius:6px;font-size:11px;color:var(--mute);cursor:pointer}.sm-tgl:hover{background:var(--code);color:var(--fg)}
+.sm-node.sel .sm-tgl{color:var(--acc)}
+/* the map is a section of the document, like the component tree: it has its own height and scrolling, the editor of the selected page stays at its bottom */
+.pc-sitemap{margin-top:6px}
+.pc-mapbox{height:540px;min-height:280px;resize:vertical;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel)}
+.pc-mapbox .sm{flex:1;min-height:0;display:flex;flex-direction:column}
+.pc-mapbox .sm-review,.pc-mapbox .sm-diff,.pc-mapbox .sm-hint{flex:none}
+.pc-mapbox .sm-scroll{flex:1;min-height:0;overflow:auto}
+.pc-mapbox .sm-edit{flex:none;max-height:46%;overflow:auto;margin-top:6px;padding:8px 10px}
+.pc-mapbox .sm-fields{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
+.pc-mapbox .sm-edit>.sm-f{margin-bottom:6px}.pc-mapbox .sm-acts{margin-top:8px}
+.pc-progress{font-size:12px;color:var(--mute)}
+.pc-ctl .pc-build:hover,.pc-ctl .pc-build:focus-visible{background:var(--acc);border-color:var(--acc);color:#fff;filter:brightness(1.1)} /* the filled button keeps its colour on hover (the general hover would make it light with white text) */
+.sm-acts button.primary:hover{background:var(--acc);border-color:var(--acc);color:#fff;filter:brightness(1.1)}
+.pc-note{margin:2px 0 6px;font-size:12px;color:var(--mute)}
+.pc-ctl .pc-undo{font-size:12px}
+.plancard.sitemapcard{border-color:var(--acc)}
+.sitemapcard .pc-view{padding-top:8px}
+/* the Plans menu of the toolbar */
+:is(#plansw,#mapw){position:relative;display:inline-flex;align-items:center}
+:is(#plansbtn,#mapbtn){display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px}
+:is(#plansbtn,#mapbtn) .ico{width:15px;height:15px}:is(#plansbtn,#mapbtn) .zcar{width:9px;height:6px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+:is(#plansmenu,#mapmenu){position:absolute;top:calc(100% + 6px);right:0;z-index:50;width:340px;max-height:70vh;overflow:auto;display:flex;flex-direction:column;gap:1px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+:is(#plansmenu,#mapmenu)[hidden]{display:none}
+:is(#plansmenu,#mapmenu) .pm-sec{padding:6px 8px 3px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+:is(#plansmenu,#mapmenu) .pm-sep{display:block;height:1px;margin:6px 0;background:var(--line)}
+:is(#plansmenu,#mapmenu) .pm-empty{padding:4px 8px 6px;font-size:12.5px;color:var(--mute)}
+:is(#plansmenu,#mapmenu) .pm-acts{display:flex;flex-wrap:wrap;gap:6px;padding:0 8px 8px}
+:is(#plansmenu,#mapmenu) .pm-act{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:3px 10px;cursor:pointer}:is(#plansmenu,#mapmenu) .pm-act:hover:not(:disabled){background:var(--bg)}:is(#plansmenu,#mapmenu) .pm-act:disabled{opacity:.45;cursor:default}
+:is(#plansmenu,#mapmenu) .pm-row{display:flex;align-items:center;gap:4px;border-radius:7px}:is(#plansmenu,#mapmenu) .pm-row:hover{background:var(--bg)}
+:is(#plansmenu,#mapmenu) .pm-row.off .pm-title{color:var(--mute)}
+:is(#plansmenu,#mapmenu) .pm-main{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:7px 8px;text-align:left;color:var(--fg);font:inherit;box-shadow:none;cursor:pointer}
+:is(#plansmenu,#mapmenu) .pm-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}:is(#plansmenu,#mapmenu) .pm-meta{color:var(--mute);font-size:11px;white-space:nowrap}
+:is(#plansmenu,#mapmenu) .pm-chip{margin-left:auto;flex:none;font-size:11px;color:var(--mute)}
+:is(#plansmenu,#mapmenu) .pm-eye{flex:none;font:inherit;font-size:12px;border:0;background:none;color:var(--acc);border-radius:6px;padding:2px 8px;margin-right:4px;cursor:pointer;box-shadow:none}:is(#plansmenu,#mapmenu) .pm-eye:hover{background:var(--code)}
+body[data-glass] #bar :is(#plansbtn,#mapbtn){background:var(--glass-thin)!important;border:1px solid var(--glass-edge)!important;border-radius:999px!important}
+body[data-glass] #bar :is(#plansbtn,#mapbtn):hover{background:var(--glass-hover)!important}
+body[data-glass] :is(#plansmenu,#mapmenu){background:var(--glass-thick,var(--panel));border:1px solid var(--glass-edge);backdrop-filter:blur(20px) saturate(1.4)}
+/* the card of the project sitemap: the map fills it */
+.sitemapcard .pc-view{display:flex;flex-direction:column;overflow:hidden}
+.sitemapcard .pc-sitemap{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:0}
+.sitemapcard .pc-mapbox{flex:1;height:auto;resize:none}
+body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;backdrop-filter:none} /* the text of the plan under the menu must not shine through */
+#plansmenu .pm-del{color:var(--mute)}#plansmenu .pm-del:hover{color:#e5484d}
+#plansmenu .pm-foot{padding:6px 8px 2px;border-top:1px solid var(--line);margin-top:4px}
+#empty:not(.working).has-cards{display:none} /* no "No mockup yet" while plans or the sitemap are on the canvas */
+
+.sm-notes{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:4px}.sm-note{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:3px 4px 3px 9px}.sm-note span{flex:1;min-width:0;overflow-wrap:anywhere}.sm-note-x{border:0;background:none;color:var(--mute,var(--fg));cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.sm-cbox{border:1px solid var(--line);border-left:3px solid #e0a030;border-radius:8px;background:var(--panel);padding:7px 9px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px}.sm-cbox>input{width:100%;box-sizing:border-box}.sm-chead{display:flex;gap:8px;align-items:baseline;font-size:12px}.sm-chead b{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}.sm-shead{margin-bottom:6px}.sm-cbox .sm-notes{margin:0}.sm-settings{margin-bottom:8px}
+#docview{position:absolute;inset:0;z-index:12;background:var(--canvas);display:flex;flex-direction:column;box-sizing:border-box}#docview[hidden]{display:none}
+.dv-tabs{display:flex;gap:6px;flex:none;margin-bottom:10px;overflow-x:auto}.dv-tab{border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:999px;padding:5px 14px;font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}.dv-tab:hover{background:var(--bg)}.dv-tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.dv-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.plancard.pc-inview{position:static!important;left:auto!important;top:auto!important;width:auto!important;height:auto!important;flex:1;min-height:0;transform:none!important;box-shadow:0 6px 24px rgba(0,0,0,.18);resize:none!important}
+.pc-inview .pc-rs,.pc-inview .pc-hide{display:none}.pc-inview .pc-title{cursor:default}.pc-inview .pc-mapbox{resize:none}.pc-inview .sm-edit{max-height:40%}
+.plancard:not(.pc-inview){display:none!important}
+:is(#plansmenu,#mapmenu) .pm-row.cur .pm-title{color:var(--acc);font-weight:600}
+:is(#plansbtn,#mapbtn).on{background:var(--acc)!important;border-color:var(--acc)!important;color:#fff!important}:is(#plansbtn,#mapbtn).on .ico,:is(#plansbtn,#mapbtn).on .zcar{stroke:#fff}
+.pc-del{display:none;font-size:12px;color:#e5484d}.pc-inview .pc-del{display:inline-block}.pc-del[hidden]{display:none!important}
+.pc-del{display:none;align-items:center;padding:3px 7px}.pc-inview .pc-del{display:inline-flex}.pc-del .ico,#plansmenu .pm-del .ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.pc-del:hover{color:#e5484d}#plansmenu .pm-del{display:inline-flex;align-items:center;padding:5px 7px}
+/* the toolbar: no system focus ring after a mouse click (it showed orange on the last clicked button); the keyboard gets a ring in the accent colour */
+#bar :is(button,select):focus:not(:focus-visible){outline:none}
+#bar :is(button,select):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* the "Advanced" switch is a setting, not a view: when on it is a soft tint, the filled accent is for the view that is shown (Sitemap, Plans) and the Edit mode */
+#bar .viewtog.on{background:color-mix(in srgb,var(--acc) 14%,transparent)!important;color:var(--acc)!important;border-color:transparent!important}
+/* the toolbar in three groups: views (Sitemap, Plans) | zoom | tools; a thin divider and a little air between them */
+#bar #zoompill,#bar #descbtn{position:relative;margin-left:8px}
+#bar #zoompill::before,#bar #descbtn::before{content:"";position:absolute;left:-6px;top:20%;bottom:20%;width:1px;background:var(--line);pointer-events:none}
+#bar .ctl>button.icon,#bar #zpct{min-height:32px}
+#bar .ctl button.icon[disabled]{opacity:.5}
+#bar :is(#plansbtn,#mapbtn).on .zcar{opacity:.9;stroke:#fff}
+.sm-node{user-select:none;-webkit-user-select:none}
+.sm-rename{position:fixed;z-index:60;box-sizing:border-box;font:inherit;font-size:13px;padding:0 10px;border:2px solid var(--acc);border-radius:9px;background:var(--panel);color:var(--fg);outline:none;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.sm-ctx{position:fixed;z-index:60;min-width:210px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.28);display:flex;flex-direction:column}
+.sm-ctx hr{border:0;border-top:1px solid var(--line);margin:4px 2px;width:auto}.sm-ch{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);padding:6px 10px 2px}
+.sm-ci{text-align:left;border:0;background:none;color:inherit;font:inherit;font-size:13px;padding:6px 10px 6px 26px;border-radius:7px;cursor:pointer;position:relative}.sm-ci:hover:not([disabled]),.sm-ci:focus-visible{background:var(--bg);outline:none}
+.sm-ci.on::before{content:"✓";position:absolute;left:9px;color:var(--acc)}.sm-ci.danger{color:#e5484d}.sm-ci[disabled]{opacity:.4;cursor:default}
+/* Delete in the menu of a page: a plain item with red text (the global filled red button made it red on red) */
+#smmenu .sm-ci.danger,.sm-ci.danger{background:none;border-color:transparent;color:color-mix(in srgb,#e5484d 80%,var(--fg))}
+.sm-ci.danger:hover:not([disabled]){background:color-mix(in srgb,#e5484d 8%,transparent);color:#e5484d}
+.sm-node.t-stub{border-left-color:var(--line);color:var(--mute);background:color-mix(in srgb,var(--panel) 60%,transparent)}.sm-st.stub{color:var(--mute)}
+.sm-node.dragging{opacity:.4}.sm-ghost{position:fixed;z-index:200;pointer-events:none;max-width:240px;padding:5px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--acc);box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}body.sm-dragging{cursor:grabbing!important}body.sm-dragging *{cursor:grabbing!important}
+.sm-node.drop-inside{outline:2px solid var(--acc);outline-offset:1px;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
+.sm-node.drop-before{box-shadow:0 -3px 0 0 var(--acc)}.sm-node.drop-after{box-shadow:0 3px 0 0 var(--acc)}
+/* the view is the work area itself, not a card on it: no frame, no title bar of the sitemap (the toolbar says what is shown), no row of chips */
+#docview{background:var(--panel)}
+.plancard.pc-inview{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
+.pc-inview .pc-mapbox{border:0;padding:0;background:transparent}
+.pc-inview .pc-treehead{padding-top:10px}
+.pc-inview .pc-body,.pc-inview .pc-view{padding-left:16px;padding-right:16px}
+/* one header for the plan and for the sitemap: the icon, the name, the state, and on the right what can be done; the map has no second heading of its own */
+.pc-inview .pc-title{height:46px;padding:0 14px;border-bottom:1px solid var(--line);cursor:default;font-size:14px}
+.pc-inview .pc-name{font-weight:600}
+.sitemapcard.pc-inview .pc-treehead h4,.sitemapcard.pc-inview .pc-progress{display:none}
+.sitemapcard.pc-inview .pc-treehead{justify-content:flex-end;padding-top:8px}
+/* the side panel of the sitemap view: the selected page(s), its comments and settings (the place of the Edit mode panel on the canvas) */
+#smside{width:300px;flex:none;border-left:1px solid var(--line);background:var(--panel);padding:14px;overflow:auto;box-sizing:border-box}
+#smside[hidden]{display:none}
+#smside .sm-edit{margin:0;padding:0;border:0;background:none;max-height:none}
+#smside .sm-fields{grid-template-columns:1fr;gap:8px}
+#smside .sm-acts{flex-wrap:wrap;margin-top:10px}
+#smside .sm-acts button.primary{margin-left:0;flex:1 1 100%}
+#smside .sm-cbox{margin-bottom:14px}
+.sm-note span[role=button]{cursor:text}.sm-note span[role=button]:hover{color:var(--acc)}.sm-note-ed{flex:1;min-width:0;font:inherit;font-size:12.5px;color:var(--fg);background:var(--bg);border:1px solid var(--acc);border-radius:6px;padding:3px 6px;resize:none;overflow:hidden;box-sizing:border-box}
+.sm-ccount{font-size:11px;min-width:18px;text-align:center;padding:0 5px;border-radius:999px;background:color-mix(in srgb,#e0a030 22%,transparent);color:#9a6a10}
+.sm-cbox>input{width:100%;box-sizing:border-box;font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.sm-cbox>input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 18%,transparent)}
+#smside .insp-head h3{font-size:15px;overflow-wrap:anywhere;margin:0 0 4px}
+/* the actions of a page: groups with a small label, segmented buttons of equal width, one primary action and a quiet Delete */
+.sm-acts{display:flex;flex-direction:column;align-items:stretch;gap:12px}
+.pc-mapbox .sm-acts,.sm-edit>.sm-acts{flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.sm-grp{display:flex;flex-direction:column;gap:4px}.sm-gl{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.sm-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.sm-seg button{flex:1;border:0!important;border-radius:0!important;background:none!important;box-shadow:none!important;padding:6px 10px;font-size:13px;color:var(--fg)}
+.sm-seg button+button{border-left:1px solid var(--line)!important}
+.sm-seg button:hover:not([disabled]){background:var(--bg)!important}.sm-seg button[disabled]{opacity:.35}
+#smside .sm-acts{margin-top:14px}#smside .sm-acts .primary{margin:0;width:100%;padding:8px 12px;border-radius:8px}
+#smside .sm-del{background:none!important;border:0!important;box-shadow:none!important;color:#e5484d;font-size:12.5px;padding:6px 4px;align-self:flex-start}
+#smside .sm-del:hover:not([disabled]){text-decoration:underline}
+#smside .insp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.smside-x{flex:none;border:0;background:none;font-size:20px;line-height:1;padding:0 6px;color:var(--mute);cursor:pointer}.smside-x:hover{color:var(--fg)}.smside-x[hidden]{display:none}
+/* the actions of a page: one row of icon buttons, then the primary action */
+.sm-bar{display:flex;align-items:center;gap:6px}
+.sm-ib{flex:1;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);cursor:pointer}
+.sm-ib .ico{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sm-ib:hover:not([disabled]){background:var(--bg)}.sm-ib[disabled]{opacity:.35;cursor:default}.sm-ib.danger{color:var(--mute)}.sm-ib.danger:hover:not([disabled]){color:#e5484d;border-color:color-mix(in srgb,#e5484d 45%,var(--line))}
+.sm-bsep{flex:none;width:1px;height:20px;background:var(--line)}
+#smside .sm-acts{margin-top:14px;gap:10px}
+.sm-ib.off{opacity:.38;cursor:default}.sm-ib.off:hover{background:var(--panel)}.sm-ib.danger.off:hover{color:var(--mute);border-color:var(--line)}
