@@ -1,5 +1,6 @@
 import { findDocUrls, kindLabel } from "./docLinks.js";
 import { markdown } from "./markdown.js";
+import { defaultChecked, pickOutline } from "./siteStructure.js";
 
 /**
  * Links pasted into the message field: a card next to the attached images for each. A document of Plus4U is read by the app (main process,
@@ -11,7 +12,12 @@ const CUSTOM = "__custom__";
 
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
-export function createDocCards({ studio = window.studio, onChange = () => {}, toast = () => {} } = {}) {
+/**
+ * Where a sitemap makes sense (`offerStructure()`), a card says what its link is for: a **reference** (the content and the look of that one page, the
+ * default) or the **sitemap** (the structure of the pages behind the link: read at once, everything the picker would tick; `structure(card)` opens the
+ * picker to choose the pages). `onUse(use)` tells the chat when the user switches. The preview with "Load with my access…" is the same for both.
+ */
+export function createDocCards({ studio = window.studio, onChange = () => {}, toast = () => {}, structure = null, offerStructure = () => false, onUse = () => {} } = {}) {
   let cards = []; // [{ id, url, kind (bookkit | mkEcc | web), state: loading|ready|login|territory|npx|error, title, sections, file, error, waitLogin }]
 
   const set = (id, patch) => { cards = cards.map((c) => (c.id === id ? { ...c, ...patch } : c)); onChange(); };
@@ -29,6 +35,22 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
     if (r?.ok) return set(card.id, { state: "ready", title: r.title, sections: r.sections ?? [], file: r.file, shot: r.shot, thumb: r.thumb, images: r.images ?? 0, waitLogin: false });
     const code = r?.error;
     set(card.id, code === "login" || code === "territory" || code === "npx" ? { state: code, waitLogin: false } : { state: "error", error: code || "The document could not be loaded.", waitLogin: false });
+  }
+
+  /** The link is for the sitemap: the structure behind it is read (nothing is saved) and waits on the card as the pages for the agent. */
+  async function loadPick(card) {
+    set(card.id, { use: "sitemap", pick: null, pickState: "loading", pickError: "" });
+    const r = await studio.docStructure(card.url).catch((e) => ({ error: String(e?.message ?? e) }));
+    const cur = cards.find((c) => c.id === card.id);
+    if (!cur || cur.use !== "sitemap" || cur.pick) return; // removed, switched back, or the pages were chosen in the picker meanwhile
+    if (!r?.ok || !r.tree) return set(card.id, { pickState: "error", pickError: r?.error === "login" ? "Sign in to Plus4U to read the structure." : r?.error || "The structure could not be loaded." });
+    const ids = defaultChecked(r.tree);
+    set(card.id, { pickState: "ready", pick: { url: card.url, kind: r.kind, title: r.tree.title, count: ids.length, outline: pickOutline(r.tree, ids) } });
+  }
+  function setUse(card, use) {
+    if ((card.use ?? "reference") === use) return;
+    if (use === "sitemap") loadPick(card); else set(card.id, { use: "reference", pick: null, pickState: "", pickError: "" });
+    onUse(use);
   }
 
   /** Adds a card for each new document link in `text` (pasted or typed). Returns how many were added. */
@@ -85,6 +107,18 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
       if (card.thumb) d.append(el("img", { className: "doc-img", src: card.thumb, alt: card.title }));
       d.append(el("div", { className: "doc-t", textContent: card.title }), el("div", { className: "doc-s", textContent: card.kind === "web" ? "web page · click to view" : `${card.sections.length} section${card.sections.length === 1 ? "" : "s"}${card.images ? ` · ${card.images} picture${card.images === 1 ? "" : "s"}` : ""} · click to view` }));
       d.onclick = () => preview(card);
+      if (offerStructure() || card.use === "sitemap") {
+        const use = card.use ?? "reference", seg = el("div", { className: "att-mode" });
+        for (const [key, label, tip] of [["reference", "Reference", "The agent reads this page (its content and how it looks) as the input of the design."], ["sitemap", "Sitemap", "The agent gets the structure of the pages behind this link (the menu of the site or book, the pages of the document) as the input of the sitemap."]])
+          seg.append(el("button", { type: "button", textContent: label, title: tip, className: use === key ? "on" : "", onclick: (e) => { e.stopPropagation(); setUse(card, key); } }));
+        d.append(seg);
+        if (use === "sitemap") {
+          const n = card.pick?.count;
+          d.append(el("div", { className: `doc-s${card.pickState === "error" ? " doc-err" : ""}`, textContent: card.pickState === "loading" ? "Reading the structure of the pages…" : card.pickState === "error" ? card.pickError : `${n} page${n === 1 ? "" : "s"} for the sitemap` }));
+          if (card.pickState === "error") d.append(el("button", { type: "button", className: "doc-a doc-map", textContent: "Retry", onclick: (e) => { e.stopPropagation(); loadPick(card); } }));
+          else if (structure && card.pickState !== "loading") d.append(el("button", { type: "button", className: "doc-a doc-map", textContent: "Choose the pages…", title: "Pick all or some of the pages, and unfold a page to go deeper", onclick: (e) => { e.stopPropagation(); structure(card); } }));
+        }
+      }
     } else if (card.state === "login") {
       d.append(el("div", { className: "doc-s", textContent: "Sign in to Plus4U to read it." }), el("button", { type: "button", className: "doc-a", textContent: "Sign in", onclick: () => load(card, { login: true }) }));
     } else if (card.state === "territory") {
@@ -112,11 +146,13 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
     /** Appends the cards to the attachments box. */
     renderInto: (box) => { for (const c of cards) box.append(cardEl(c)); },
     count: () => cards.length,
-    busy: () => cards.some((c) => c.state === "loading"),
+    busy: () => cards.some((c) => c.state === "loading" || (c.use === "sitemap" && c.pickState === "loading")),
+    /** The pages chosen in the picker for the card of `url`: the card is for the sitemap now. */
+    setPick(url, pick) { const c = cards.find((x) => x.url === url); if (c) { set(c.id, { use: "sitemap", pick, pickState: "ready", pickError: "" }); onUse("sitemap"); } return Boolean(c); },
     /** The documents that could not be read (shown so that the user decides: remove them, or sign in). A web page that did not open does not stop the message: its link stays in the text. */
     blocked: () => cards.filter((c) => c.state !== "ready" && c.state !== "loading" && c.kind !== "web"),
     /** The documents read, for the message; the cards are cleared. */
-    take() { const ready = cards.filter((c) => c.state === "ready").map(({ url, kind, title, file, sections, shot, thumb }) => ({ url, kind, title, file, shot, thumb, sections: sections.length })); cards = []; onChange(); return ready; },
+    take() { const ready = cards.filter((c) => c.state === "ready").map(({ url, kind, title, file, sections, shot, thumb, use, pick }) => ({ url, kind, title, file, shot, thumb, sections: sections.length, ...(use === "sitemap" && pick ? { use, pick } : {}) })); cards = []; onChange(); return ready; },
     preview,
     /** The ready cards as they are (the dashboard hands them to the chat of the project it creates); the cards are cleared. */
     takeCards() { const ready = cards.filter((c) => c.state === "ready"); cards = []; onChange(); return ready; },

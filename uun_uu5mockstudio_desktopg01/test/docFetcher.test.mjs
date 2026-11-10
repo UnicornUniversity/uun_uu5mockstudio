@@ -181,3 +181,57 @@ test("a web page is read by the app itself: text and picture are kept, a failure
   const bad = await f.fetchDoc(dir, "https://example.com/gone", { readPage: async () => { throw new Error("The page answered with the error 404."); } });
   assert.deepEqual(bad, { error: "The page answered with the error 404.", kind: "web" });
 });
+
+const ECC_DOC = "https://uuapp.plus4u.net/uu-managementkit-maing02/38744216cb324edca986789798259ba9/document?oid=660d8eb6e75ca600355fe18d";
+const titles = (n) => [n.title, ...n.children.map(titles)];
+
+test("structure reads the menu of a book, and its flat list of pages when the answer has no menu", async (t) => {
+  const f = createDocFetcher({ spec: spec(true) });
+  t.after(() => f.close());
+  const r = await f.structure(BOOK);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.kind, "bookkit");
+  assert.deepEqual(titles(r.tree), ["Room book", ["Rooms", ["Room list"], ["Room detail"]], ["Roles"]]); // the home page is the root itself
+  assert.equal(r.tree.children[0].children[0].url, "https://uuapp.plus4u.net/uu-bookkit-maing01/0238a88bac124b3ca828835b57144ffa/book/page?code=rooms-list");
+  const flat = createDocFetcher({ spec: async () => ({ ...(await spec(true)()), env: { SERVER_URL: "https://fake.test/mcp", FAKE_SIGNED_IN: "1", FAKE_NO_MENU: "1" } }) });
+  t.after(() => flat.close());
+  assert.deepEqual(titles((await flat.structure(BOOK)).tree), ["Room book", ["Rooms"], ["Roles"]]);
+});
+
+test("structure of a document: its other pages and the links of its content; without a token it reports login", async (t) => {
+  const f = createDocFetcher({ spec: spec(true) });
+  t.after(() => f.close());
+  const r = await f.structure(ECC_DOC);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.title, "Portál praxí");
+  assert.deepEqual(r.tree.children.map((c) => [c.title, c.group, c.kind]), [["Nabídky", "pages", "mkEcc"], ["Hardwario", "content", "web"]]); // the main page is the document itself; the cut section was completed
+  assert.match(r.tree.children[0].url, /pageOid=660d8eb8e75ca600355fe1aa/);
+  const out = createDocFetcher({ spec: spec(false) });
+  t.after(() => out.close());
+  assert.deepEqual(await out.structure(BOOK), { error: "login", kind: "bookkit" });
+});
+
+test("structure of a web site comes from the links the app reads; a failure is reported", async () => {
+  const f = createDocFetcher({ spec: spec(true) });
+  const readLinks = async () => ({ title: "Example", links: [{ href: "https://example.com/about", text: "About", area: "nav", depth: 1 }, { href: "https://other.test/", text: "Other", area: "nav", depth: 1 }], sitemapUrls: [] });
+  const r = await f.structure("https://example.com/", { readLinks });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(titles(r.tree), ["Example", ["About"]]);
+  assert.deepEqual(await f.structure("https://example.com/", { readLinks: async () => { throw new Error("The page did not load in 45 s."); } }), { error: "The page did not load in 45 s.", kind: "web" });
+  assert.equal((await f.structure("nonsense")).error, "This is not a link to a web page.");
+});
+
+test("fetchDoc downloads the pictures of a book page and the rendered page shows the local files", async (t) => {
+  const f = createDocFetcher({ spec: spec(true) });
+  t.after(() => f.close());
+  const dir = await makeProject({});
+  const r = await f.fetchDoc(dir, BOOK);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.images, 1);
+  const pic = path.join(dir, ".studio", "sources", "assets", "pic1.png");
+  assert.equal((await readFile(pic)).subarray(1, 4).toString(), "PNG");
+  assert.match(await readFile(r.file, "utf8"), /## Pictures \(downloaded[^\n]*\n\n- pic1 → [^\n]*pic1\.png/);
+  const html = await readFile(r.page, "utf8");
+  assert.match(html, /\.studio\/sources\/assets\/pic1\.png/);
+  assert.doesNotMatch(html, /getBinaryData\?code=pic1/);
+});

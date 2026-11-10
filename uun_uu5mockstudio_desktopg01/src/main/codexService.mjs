@@ -7,7 +7,7 @@ import { requiredFiles, skillsPrompt, readsSkill, writesScreen, reworkPrompt } f
 
 /** What Codex is told on top of the common instructions: it has no preview tools and no Claude Code skills of its own. */
 export const CODEX_NOTE = [
-  "You are Codex. The studio-browser tools named above (browser_open, browser_reload, browser_console, browser_snapshot, browser_click, browser_screenshot, screen_structure, web_images, download_asset) are MCP tools of the server `studio-browser`; call them the way you call any MCP tool. If they are not offered to you, check your work by re-reading the file you wrote. Do not start a server.",
+  "You are Codex. The studio-browser tools named above (browser_open, browser_reload, browser_console, browser_snapshot, browser_click, browser_screenshot, screen_structure, web_images, download_asset, document_picture) are MCP tools of the server `studio-browser`; call them the way you call any MCP tool. If they are not offered to you, check your work by re-reading the file you wrote. Do not start a server.",
 ].join(" ");
 
 /** The `codex exec` command line. A resumed run accepts fewer flags than a fresh one, so the sandbox is set with `-c`, which both accept. */

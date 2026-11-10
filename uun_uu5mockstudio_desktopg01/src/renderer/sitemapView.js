@@ -285,7 +285,7 @@ export function renderSitemap(sm, opts) {
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     cbox,
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
-    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), field("Screen file", text(node.file, "file", node.type === "page" ? fileFor(sm, node) : node.type === "section" ? "(part of the page above)" : "")), field("Note", text(node.note, "note", "What the page is for"))),
+    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), field("Screen file", text(node.file, "file", node.type === "page" ? fileFor(sm, node) : node.type === "section" ? "(part of the page above)" : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
       // one row of icon buttons (the name is in the tooltip): add | move | delete; the screen is the one primary button

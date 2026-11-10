@@ -25,6 +25,7 @@
 | `setup.js`, `tour.js` | First-run setup dialog; the welcome tour. |
 | `planView.js` (`renderTree`) | The tree section (diagram / outline switch, detail on click) is `renderTree(entry, ctx, opts)`, used by the chat card and by the plan card on the canvas. |
 | `sitemap.js`, `sitemapView.js` | The sitemap of a portal (pure model and edits by path; the map with the page editor). |
+| `siteStructure.js`, `sitePicker.js` | Sitemap from a link: the structure of a web site, a uuBookKit book or a uuManagementKit document as a tree to pick from (pure), and the dialog with the ticks. |
 | `planCards.js`, `planDoc.js` | The plans of the project as cards in `#world` (view / edit mode, drag, resize, Approve & build; layout in `state.layout.plans`, included in the fit through the canvas option `getExtraRects`); front matter, slug and status helpers shared with the main process. |
 | `markdown.js` | A small, safe Markdown subset for chat messages (everything is escaped first); `markdownDoc` is the richer one for plan cards (h1–h4, nested lists, checklists, tables, quotes, `[[screen.html]]` links). |
 | `icons.js` | Shared SVG icons. |

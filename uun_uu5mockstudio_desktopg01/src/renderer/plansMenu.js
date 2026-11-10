@@ -4,7 +4,7 @@ const STATUS = { draft: "draft", approved: "approved", built: "built", discarded
 /**
  * The menus of the toolbar, one for the plans of the project and one for its sitemap (`show`: "plans" | "sitemap"): to show on the canvas (a hidden card comes back),
  * to hide again, and, for the sitemap, to create it when there is none. `state()` = { sitemap: { pages, built, hidden } | null, plans: [{ slug, title, status, hidden }], screens (how many) };
- * `actions` = { show(key), toggle(key), fromScreens(), empty(), askAgent() }; `key` is a slug or "@sitemap".
+ * `actions` = { show(key), toggle(key), fromScreens(), fromLink(), empty(), askAgent() }; `key` is a slug or "@sitemap".
  */
 /** "just now", "5 min ago", "3 h ago", "yesterday", "12 days ago" (older: the date). */
 export function ago(ms, now = Date.now()) {
@@ -30,7 +30,7 @@ export function createPlansMenu({ button, menu, state, actions, show = "plans" }
   /** The ways to make a sitemap, with the line above them. */
   const makeMap = (s, text) => {
     const b = (label, title, fn, disabled = false) => el("button", { type: "button", className: "pm-act", textContent: label, title, disabled, role: "menuitem", onclick: run(fn) });
-    return [el("div", { className: "pm-empty", textContent: text }), el("div", { className: "pm-acts" }, b("From the screens", s.screens ? "A first map made of the screens that exist and the links between them" : "The project has no screens yet", actions.fromScreens, !s.screens), b("Empty map", "Start with one page and add the others", actions.empty), b("Ask the agent…", "Describe the site or portal in Plan mode: the agent proposes the map", actions.askAgent))];
+    return [el("div", { className: "pm-empty", textContent: text }), el("div", { className: "pm-acts" }, b("From the screens", s.screens ? "A first map made of the screens that exist and the links between them" : "The project has no screens yet", actions.fromScreens, !s.screens), b("From a link…", "Read the pages of an existing web site, uuBookKit book or uuManagementKit document / portal and pick all or some of them", actions.fromLink), b("Empty map", "Start with one page and add the others", actions.empty), b("Ask the agent…", "Describe the site or portal in Plan mode: the agent proposes the map", actions.askAgent))];
   };
   function render() {
     const s = state(), parts = [];

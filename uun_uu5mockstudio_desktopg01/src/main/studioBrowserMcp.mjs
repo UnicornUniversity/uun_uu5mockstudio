@@ -4,7 +4,7 @@ import path from "node:path";
 import { webContents, nativeImage } from "electron";
 import { captureWithFallback, shrinkScreenshot } from "./screenshot.mjs";
 import { clickIn } from "./mockClick.mjs";
-import { listWebImages, downloadWebImage } from "./webImages.mjs";
+import { listWebImages, downloadWebImage, copySourcePicture, mergeImages, saveBlobPictures } from "./webImages.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = (t) => ({ content: [{ type: "text", text: t }] });
@@ -16,7 +16,8 @@ const fileParam = z.string().optional().describe("Mockup .html file name. Defaul
  * In-process MCP server that lets the agent verify what the app preview really renders.
  * The canvas shows one <webview> per mockup file; the renderer registers each via `register(file, id)`.
  */
-export function createStudioBrowser({ baseUrl, onNavigated, readStructure, projectDir }) {
+/** `readImages(url)` lists the pictures of a page as the app sees it when it opens it; `fetchWithAccess` downloads with the sign-ins of the user (both optional). */
+export function createStudioBrowser({ baseUrl, onNavigated, readStructure, projectDir, readImages, fetchWithAccess }) {
   const views = new Map(); // file -> webContents id
   const logs = new Map(); // webContents id -> [{level,text}]
   let lastFile;
@@ -120,18 +121,26 @@ export function createStudioBrowser({ baseUrl, onNavigated, readStructure, proje
       async ({ file }) => {
         try { const out = readStructure?.(file); return text(out ?? "The screen has no JSX to read."); } catch (e) { return text(`Cannot read the structure: ${e.message}`); }
       }),
-    tool("web_images", "List the pictures a public web page shows (<img>, srcset, og:image, CSS backgrounds) as `url — alt text`, to find a photo of a person, a logo or a product to use in the design. Reads the page's HTML only (a page built by script may list few pictures; then look for the address in the snapshot of the page the user attached, or ask). Use download_asset to save one.",
+    tool("web_images", "List the pictures a web page shows (<img>, srcset, og:image, CSS backgrounds) as `url — alt text`, to find a photo of a person, a logo or a product to use in the design. The app opens the page as the user sees it (also a page built by script, and with the sign-ins the user made in the app), and reads its HTML too. It takes a few seconds. Use download_asset to save one.",
       { url: z.string().describe("Address of the web page (https://…)") },
       async ({ url }) => {
         try {
-          const list = await listWebImages(url);
-          return text(list.length ? list.map((i) => `${i.url}${i.alt ? ` — ${i.alt}` : ""}`).join("\n") : "The page's HTML names no pictures.");
+          const [html, shown] = await Promise.all([listWebImages(url).catch((e) => { if (!readImages) throw e; return []; }), readImages ? readImages(url).catch(() => null) : null]);
+          const list = mergeImages(shown?.images ?? [], html).slice(0, 120);
+          const files = await saveBlobPictures(projectDir(), shown?.blobs).catch(() => []); // pictures the page holds only in memory: saved now, they cannot be downloaded by an address
+          const lines = [...list.map((i) => `${i.url}${i.alt ? ` — ${i.alt}` : ""}`), ...(files.length ? ["", "Pictures without an address, saved by the app in .studio/sources/assets (copy one into the design with document_picture):", ...files.map((f) => `${f.name}${f.alt ? ` — ${f.alt}` : ""}${f.w && f.h ? ` (${f.w}×${f.h})` : ""}`)] : [])];
+          return text(lines.length ? lines.join("\n") : "The page shows no pictures.");
         } catch (e) { return text(`Cannot read the page: ${e.message}`); }
       }),
-    tool("download_asset", "Download a picture (PNG, JPEG, GIF, WebP, SVG; up to 10 MB) from a public address into the assets folder of the project and return its path, e.g. assets/martin-macik.jpg. Use the returned path in the screen exactly (<img src=\"assets/…\">), keep the proportions. Only download what the user asked for, and name the file after what it shows.",
+    tool("download_asset", "Download a picture (PNG, JPEG, GIF, WebP, SVG; up to 10 MB) from an address on the internet (a picture that needs a sign-in is downloaded with the sign-ins the user made in the app) into the assets folder of the project and return its path, e.g. assets/martin-macik.jpg. Use the returned path in the screen exactly (<img src=\"assets/…\">), keep the proportions. Only download what the user asked for, and name the file after what it shows.",
       { url: z.string().describe("Address of the picture (https://…), e.g. from web_images"), name: z.string().optional().describe("Name for the file, without extension (e.g. 'martin-macik'); the file name of the address if omitted") },
       async ({ url, name }) => {
-        try { return text(`Saved: ${await downloadWebImage(projectDir(), url, name)}`); } catch (e) { return text(`Cannot download: ${e.message}`); }
+        try { return text(`Saved: ${await downloadWebImage(projectDir(), url, name, { access: fetchWithAccess })}`); } catch (e) { return text(`Cannot download: ${e.message}`); }
+      }),
+    tool("document_picture", "Copy a picture the app saved (a picture of a Plus4U document, or a picture of a web page that has no address: both are listed at the end of the snapshot in .studio/sources and by web_images, as files of .studio/sources/assets) into the assets folder of the project and return its path, e.g. assets/campus.jpg. Use the returned path in the screen exactly (<img src=\"assets/…\">). Only copy what the design needs.",
+      { file: z.string().describe("File name (or path) of the picture in .studio/sources/assets, as the snapshot lists it"), name: z.string().optional().describe("Name for the file, without extension, after what the picture shows") },
+      async ({ file, name }) => {
+        try { return text(`Saved: ${await copySourcePicture(projectDir(), file, name)}`); } catch (e) { return text(`Cannot copy: ${e.message}`); }
       }),
     tool("browser_screenshot", "Screenshot of a mockup as shown in the app, at the frame's current device size (reduced JPEG: it stays in the conversation and costs tokens for every later step, so take one only when the problem is visual and browser_snapshot / browser_console cannot show it).",
       { file: fileParam },

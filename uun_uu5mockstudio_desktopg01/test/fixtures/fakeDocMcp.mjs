@@ -1,4 +1,5 @@
-// A stand-in for the uu_aichat_mcputilityg01 proxy: the status / login tools and the load tools of uuBookKit and uuManagementKit.
+// A stand-in for the uu_aichat_mcputilityg01 proxy: the status / login tools, the load tools and the structure tools of uuBookKit and uuManagementKit.
+// The structure results have the shape the real tools gave in 2026-11 (an item map chained by `next`; a page list with `pageOid`): FAKE_NO_MENU=1 makes the book answer without a menu.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -12,9 +13,29 @@ server.registerTool("toolUuBookKitLoadPage", { inputSchema: { targetAwid: z.stri
   if (!signedIn) return { ...text("Authentication failed: no token"), isError: true };
   return text({ page: { code, name: { cs: "Správa místností", en: "Room management" }, awid: targetAwid }, sectionList: [
     { code: "a1", header: { cs: "Úvod" }, content: '<uu5string/><Uu5Bricks.Section header="Úvod">Seznam <b>místností</b> &amp; kapacit.</Uu5Bricks.Section>' },
-    { code: "a2", header: "Role", content: "<uu5string/><UuContentKit.Bricks.BlockInfo>Správce smí mazat.</UuContentKit.Bricks.BlockInfo>" },
+    { code: "a2", header: "Role", content: `<uu5string/><UuContentKit.Bricks.BlockInfo>Správce smí mazat.</UuContentKit.Bricks.BlockInfo><Uu5ImagingBricks.Image src="https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-${targetAwid}/getBinaryData?code=pic1" alt="x"/>` },
   ] });
 });
+server.registerTool("toolUuBookKitGetBookStructure", { inputSchema: { targetAwid: z.string().optional() } }, async () => {
+  if (!signedIn) return { ...text("Authentication failed: no token"), isError: true };
+  if (process.env.FAKE_NO_MENU === "1") return text({ uuAppErrorMap: {} });
+  return text({ itemMap: {
+    roles: { previous: "rooms-detail", next: null, label: { en: "Roles" }, state: "active", visible: true, indent: 0 },
+    "rooms-detail": { previous: "rooms-list", next: "roles", label: { en: "Room detail" }, state: "active", visible: true, indent: 1 },
+    home: { previous: null, next: "rooms", label: { cs: "Úvod", en: "Home" }, state: "active", visible: true, indent: 0 },
+    "rooms-list": { previous: "rooms", next: "rooms-detail", label: { en: "Room list" }, state: "active", visible: true, indent: 1 },
+    rooms: { previous: "home", next: "rooms-list", label: { cs: "Místnosti", en: "Rooms" }, state: "active", visible: true, indent: 0 },
+  } });
+});
+// the picture itself, as MCP image content (the real tool does the same)
+server.registerTool("toolUuBookKitGetBinaryData", { inputSchema: { targetAwid: z.string().optional(), code: z.string() } }, async ({ code }) =>
+  code === "pic1" ? { content: [{ type: "image", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mimeType: "image/png" }] } : { ...text("Unknown binary"), isError: true });
+server.registerTool("toolUuBookKitListPages", { inputSchema: { targetAwid: z.string().optional(), listType: z.string().optional() } }, async () => text({ itemList: [{ code: "rooms", name: "Rooms" }, { code: "roles", name: "Roles" }], pageInfo: { total: 2 } }));
+server.registerTool("toolUuBookKitWorkspaceLoad", { inputSchema: { targetAwid: z.string().optional() } }, async () => text({ data: { name: { en: "Room book" } } }));
+server.registerTool("toolUuManagementkitEccDocumentGetMetadata", { inputSchema: { documentUrl: z.string().optional(), targetAwid: z.string().optional(), pageOid: z.string().optional() } }, async () => text({
+  entityType: "document", documentName: "Portál praxí", mainPageOid: "660d8eb8e75ca600355fe19d", requestedPage: { pageOid: "660d8eb8e75ca600355fe19d", name: "Úvod" },
+  pageList: [{ pageOid: "660d8eb8e75ca600355fe19d", name: "Úvod", hidden: false }, { pageOid: "660d8eb8e75ca600355fe1aa", name: "Nabídky", hidden: false }],
+}));
 server.registerTool("toolUuManagementkitEccPanelGetContent", { inputSchema: { documentUrl: z.string(), targetAwid: z.string(), pageOid: z.string().optional() } }, async () => text({
   entityType: "document", pageName: "Portál praxí",
   sectionList: [

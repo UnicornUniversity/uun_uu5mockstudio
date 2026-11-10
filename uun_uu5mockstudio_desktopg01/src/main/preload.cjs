@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("studio", {
   saveAssets: (items) => invoke("assets:save", items),
   docFetch: (url, opts) => invoke("docs:fetchSource", url, opts),
   docAdopt: () => invoke("docs:adopt"),
+  docStructure: (url, opts) => invoke("docs:structure", url, opts),
+  docWebLogin: (url) => invoke("docs:webLogin", url),
   envList: () => invoke("env:list"),
   frameSave: (scope, frame) => invoke("frames:save", scope, frame),
   frameRemove: (env) => invoke("frames:remove", env),

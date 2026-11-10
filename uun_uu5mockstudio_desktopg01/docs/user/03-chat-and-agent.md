@@ -72,4 +72,10 @@ Claude records business rules by itself: the ones you state, and the ones a scre
 
 ## Pictures from the web
 
-Ask the agent to use a picture from a public web page ("download the photos of the graduates from https://… and use them in the design"). It lists the pictures of the page (`web_images`), saves the ones you asked for into the `assets` folder of the project (`download_asset`) and puts `assets/<name>.jpg` into the screen. Only public http(s) addresses work (never your own machine or network), only PNG, JPEG, GIF, WebP or SVG up to 10 MB, and a page that builds its pictures by script may name few of them: then attach the pictures to the message as "to use in the design". The pictures go into the Project ZIP and into the files of a uu5String (see Export and share).
+Ask the agent to use a picture from a web page or a Plus4U document ("download the photos of the graduates from https://… and use them in the design"). It lists the pictures of the page (`web_images`), saves the ones you asked for into the `assets` folder of the project (`download_asset`) and puts `assets/<name>.jpg` into the screen.
+
+- **A web page** is opened by the app as you would see it, so pictures that a script draws are found too. When you paste the link, the snapshot of the page lists its pictures as well.
+- **A page behind a sign-in:** sign in once in a window of the app (**Load with my access…** in the preview of the card or in the picker of pages); the pictures are then listed and downloaded with that sign-in.
+- **A Plus4U document** (a uuBookKit page, a uuManagementKit document): the app downloads its pictures when it reads the document; the agent copies the ones the design needs into `assets` (`document_picture`).
+
+Only http(s) addresses on the internet work (never your own machine or network), only PNG, JPEG, GIF, WebP or SVG up to 10 MB. The app scrolls through the page once, so pictures that load on the way down are found; a picture the page keeps only in memory (it has no address) is saved by the app and the agent copies it into `assets`. A picture that shows only after a click (a later slide of a carousel, a tab) may be missing: then attach it to the message as "to use in the design". The pictures go into the Project ZIP and into the files of a uu5String (see Export and share).

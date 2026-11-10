@@ -42,6 +42,8 @@ import { collectCode } from "./uu5StringCollect.js";
 import { toUu5String, mergeTrees, summaryOf } from "./uu5String.js";
 import { createDocCards, docsContext, territoryDialog } from "./docCards.js";
 import { kindLabel } from "./docLinks.js";
+import { openSitePicker } from "./sitePicker.js";
+import { structureContext } from "./siteStructure.js";
 import { addDialogClose, escapeTarget } from "./dialogChrome.js";
 
 const $ = (id) => document.getElementById(id);
@@ -286,7 +288,7 @@ async function createScreensFromPages({ slug, items }) {
   push({ kind: "user", text: `Create ${items.length} screens: ${items.map((i) => i.node.title).join(", ")}.` });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; }
   setBusy(true); sentModel = $("model").value;
-  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+  window.studio.send(message + await sourcesOf(items.map((i) => i.node)), sentModel || undefined, { plan: false, economy });
 }
 /** One page of a sitemap becomes a screen: the agent builds just this page, in the place the map gives it. */
 async function createScreenFromPage({ slug, node, file, where }) {
@@ -296,7 +298,20 @@ async function createScreenFromPage({ slug, node, file, where }) {
   push({ kind: "user", text: `Create the screen for the page “${node.title}”.` });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = message; return; }
   setBusy(true); sentModel = $("model").value;
-  window.studio.send(message, sentModel || undefined, { plan: false, economy });
+  window.studio.send(message + await sourcesOf([node]), sentModel || undefined, { plan: false, economy });
+}
+/**
+ * The pages of a sitemap taken from a link remember where they come from (`source`): before their screens are built the app reads those pages
+ * (a snapshot in .studio/sources, as for a pasted link), so the agent has their content. A page that cannot be read does not stop the build.
+ */
+async function sourcesOf(nodes) {
+  const urls = [...new Set(nodes.map((n) => n?.source).filter(Boolean))];
+  if (!urls.length) return "";
+  toast(urls.length === 1 ? "Reading the source page first…" : `Reading the ${urls.length} source pages first…`);
+  const docs = [];
+  for (const url of urls) { const r = await window.studio.docFetch(url).catch(() => null); if (r?.ok) docs.push({ url, kind: r.kind, title: r.title, file: r.file, shot: r.shot }); }
+  if (docs.length < urls.length) toast(`${urls.length - docs.length === 1 ? "A source page" : `${urls.length - docs.length} source pages`} could not be read (a Plus4U document needs the sign-in: paste its link into the message to sign in). The screen is built without it.`, { err: true });
+  return docs.length ? `\n\n${docsContext(docs)}` : "";
 }
 /** The map in the file of a plan (a plan without a chat card, or an older one) becomes the sitemap of the project; the plan keeps its text and a note. */
 async function adoptFromFile(slug) {
@@ -780,8 +795,42 @@ const menuActions = {
     const r = await window.studio.sitemapWrite({ root: { title: project || "Home", type: "page", children: [] } }); if (r?.error) return toast(r.error, { err: true });
     setProjectSitemap(r); planCards.focus("@sitemap");
   },
+  fromLink: () => pickFromLink(),
   askAgent: () => { setPlanMode(true); const t = $("prompt"); t.value = "Propose the sitemap of the pages (a map of the web site or portal): "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
 };
+/** A structure of pages picked from a link that waits for the next message to the agent ({ url, title, outline, count }), shown among the attachments. */
+let sitePick = null;
+/**
+ * Sitemap from a link (sitePicker.js): the pages picked from a web site, a uuBookKit book or a uuManagementKit document / portal become the
+ * sitemap of the project as they are, or wait as an attachment for the agent, which proposes the sitemap from them in Plan mode.
+ */
+function pickFromLink(url = "", card = false) {
+  if (!project) return;
+  openSitePicker({
+    toast, url, replaces: Boolean(projectSitemap),
+    onUse: async ({ sitemap }) => {
+      if (!sitemap) return false;
+      if (projectSitemap && !confirm("Replace the sitemap of the project with the picked pages? The current one is kept and can be restored.")) return false;
+      const r = await window.studio.sitemapWrite(sitemap, { backup: true });
+      if (!r || r.error) { toast(r?.error ?? "The sitemap could not be saved.", { err: true }); return false; }
+      setProjectSitemap(r); planCards.focus("@sitemap");
+    },
+    onAgent: (pick) => {
+      if (card && docCards.setPick(url, pick)) return; // opened from the card of a pasted link: the pages stay on that card
+      sitePick = pick; renderAttachments(); setPlanMode(true);
+      const t = $("prompt"); if (!t.value.trim()) t.value = `Propose the sitemap of the pages from the attached structure of “${pick.title}”: `;
+      t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+    },
+  });
+}
+/** The card of a picked structure among the attachments (of the chat or of the dashboard). */
+function sitePickCard(pick, remove) {
+  const d = Object.assign(document.createElement("div"), { className: "att doc ready sitepick-att", title: pick.url });
+  const mk = (cls, text) => Object.assign(document.createElement("div"), { className: cls, textContent: text });
+  d.append(Object.assign(document.createElement("button"), { type: "button", className: "x", textContent: "✕", title: "Do not use these pages", onclick: remove }),
+    mk("doc-k", pick.sitemap ? "Sitemap from a link" : "Pages for the agent"), mk("doc-t", pick.title), mk("doc-s", `${pick.count} page${pick.count === 1 ? "" : "s"} · ${pick.sitemap ? "becomes the sitemap of the project" : "input of the sitemap plan"}`));
+  return d;
+}
 const plansMenu = createPlansMenu({ button: $("plansbtn"), menu: $("plansmenu"), state: menuState, actions: menuActions, show: "plans" });
 const sitemapMenu = createPlansMenu({ button: $("mapbtn"), menu: $("mapmenu"), state: menuState, actions: menuActions, show: "sitemap" });
 window.studio.onPlansChanged(({ project: p, plans }) => { if (p === project) onPlansChanged(plans); });
@@ -1777,6 +1826,7 @@ function loadProject(info) {
   closeFullscreen();
   loading = true;
   planCards?.closeView?.(); // the plan or the map of the project before is not shown over the new one
+  sitePick = null; // pages picked from a link belong to the project they were picked in
   port = info.port; webviewPreload = info.webviewPreload; project = info.project; projectList = info.projects ?? projectList;
   setBusy(false); clearChips(); resetMarked();
   chatId = info.chatId; chatList = info.chats ?? [];
@@ -1854,7 +1904,14 @@ const templatesDialog = createTemplatesDialog({
   confirm: (text) => askConfirm({ title: "Delete template?", detail: text }),
 });
 let autoNamed = null, autoLevel = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
-const dashDocs = createDocCards({ onChange: () => { const box = $("dash-attachments"); box.replaceChildren(); dashDocs.renderInto(box); box.hidden = !dashDocs.count(); $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count(); }, toast }); // Plus4U documents pasted on the dashboard
+/** The pages picked from a link on the dashboard, before the project exists: { sitemap, … } (written into the new project) or { outline, … } (goes to the agent with the first message). */
+let dashPick = null;
+function renderDashAttachments() {
+  const box = $("dash-attachments"); box.replaceChildren(); dashDocs.renderInto(box);
+  if (dashPick) box.append(sitePickCard(dashPick, () => { dashPick = null; renderDashAttachments(); }));
+  box.hidden = !dashDocs.count() && !dashPick; $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count();
+}
+const dashDocs = createDocCards({ onChange: () => renderDashAttachments(), toast, structure: (card) => openSitePicker({ toast, url: card.url, onUse: (pick) => { dashPick = pick; renderDashAttachments(); }, onAgent: (pick) => { dashDocs.setPick(card.url, pick); } }), offerStructure: () => dashboard.scope() === "site" }); // Plus4U documents pasted on the dashboard
 const dashboard = createDashboard({
   api: window.studio, docs: dashDocs, toast,
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
@@ -1865,7 +1922,8 @@ const dashboard = createDashboard({
   },
   onFolder: async (op) => { const r = await window.studio.projectsFolder(op); if (r?.error) toast(r.error, { err: true }); },
   onTemplates: () => templatesDialog.open(),
-  onLevel: (l) => { if (meta.role) dashboard.setPlan(planFirst(meta.role, l)); }, // the architect plans an application or a route first
+  onLevel: (l) => { if (meta.role) dashboard.setPlan(planFirst(meta.role, l)); if (dashboard.scope() !== "site") dashPick = null; renderDashAttachments(); }, // the architect plans an application or a route first; the cards offer the pages of a sitemap only for a whole site
+  onScope: (s) => { if (s !== "site") dashPick = null; renderDashAttachments(); },
   onStart: async ({ text, plan, model, template, templateLevel, level, scope, docs = [] }) => {
     if (!ready) return toast(NO_AI, { err: true });
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
@@ -1875,6 +1933,9 @@ const dashboard = createDashboard({
     if (kind && !kind.error) { projectLevel = kind.level ?? projectLevel; projectScope = kind.scope ?? null; updateMapBtn(); }
     autoNamed = project; autoLevel = templateLevel; // once the agent has made a screen, the project is renamed after it
     if (docs.length) docCards.adopt(docs, await window.studio.docAdopt().catch(() => null)); // the documents read on the dashboard move into the new project
+    const pick = dashPick; dashPick = null; // the pages picked from a link: the sitemap of the new project, or the input of its first plan
+    if (pick?.sitemap) { const w = await window.studio.sitemapWrite(pick.sitemap).catch((e) => ({ error: String(e?.message ?? e) })); if (!w || w.error) toast(w?.error ?? "The sitemap could not be saved.", { err: true }); else setProjectSitemap(w); }
+    else if (pick?.outline) sitePick = pick;
     dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
     $("form").requestSubmit();
   },
@@ -2117,7 +2178,7 @@ const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgen
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]
 let preparing = 0;
-const docCards = createDocCards({ onChange: () => renderAttachments(), toast }); // Plus4U documents pasted as links, with a picture of how they look
+const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 const toBlob = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
 /** Normalizes any image to a PNG (or JPEG when huge) of at most 2000 px plus a small thumbnail. */
@@ -2149,7 +2210,8 @@ function renderAttachments() {
   }
   if (preparing) box.append(Object.assign(document.createElement("div"), { className: "att busy", textContent: "…" }));
   docCards.renderInto(box);
-  box.hidden = !pending.length && !preparing && !docCards.count();
+  if (sitePick) box.append(sitePickCard(sitePick, () => { sitePick = null; renderAttachments(); }));
+  box.hidden = !pending.length && !preparing && !docCards.count() && !sitePick;
 }
 /** An SVG is not rasterised: it goes as it is (only as a picture for the design) and the thumbnail is the drawing itself. */
 async function prepareSvg(file) {
@@ -2203,7 +2265,7 @@ $("form").onsubmit = async (e) => {
   if (docCards.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
   if (!prompt && !imgs.length && !docCards.count()) return;
   if (!prompt) prompt = docCards.count() ? "Use the attached document." : imgs.some((i) => i.asset) ? "Use the attached picture in the design." : "Attaching a screenshot, see the attachment.";
-  const docs = docCards.take();
+  const docs = docCards.take(), pages = sitePick;
   // attached screenshots become files in the project (hidden folder) that the agent opens with Read
   let paths = [], assetPaths = [];
   const refs0 = imgs.filter((i) => !i.asset), assets0 = imgs.filter((i) => i.asset);
@@ -2218,8 +2280,9 @@ $("form").onsubmit = async (e) => {
     assetPaths = r;
   }
   const ctx = chips.length ? chips.slice() : null;
-  push({ kind: "user", text: ctx ? `${prompt}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : prompt, ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
-  $("prompt").value = ""; pending = []; renderAttachments(); setBusy(true);
+  const shown = pages ? `${prompt}\n🗺 Pages picked from “${pages.title}” (${pages.count})` : prompt;
+  push({ kind: "user", text: ctx ? `${shown}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : shown, ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
+  $("prompt").value = ""; pending = []; sitePick = null; renderAttachments(); setBusy(true);
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
   const noteBlock = await memory.notesFor([...refs.map((n) => `${n}.html`), ...(fsFile ? [fsFile] : []), ...(ctx ?? []).map((c) => c.file)]);
@@ -2229,7 +2292,9 @@ $("form").onsubmit = async (e) => {
     repoRefs.length && repo && `Referenced files of the linked git repository (read-only, ${repo.readDir ?? repo.path}): ${repoRefs.map((p) => `${repo.readDir ?? repo.path}/${p}`).join(", ")}. Read them first and stay consistent with their names, props and structure.`,
     libBlock,
     noteBlock,
-    docsContext(docs),
+    docsContext(docs.filter((d) => !d.pick)),
+    ...docs.filter((d) => d.pick).map((d) => structureContext({ ...d.pick, file: d.file, shot: d.shot })), // a link marked "Sitemap" on its card: the structure behind it, not a page to redesign
+    pages && structureContext(pages),
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
     assetPaths.length && `Pictures to USE IN THE DESIGN (not just references; e.g. a logo): ${assetPaths.join(", ")}. They are already files in the project, so do not copy or re-create them: place each into the screen with exactly that relative path (src="${assetPaths[0]}"), at its natural proportions. Open one with the Read tool only to see what it shows.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,

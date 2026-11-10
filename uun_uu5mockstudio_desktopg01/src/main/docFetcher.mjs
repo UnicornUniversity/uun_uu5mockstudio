@@ -6,7 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, parseLink, webSnapshot, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT, truncatedSections, completeSection } from "./docSources.mjs";
+import { KINDS, PROXY_PACKAGE, STATUS_TOOL, LOGIN_TOOL, parseDocUrl, parseLink, webSnapshot, loadArgs, snapshotName, readTerritory, presetsFor, serverUrl, resultData, toSnapshot, sourcesPrompt, agentTools, sourcePage, imageRefs, fileLink, localizeImages, ASSETS_DIR, IMAGE_EXT, truncatedSections, completeSection, bookImageRefs, contentImage } from "./docSources.mjs";
+import { bookToTree, eccToTree, webToTree } from "../renderer/siteStructure.js";
+import { saveBlobPictures } from "./webImages.mjs";
 
 const run = promisify(execFile);
 export const NPM_REGISTRY = "https://repo.plus4u.net/repository/public-javascript";
@@ -62,11 +64,18 @@ export function explain(e, conn) {
   const why = npm404 ? `npm could not find ${PROXY_PACKAGE} (${npm404.replace(/^npm error\s*/, "")})` : lines.slice(-3).join(" ");
   return new Error(`The Plus4U MCP proxy stopped${why ? `: ${why}` : "."}`);
 }
+/** The name of a book in the result of its info tool (a string or one per language), wherever it is. */
+function firstName(o, depth = 0) {
+  if (!o || typeof o !== "object" || depth > 3) return "";
+  for (const k of ["name", "bookName", "title"]) { const v = o[k]; const t = v && typeof v === "object" ? (v.en ?? v.cs ?? Object.values(v)[0]) : v; if (typeof t === "string" && t.trim()) return t.trim(); }
+  for (const k of ["book", "workspace", "data"]) { const t = firstName(o[k], depth + 1); if (t) return t; }
+  return "";
+}
 const isAuthError = (msg) => /authenticat|unauthori[sz]ed|\b401\b|login|token/i.test(String(msg));
 
 /**
  * Reads documents of Plus4U for the chat: one MCP client per kind and server URL (the proxy process stays up while the app runs),
- * only the load tool and the status / login tools of the proxy are called. `spec(kind)` can be replaced in tests.
+ * only the load tool, the tools that read the structure (the menu of a book, the pages of a document) and the status / login tools of the proxy are called. `spec(kind)` can be replaced in tests.
  */
 export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5mock-studio", version: "1" } } = {}) {
   const clients = new Map(); // key -> Promise<{ client, transport }>
@@ -109,11 +118,24 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
    * link of the binary store). Best effort: a picture that cannot be loaded stays out. Returns { <fileOid>: { path, name } }.
    */
   async function downloadImages(projectDir, doc, raw, { download = fetch } = {}) {
-    const k = KINDS[doc.kind], ids = k.fileTool ? imageRefs(raw) : [];
+    const k = KINDS[doc.kind], ids = k.fileTool ? imageRefs(raw) : [], refs = k.dataTool ? bookImageRefs(raw) : [];
     const out = {};
-    if (!ids.length) return out;
+    if (!ids.length && !refs.length) return out;
     const dir = path.join(projectDir, SOURCES_DIR, ASSETS_DIR);
     await mkdir(dir, { recursive: true });
+    const served = (file) => `/${encodeURIComponent(path.basename(projectDir))}/${SOURCES_DIR.split(path.sep).join("/")}/${ASSETS_DIR}/${file}`;
+    // a book: the tool gives the picture itself (the address in the page needs the Plus4U sign-in, so the page cannot load it)
+    const book = async (ref) => {
+      try {
+        const res = await call(doc.kind, k.dataTool, { targetAwid: ref.awid, code: ref.code }, 60000);
+        const pic = res?.isError ? null : contentImage(res);
+        if (!pic || !pic.data.length || pic.data.length > MAX_IMAGE) return;
+        const file = `${ref.code.replace(/[^\w.-]/g, "_")}.${IMAGE_EXT[pic.mime]}`;
+        await writeFile(path.join(dir, file), pic.data);
+        out[ref.code] = { path: served(file), file: path.join(dir, file), name: file, url: ref.url };
+      } catch { /* the picture stays out */ }
+    };
+    for (let i = 0; i < refs.length; i += 3) await Promise.all(refs.slice(i, i + 3).map(book));
     const { pageOid, ...target } = loadArgs(doc); // attachments belong to the document, not to a page
     const one = async (oid) => {
       try {
@@ -201,7 +223,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
         if (pic?.full) { shot = path.join(dir, `${name}.jpg`); await writeFile(shot, pic.full); thumb = pic.thumb ?? null; }
       }
       await writeFile(metaFile, JSON.stringify({ url: doc.url, kind: doc.kind, title: snap.title, fetchedAt, territory: source ?? null, page: `${name}.html`, shot: shot ? `${name}.jpg` : null, sections: snap.sections.map((s) => s.title) }, null, 2));
-      if (Object.keys(images).length) await writeFile(file, `${snap.markdown}\n## Pictures (downloaded, in .studio/sources)\n\n${Object.entries(images).map(([oid, im]) => `- ${oid} → ${im.file} (${im.name})`).join("\n")}\n`);
+      if (Object.keys(images).length) await writeFile(file, `${snap.markdown}\n## Pictures (downloaded, in .studio/sources)\n\n${Object.entries(images).filter(([oid]) => !/_th$/.test(oid) || !images[oid.replace(/_th$/, "")]).map(([oid, im]) => `- ${oid} → ${im.file} (${im.name})`).join("\n")}\n`);
       return { ok: true, kind: doc.kind, label: k.label, url: doc.url, title: snap.title, sections: snap.sections, file, page, shot, thumb, images: Object.keys(images).length };
     } catch (e) {
       const code = e.code === "territory" || e.code === "npx" ? e.code : null;
@@ -218,15 +240,67 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     try {
       const page = await readPage(doc.url);
       const fetchedAt = new Date().toISOString();
-      const snap = webSnapshot(doc, page, { fetchedAt });
+      const files = await saveBlobPictures(projectDir, page?.blobs).catch(() => []); // pictures the page held only in memory: kept as files, they have no address
+      const snap = webSnapshot(doc, { ...page, files }, { fetchedAt });
       const dir = path.join(projectDir, SOURCES_DIR), name = snapshotName(doc), file = path.join(dir, `${name}.md`);
       await mkdir(dir, { recursive: true });
       await writeFile(file, snap.markdown);
       let shot = null;
       if (page?.pic?.full) { shot = path.join(dir, `${name}.jpg`); await writeFile(shot, page.pic.full); }
       await writeFile(path.join(dir, `${name}.json`), JSON.stringify({ url: doc.url, kind: "web", title: snap.title, fetchedAt, page: null, shot: shot ? `${name}.jpg` : null, sections: snap.sections.map((x) => x.title) }, null, 2));
-      return { ok: true, kind: "web", label: "Web page", url: doc.url, title: snap.title, sections: snap.sections, file, page: null, shot, thumb: page?.pic?.thumb ?? null, images: 0 };
+      return { ok: true, kind: "web", label: "Web page", url: doc.url, title: snap.title, sections: snap.sections, file, page: null, shot, thumb: page?.pic?.thumb ?? null, images: files.length };
     } catch (e) { return { error: String(e?.message ?? e) || "The page could not be loaded.", kind: "web" }; }
+  }
+
+  /**
+   * The structure of the pages behind `url`, to pick the pages of a sitemap from: the menu of the book, the pages and links of the document or portal,
+   * the navigation of the web site (`opts.readLinks(url)` → { title, links, sitemapUrls }). Nothing is saved. { ok, kind, label, url, title, tree }
+   * (the tree of siteStructure.js) or { error: "login" | "territory" | "npx" | message, kind? }, as fetchDoc.
+   */
+  async function structure(url, { allowLogin = false, readLinks } = {}) {
+    const doc = parseLink(url);
+    if (!doc) return { error: "This is not a link to a web page." };
+    if (doc.kind === "web") {
+      if (!readLinks) return { error: "Web pages cannot be opened here.", kind: "web" };
+      try {
+        const tree = webToTree(await readLinks(doc.url), doc);
+        return { ok: true, kind: "web", label: "Web site", url: doc.url, title: tree.title, tree };
+      } catch (e) { return { error: String(e?.message ?? e) || "The page could not be loaded.", kind: "web" }; }
+    }
+    const k = KINDS[doc.kind];
+    try {
+      if (!allowLogin) {
+        const st = await status(doc.kind);
+        if (st.error) return { error: st.error, kind: doc.kind };
+        if (!st.signedIn) return { error: "login", kind: doc.kind };
+      }
+      const failed = (res, what) => { const msg = textOf(res) || what; return { error: isAuthError(msg) && !allowLogin ? "login" : msg, kind: doc.kind }; };
+      const quiet = (name, args) => call(doc.kind, name, args).then((r) => (r?.isError ? null : resultData(r))).catch(() => null); // extra data: the structure does not depend on it
+      let tree;
+      if (doc.kind === "bookkit") {
+        const target = { targetAwid: doc.awid };
+        const [res, info] = await Promise.all([call(doc.kind, k.structureTool, target), quiet(k.infoTool, target)]);
+        const title = typeof info === "object" ? firstName(info) : "";
+        tree = res?.isError ? null : bookToTree(resultData(res), doc, { title });
+        if (!tree?.children.length) { // no menu in the answer: the pages as a flat list
+          const list = await call(doc.kind, k.listTool, { ...target, listType: "all" });
+          if (list?.isError) return failed(res?.isError ? res : list, "The structure of the book could not be loaded.");
+          tree = bookToTree(resultData(list), doc, { title }) ?? tree;
+        }
+        if (!tree) return { error: "The book answered, but no page was found in its structure.", kind: doc.kind };
+      } else {
+        const [page, meta] = await Promise.all([call(doc.kind, k.loadTool, loadArgs(doc)), quiet(k.structureTool, loadArgs(doc))]);
+        if (page?.isError) return failed(page, "The document could not be loaded.");
+        const data = resultData(page);
+        await completeTruncated(doc, data);
+        const snap = toSnapshot(doc, data);
+        tree = eccToTree({ meta: meta && typeof meta === "object" ? meta : null, sections: snap.raw, title: snap.title }, doc);
+      }
+      return { ok: true, kind: doc.kind, label: k.label, url: doc.url, title: tree.title, tree };
+    } catch (e) {
+      const code = e.code === "territory" || e.code === "npx" ? e.code : null;
+      return { error: code ?? (isAuthError(e.message) && !allowLogin ? "login" : String(e.message ?? e)), kind: doc.kind };
+    }
   }
 
   /** Ends the proxies (on quit, or when the territory changes). */
@@ -243,7 +317,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     return login(doc.kind);
   }
 
-  return { fetchDoc, status, login, loginFor, close };
+  return { fetchDoc, structure, status, login, loginFor, close };
 }
 
 /** The hidden folder (in the projects folder, never listed) where documents pasted on the dashboard are read: no project is open there yet. */

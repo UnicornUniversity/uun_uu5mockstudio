@@ -265,3 +265,64 @@ test("a web page has a stable file-safe snapshot name and a snapshot of its text
   assert.match(snap.markdown, /Line\n\nnext/);
   assert.equal(webSnapshot(a, { title: "", text: "" }).title, "example.com");
 });
+
+test("a book is recognised by the address of the book itself and with the tenant in front of the awid", async () => {
+  const { bookToTree } = await import("../src/renderer/siteStructure.js");
+  const d = parseDocUrl("https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-ac55fece6a6542c4b987ab6ff51118fa/");
+  assert.deepEqual({ kind: d.kind, awid: d.awid, code: d.code }, { kind: "bookkit", awid: "ac55fece6a6542c4b987ab6ff51118fa", code: "home" });
+  assert.equal(loadArgs(d).targetAwid, "ac55fece6a6542c4b987ab6ff51118fa");
+  assert.equal(parseDocUrl("https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-ac55fece6a6542c4b987ab6ff51118fa/book/page?code=x").code, "x");
+  assert.equal(parseDocUrl("https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-ac55fece6a6542c4b987ab6ff51118fa/other"), null);
+  assert.equal(bookToTree({ itemMap: { a: { label: "A", indent: 0 } } }, d).children[0].url, "https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-ac55fece6a6542c4b987ab6ff51118fa/book/page?code=a");
+});
+
+test("the snapshot of a web page lists the pictures the page showed; the pictures of a book page are found by their address", async () => {
+  const { bookImageRefs, contentImage } = await import("../src/main/docSources.mjs");
+  const snap = webSnapshot(parseLink("https://example.com/"), { title: "T", text: "x", images: [{ url: "https://example.com/a.jpg", alt: " Team \n photo ", w: 800, h: 600 }, { url: "data:image/png;base64,xx" }, { url: "https://cdn.test/b.png" }] });
+  assert.match(snap.markdown, /## Pictures of the page[\s\S]*download_asset[\s\S]*\n- https:\/\/example\.com\/a\.jpg — Team photo \(800×600\)\n- https:\/\/cdn\.test\/b\.png\n/);
+  assert.doesNotMatch(snap.markdown, /data:image/);
+  assert.doesNotMatch(webSnapshot(parseLink("https://example.com/"), { title: "T", text: "x" }).markdown, /Pictures/);
+  const u = "https://uuapp.plus4u.net/uu-bookkit-maing01/78462435-ac55fece6a6542c4b987ab6ff51118fa/getBinaryData?code=77e8d1ee";
+  assert.deepEqual(bookImageRefs([`<Uu5ImagingBricks.Image src=\\"${u}\\" thumbnailSrc=\\"${u}_th\\"/>`, `<img src="${u}"/>`]), [{ url: u, awid: "ac55fece6a6542c4b987ab6ff51118fa", code: "77e8d1ee" }, { url: `${u}_th`, awid: "ac55fece6a6542c4b987ab6ff51118fa", code: "77e8d1ee_th" }]);
+  assert.equal(contentImage({ content: [{ type: "text", text: "x" }, { type: "resource", resource: { blob: "AAAA", mimeType: "image/jpeg; x" } }] }).mime, "image/jpeg");
+  assert.equal(contentImage({ content: [{ type: "image", data: "AAAA", mimeType: "application/pdf" }] }), null);
+});
+
+test("a picture is downloaded with the user's access when the plain download is refused; a picture of a document is copied into assets", async () => {
+  const { downloadWebImage, copySourcePicture, mergeImages } = await import("../src/main/webImages.mjs");
+  const { makeProject } = await import("./helpers.mjs");
+  const { mkdir, writeFile, readFile } = await import("node:fs/promises");
+  const path = (await import("node:path")).default;
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const dir = await makeProject({}), check = async (u) => new URL(u);
+  const plain = async () => new Response("<html>log in</html>", { status: 200, headers: { "content-type": "text/html" } }), denied = async () => new Response("", { status: 403 });
+  const access = async () => new Response(PNG, { status: 200, headers: { "content-type": "image/png" } });
+  assert.equal(await downloadWebImage(dir, "https://a.test/p/photo.png", "team", { fetchImpl: plain, access, check }), "assets/team.png");
+  assert.equal(await downloadWebImage(dir, "https://a.test/p/photo.png", "team", { fetchImpl: denied, access, check }), "assets/team-2.png");
+  await assert.rejects(downloadWebImage(dir, "https://a.test/p/photo.png", "x", { fetchImpl: denied, check }), /403/);
+  const src = path.join(dir, ".studio", "sources", "assets");
+  await mkdir(src, { recursive: true }); await writeFile(path.join(src, "pic1.png"), PNG);
+  const saved = await copySourcePicture(dir, path.join(src, "pic1.png"), "campus");
+  assert.equal(saved, "assets/campus.png");
+  assert.deepEqual(await readFile(path.join(dir, saved)), PNG);
+  assert.equal(await copySourcePicture(dir, "pic1.png"), "assets/pic1.png");
+  await assert.rejects(copySourcePicture(dir, "/etc/hosts"), /Not a picture of a document/);
+  await assert.rejects(copySourcePicture(dir, "../../../x.png"), /There is no picture/);
+  assert.deepEqual(mergeImages([{ url: "a", alt: "A" }], [{ url: "a" }, { url: "b" }]), [{ url: "a", alt: "A" }, { url: "b", alt: "" }]);
+});
+
+test("pictures a web page held only in memory are kept as files and listed in its snapshot", async () => {
+  const { saveBlobPictures } = await import("../src/main/webImages.mjs");
+  const { makeProject } = await import("./helpers.mjs");
+  const { readFile } = await import("node:fs/promises");
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const dir = await makeProject({});
+  const files = await saveBlobPictures(dir, [{ alt: " Jan \n Novák ", w: 400, h: 300, data: PNG }, { alt: "again", data: PNG }, { alt: "text", data: Buffer.from("<html>").toString("base64") }]);
+  assert.equal(files.length, 1); // the same picture once, what is no picture not at all
+  assert.match(files[0].name, /^web-[0-9a-f]{10}\.png$/);
+  assert.equal(files[0].alt, "Jan Novák");
+  assert.equal((await readFile(files[0].file)).toString("base64"), PNG);
+  const snap = webSnapshot(parseLink("https://example.com/"), { title: "T", text: "x", files });
+  assert.match(snap.markdown, /## Pictures \(downloaded, in \.studio\/sources\)[\s\S]*document_picture[\s\S]*\n- \S+web-[0-9a-f]{10}\.png — Jan Novák \(400×300\)\n/);
+  assert.deepEqual(await saveBlobPictures(dir, undefined), []);
+});

@@ -1319,3 +1319,28 @@ body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;back
 .sm-bsep{flex:none;width:1px;height:20px;background:var(--line)}
 #smside .sm-acts{margin-top:14px;gap:10px}
 .sm-ib.off{opacity:.38;cursor:default}.sm-ib.off:hover{background:var(--panel)}.sm-ib.danger.off:hover{color:var(--mute);border-color:var(--line)}
+/* sitemap from a link: the picker of pages (sitePicker.js) */
+.docprev .card.sitepick{width:min(780px,94vw);height:min(760px,88vh)}
+.sitepick .sp-bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.sitepick .sp-url{flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:12px ui-monospace,Menlo,monospace}
+.sitepick .sp-body{flex:1;min-height:0;overflow:auto;padding:10px 16px 14px;font-size:13px;line-height:1.5}
+.sitepick .sp-body p.mute,.sitepick .sp-tools .mute{color:var(--mute)}.sitepick .sp-err{color:#ff7b7b}
+.sitepick .sp-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px}
+.sitepick .sp-tree,.sitepick .sp-tree ul{list-style:none;margin:0;padding:0}.sitepick .sp-tree ul{padding-left:22px}
+.sitepick .sp-row{display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:6px}.sitepick .sp-row:hover{background:var(--bg)}
+.sitepick .sp-fold{flex:none;width:18px;height:18px;padding:0;border:0;background:none;color:var(--mute);font-size:11px;cursor:pointer}
+.sitepick .sp-label{flex:1;min-width:0;display:flex;align-items:center;gap:7px;cursor:pointer}
+.sitepick .sp-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sitepick .sp-tag{flex:none;padding:0 6px;border:1px solid var(--line);border-radius:999px;color:var(--mute);font-size:11px;line-height:17px}
+.sitepick .sp-tag.g-nav,.sitepick .sp-tag.g-pages{border-color:var(--acc);color:var(--acc)}
+.sitepick .sp-more{flex:none;color:var(--mute);font-size:11px}
+.sitepick .sp-expand{flex:none;padding:1px 8px;font-size:11px;border-radius:6px;visibility:hidden}.sitepick .sp-row:hover .sp-expand,.sitepick .sp-expand:focus-visible,.sitepick .sp-expand:disabled{visibility:visible}
+.sitepick footer{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.sitepick .sp-count{flex:1;color:var(--mute);font-size:12px}.sitepick .sp-count.warn{color:#e0912f}
+.sitepick .primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}.sitepick button:disabled{opacity:.5;cursor:not-allowed}
+#attachments .att.doc .doc-map,#dash-attachments .att.doc .doc-map{background:none;color:var(--acc);margin-top:2px}
+/* the card of a link: Reference / Sitemap */
+#attachments .att.doc .att-mode,#dash-attachments .att.doc .att-mode{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:4px}
+#dash-attachments .att.doc .att-mode button{position:static;flex:1;width:auto;height:auto;padding:5px 2px;border-radius:0;border:0;background:var(--bg);color:var(--mute);font-size:11px;line-height:1.2;cursor:pointer;display:block}
+#dash-attachments .att.doc .att-mode button.on{background:var(--acc);color:#fff;font-weight:600}
+#attachments .att.doc .doc-err,#dash-attachments .att.doc .doc-err{color:#ff7b7b}

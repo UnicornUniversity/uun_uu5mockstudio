@@ -251,3 +251,13 @@ test("the sitemap is offered where it exists or where a whole web site or portal
   assert.equal(sitemapOffered(), false);
   assert.deepEqual(["app", "route", "component", "web", "page"].filter(hasScope), ["web", "page"]);
 });
+
+test("a page keeps the address it was taken from (source), only when it is a link the app can read", async () => {
+  const { normalizeSitemap, updateNode, sitemapOutline } = await import("../src/renderer/sitemap.js");
+  const sm = normalizeSitemap({ root: { title: "Home", children: [{ title: "A", source: "https://example.com/a#x" }, { title: "B", source: "javascript:alert(1)" }, { title: "C", source: `https://example.com/${"x".repeat(600)}` }] } });
+  assert.deepEqual(sm.root.children.map((c) => c.source), ["https://example.com/a", undefined, undefined]);
+  assert.match(sitemapOutline(sm), /- A \[source: https:\/\/example\.com\/a\]/);
+  const set = updateNode(sm, [1], { source: "https://uuapp.plus4u.net/uu-bookkit-maing01/0238a88bac124b3ca828835b57144ffa/book/page?code=b" });
+  assert.match(set.root.children[1].source, /code=b$/);
+  assert.equal(updateNode(set, [1], { source: "" }).root.children[1].source, undefined);
+});

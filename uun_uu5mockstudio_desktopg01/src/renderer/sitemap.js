@@ -1,8 +1,10 @@
 import { slugify } from "./planDoc.js";
+import { parseLink } from "./docLinks.js";
 
 /**
  * The sitemap of a portal or a web site: a tree of pages. In a plan it is the fenced block `uu5-sitemap`:
- * { "root": { "id", "title", "type": "page" | "section" | "group" | "external" | "stub", "file"?: "x.html", "note"?, "children"?: [ … ] } }.
+ * { "root": { "id", "title", "type": "page" | "section" | "group" | "external" | "stub", "file"?: "x.html", "note"?, "source"?, "children"?: [ … ] } }.
+ * `source` is the address the page was taken from (a page of a book, a document, a web page): its content is read when the screen is built.
  * Everything here is pure; a node is addressed by its path (list of child indexes, the root is []).
  */
 export const NODE_TYPES = ["page", "section", "group", "external", "stub"]; // a stub is a page that exists in the portal but is not solved here: it stays in the map, no screen is built for it and it is not counted
@@ -12,6 +14,8 @@ export const CM_SEP = " ¦ ";
 export const splitComments = (c) => String(c ?? "").split(CM_SEP).map((t) => t.trim()).filter(Boolean);
 export const joinComments = (l) => l.map((t) => String(t).replace(/\s*¦\s*/g, " ").trim()).filter(Boolean).join(CM_SEP);
 const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+/** The address a page was taken from, when it is a link the app can read (http/https, at most 500 characters). */
+const sourceOf = (v) => { const d = typeof v === "string" && v.length <= 500 ? parseLink(v) : null; return d ? d.url : undefined; };
 
 /** A valid sitemap ({ root }) from whatever the agent or an editor wrote, or null when there is nothing usable. Unknown keys are dropped, ids made unique. */
 export function normalizeSitemap(raw) {
@@ -25,8 +29,8 @@ export function normalizeSitemap(raw) {
     const title = clip(n.title ?? n.name, 80) || "Page", myId = id(n.id ?? title); // the id before the children's: a parent keeps the plain one
     const kids = depth < MAX_DEPTH && Array.isArray(n.children) ? n.children.map((c) => walk(c, depth + 1)).filter(Boolean) : [];
     const file = FILE.test(String(n.file ?? "")) ? String(n.file) : undefined;
-    const type = NODE_TYPES.includes(n.type) ? n.type : "page", note = clip(n.note, 240), comment = clip(n.comment, 1000);
-    return { id: myId, title, type, ...(file ? { file } : {}), ...(note ? { note } : {}), ...(comment ? { comment } : {}), children: kids };
+    const type = NODE_TYPES.includes(n.type) ? n.type : "page", note = clip(n.note, 240), comment = clip(n.comment, 1000), source = sourceOf(n.source);
+    return { id: myId, title, type, ...(file ? { file } : {}), ...(note ? { note } : {}), ...(source ? { source } : {}), ...(comment ? { comment } : {}), children: kids };
   };
   const root = walk(src, 0);
   return root ? { root } : null;
@@ -68,6 +72,7 @@ export function updateNode(sm, path, patch) {
     else if (k === "type") { if (NODE_TYPES.includes(v)) n.type = v; }
     else if (k === "file") { if (!v) delete n.file; else if (FILE.test(String(v))) n.file = String(v); }
     else if (k === "note") { const t = clip(v, 240); if (t) n.note = t; else delete n.note; }
+    else if (k === "source") { const u = sourceOf(v); if (u) n.source = u; else delete n.source; }
     else if (k === "comment") { const t = clip(v, 1000); if (t) n.comment = t; else delete n.comment; }
   }
   return out;
@@ -257,10 +262,10 @@ export const defaultCollapsed = (sm, limit = 40) => (countNodes(sm) > limit ? fo
 /** The number of nodes below a node. */
 export const descendants = (n) => n.children.reduce((a, c) => a + 1 + descendants(c), 0);
 
-/** The map as indented lines for the agent: title, type, file and note of every node (what exists, what is planned). */
+/** The map as indented lines for the agent: title, type, file, note and source of every node (what exists, what is planned). */
 export function sitemapOutline(sm, { limit = 6000 } = {}) {
   const lines = [];
-  const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
+  const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
   if (sm?.root) walk(sm.root, 0);
   const text = lines.join("\n");
   return text.length > limit ? `${text.slice(0, limit)}\n… (shortened, read sitemap.json for the rest)` : text;

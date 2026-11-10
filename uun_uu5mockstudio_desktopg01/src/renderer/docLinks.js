@@ -3,22 +3,23 @@
  * an ECC document of uuManagementKit (read through MCP) and any other web page (http/https: the app opens it and takes a picture and the text).
  */
 
-const AWID = /^[0-9a-f]{32}$/i;
+const AWID = /^(?:\d{1,12}-)?([0-9a-f]{32})$/i; // the address may name the tenant too: <tid>-<awid>; the tools take the awid alone
 const OID = /^[0-9a-f]{24}$/i;
 
 /**
  * A link to a document of Plus4U, or null: `https://uuapp.plus4u.net/uu-bookkit-maing01/<awid>/book/page?code=<code>` (also `/book` = the
- * home page) and `https://uuapp.plus4u.net/uu-managementkit-maing02/<awid>/…?oid=<oid>` (`pageOid` when present). Only https on *.plus4u.net.
+ * home page, as is the address of the book itself without `/book`; the awid may come as `<tid>-<awid>`) and `https://uuapp.plus4u.net/uu-managementkit-maing02/<awid>/…?oid=<oid>` (`pageOid` when present). Only https on *.plus4u.net.
  */
 export function parseDocUrl(text) {
   let u;
   try { u = new URL(String(text ?? "").trim()); } catch { return null; }
   if (u.protocol !== "https:" || !/(^|\.)plus4u\.net$/i.test(u.hostname)) return null;
-  const [app, awid, ...rest] = u.pathname.split("/").filter(Boolean);
-  if (!awid || !AWID.test(awid)) return null;
+  const [app, id, ...rest] = u.pathname.split("/").filter(Boolean);
+  const awid = AWID.exec(id ?? "")?.[1];
+  if (!awid) return null;
   const url = u.toString();
   if (app === "uu-bookkit-maing01") {
-    if (rest[0] !== "book") return null;
+    if (rest.length && rest[0] !== "book") return null;
     const code = u.searchParams.get("code") || "home";
     if (!/^[\w.-]{1,120}$/.test(code)) return null;
     return { kind: "bookkit", url, awid: awid.toLowerCase(), code };

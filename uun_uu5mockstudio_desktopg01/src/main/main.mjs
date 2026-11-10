@@ -38,7 +38,9 @@ import * as chats from "./chats.mjs";
 import { saveAttachments, saveAssets } from "./attachments.mjs";
 import { GUIDE_TEMPLATE, GUIDE_FILE, readGuide, writeGuide, saveSources, listSources, removeSource, brandCss, injectBrand, distillPrompt, checkScreen, fixPrompt, parseTokens, importManual, sourceDir, sourceKind } from "./brand.mjs";
 import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
-import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, snapshotName, KINDS } from "./docSources.mjs";
+import { listSitemapUrls } from "./webImages.mjs";
+import { sessionFetch } from "./sessionFetch.mjs";
+import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, parseLink, snapshotName, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
 import { loadBml } from "./uuBml.mjs";
 import { checkGithub, isRepoUrl, DEFAULT_REPO } from "./githubUpdates.mjs";
@@ -296,6 +298,8 @@ app.whenReady().then(async () => {
     baseUrl: `http://127.0.0.1:${port}`,
     onNavigated: (screen) => emit("preview:navigated", screen),
     projectDir: () => dir(),
+    readImages: (url) => readWebImages(url), // the page as the app opens it: pictures a script draws, and those only a signed-in user sees
+    fetchWithAccess: sessionFetch(() => session.fromPartition(PREVIEW_PARTITION)),
     readStructure: (file) => { const f = path.basename(String(file)); const t = structureOf(fs.readFileSync(screenPath(f), "utf8"), f.replace(/\.html$/, "")); return t ? structureOutline(t) : null; },
   });
 
@@ -639,6 +643,19 @@ app.whenReady().then(async () => {
     w.on("closed", () => { clearInterval(timer); resolve(result); });
     w.loadURL(doc.url);
   })));
+  // A web site that shows its pages only to a signed-in user: the window opens it in the preview session, the user signs in and closes it; the hidden window
+  // that reads the structure of the site (docs:structure) shares that session, so the next reading sees what the user sees.
+  ipcMain.handle("docs:webLogin", guard((_e, url) => new Promise((resolve) => {
+    const doc = parseLink(String(url ?? ""));
+    if (!doc || !/^https:/i.test(doc.url)) throw new Error("Only an https page can be opened to sign in.");
+    const w = new BrowserWindow({ width: 1280, height: 900, webPreferences: { partition: PREVIEW_PARTITION } });
+    w.setTitle("Sign in so that the page shows what you see, then close this window");
+    w.webContents.on("page-title-updated", (e) => e.preventDefault());
+    w.webContents.setWindowOpenHandler(({ url: u }) => { if (/^https:\/\//.test(u)) w.loadURL(u); return { action: "deny" }; });
+    w.webContents.on("will-navigate", (e, to) => { if (!/^https?:/i.test(to)) e.preventDefault(); });
+    w.on("closed", () => resolve({ ok: true }));
+    w.loadURL(doc.url).catch(() => {});
+  })));
   // Custom frames: the window shows a real page (any https page; the Plus4U sign-in of the preview session is kept); the user chooses the content slot and the rest is taken as a draft frame.
   // The draft goes to <project>/.studio/frames-draft/ (frame.html, frame.css, draft.json, shot.jpg) for Claude to tidy up; frames:save then stores the finished frame.
   const captureFrame = (url, preset = null) => new Promise((resolve) => {
@@ -777,7 +794,68 @@ app.whenReady().then(async () => {
    * Any web page (not a document of Plus4U): a hidden window of the preview session (its sign-ins are kept) opens the link, waits until the page is quiet and
    * gives { title, text, pic } (what the page shows and a picture 1280 px wide). Only http(s) is followed; the page cannot open other windows.
    */
-  const readWebPage = async (url) => {
+  const readWebPage = (url) => openWebPage(url, async (w, status) => {
+    const read = await w.webContents.executeJavaScript(`({ title: document.title || "", text: (document.body?.innerText || "").slice(0, 200000) })`);
+    const pics = await picturesOf(w);
+    const pic = await pictureOf(w.webContents).catch(() => null);
+    if (status() >= 400 && !read.text.trim()) throw new Error(`The page answered with the error ${status()}.`);
+    return { ...read, images: pics.images, blobs: pics.blobs, pic };
+  });
+  /**
+   * The pictures a page shows once it is drawn (not icons: at least 48 px; backgrounds of larger blocks; og:image): { images: [{ url, alt, w, h }], blobs: [{ alt, w, h, data }] }.
+   * A picture the page holds only in memory (a `blob:` address: the page downloaded it itself, e.g. with a key) has no address to download later, so its data
+   * (base64, at least 96 px, at most 40 pictures of 6 MB) comes along and the app keeps it as a file.
+   */
+  const IMAGES_OF_PAGE = `(async () => {
+    const seen = new Set(), images = [], held = [];
+    const add = (u, alt, w, h) => {
+      if (!u || seen.has(u)) return; seen.add(u); const it = { url: u, alt: String(alt || "").trim().slice(0, 120), w: w || 0, h: h || 0 };
+      if (/^https?:/i.test(u)) { if (images.length < 120) images.push(it); } else if (/^blob:/i.test(u) && (!w || (w >= 96 && h >= 96)) && held.length < 40) held.push(it);
+    };
+    for (const i of document.images) if ((i.naturalWidth || i.width) >= 48 && (i.naturalHeight || i.height) >= 48) add(i.currentSrc || i.src, i.alt || i.title, i.naturalWidth, i.naturalHeight);
+    for (const e of document.querySelectorAll("*")) { if (e.clientWidth < 120 || e.clientHeight < 80) continue; const b = getComputedStyle(e).backgroundImage; if (!b || !b.startsWith("url(")) continue; try { add(new URL(b.slice(4).split(")")[0].replace(/["']/g, ""), location.href).href, e.getAttribute("aria-label") || "", 0, 0); } catch (_) {} }
+    const og = document.querySelector('meta[property="og:image"]'); if (og && og.content) { try { add(new URL(og.content, location.href).href, "og:image", 0, 0); } catch (_) {} }
+    const blobs = [];
+    for (const it of held) { try { const b = await (await fetch(it.url)).blob(); if (!b.size || b.size > 6 * 1048576 || !/^image/.test(b.type)) continue; const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); }); blobs.push({ alt: it.alt, w: it.w, h: it.h, data }); } catch (_) {} }
+    return { images, blobs };
+  })()`;
+  // pictures that load only when they come into view: the page is scrolled through once (at most 25 000 px), then back to the top
+  const LOAD_LAZY = `(async () => { const step = Math.max(400, innerHeight - 100); for (let y = 0; y < Math.min(document.documentElement.scrollHeight, 25000); y += step) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 200)); } scrollTo(0, 0); await new Promise((r) => setTimeout(r, 400)); })()`;
+  const picturesOf = async (w) => { await w.webContents.executeJavaScript(LOAD_LAZY).catch(() => {}); await settlePage(w); return w.webContents.executeJavaScript(IMAGES_OF_PAGE).catch(() => ({ images: [], blobs: [] })); };
+  const readWebImages = (url) => openWebPage(url, (w) => picturesOf(w));
+  /**
+   * The links of a web page, to derive the structure of its site: { title, links: [{ href, text, area, depth }], sitemapUrls }. `area` says where the link
+   * is (nav, header, content, aside, footer), `depth` its level in the menu it belongs to (0 = top); the sitemap.xml of the site is read beside it.
+   */
+  const LINKS_OF_PAGE = `(() => {
+    const NAVC = /(^|[-_ ])(nav|navbar|navigation|menu|mainmenu|sidebar|sidenav)([-_ ]|$)/i, FOOTC = /(^|[-_ ])(footer|foot)([-_ ]|$)/i;
+    const all = [...document.querySelectorAll("a")].slice(0, 2000), total = document.querySelectorAll("a[href]").length;
+    const kindOf = (el) => { const t = (el.getAttribute("role") || el.tagName).toLowerCase(), c = (typeof el.className === "string" ? el.className : "") + " " + el.id; if (t === "footer" || t === "contentinfo" || FOOTC.test(c)) return "footer"; if (t === "nav" || t === "navigation" || NAVC.test(c)) return "nav"; if (t === "header" || t === "banner") return "header"; if (t === "aside" || t === "complementary") return "aside"; return ""; };
+    // the part of the page a link belongs to: the outermost menu around it (by tag, role or class name: many sites build menus of plain divs), but never a wrapper of most of the page
+    const boxOf = (a) => { let best = null; for (let p = a.parentElement; p && p !== document.body; p = p.parentElement) { const k = kindOf(p); if (!k) continue; if (total > 10 && p.querySelectorAll("a[href]").length > 0.7 * total) break; if (k === "footer") return { el: p, area: k }; if (!best || k === "nav" || best.area !== "nav") best = { el: p, area: k }; } return best; };
+    const lists = (a, top) => { let d = 0; for (let p = a.parentElement; p && p !== top; p = p.parentElement) if (p.tagName === "UL" || p.tagName === "OL") d++; return d; };
+    const deep = (a, top) => { let d = 0; for (let p = a.parentElement; p && p !== top; p = p.parentElement) d++; return d; };
+    const textOf = (a) => (a.innerText || a.textContent || a.getAttribute("aria-label") || a.title || "").replace(/\\s+/g, " ").trim().slice(0, 120);
+    const rows = all.map((a) => { const b = boxOf(a), text = textOf(a); return { a, text, box: b && text ? b.el : null, area: b && text ? b.area : "content", depth: 0 }; }); // a link without a text (a logo, an icon) is no item of a menu
+    // the levels of a menu: how many lists a link is nested in, else (a menu of divs) how deep it is in its menu; the levels found are numbered from 0
+    for (const box of new Set(rows.map((r) => r.box).filter(Boolean))) {
+      const mine = rows.filter((r) => r.box === box && r.area !== "footer");
+      let raw = mine.map((r) => lists(r.a, box)); if (new Set(raw).size < 2) raw = mine.map((r) => deep(r.a, box));
+      const levels = [...new Set(raw)].sort((x, y) => x - y); let rank = raw.map((v) => levels.indexOf(v));
+      while (rank.length > 1 && rank.filter((v) => v === 0).length === 1 && rank.some((v) => v > 0)) rank = rank.map((v) => Math.max(0, v - 1)); // one link above all the others is a title, not their parent
+      mine.forEach((r, i) => { r.depth = rank[i]; });
+    }
+    // an <a> without an address counts only inside a menu: there it is a heading that unfolds the items below it
+    return { title: document.title || "", links: rows.filter((r) => r.a.hasAttribute("href") || r.box).map((r) => ({ href: r.a.hasAttribute("href") ? r.a.href : "", text: r.text, area: r.area, depth: r.depth })) };
+  })()`;
+  const readWebLinks = async (url) => {
+    const [page, sitemapUrls] = await Promise.all([
+      openWebPage(url, async (w, status) => { const r = await w.webContents.executeJavaScript(LINKS_OF_PAGE); if (status() >= 400 && !r.links.length) throw new Error(`The page answered with the error ${status()}.`); return r; }),
+      listSitemapUrls(url).catch(() => []),
+    ]);
+    return { ...page, sitemapUrls };
+  };
+  const openWebPage = async (url, read) => {
     const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, partition: PREVIEW_PARTITION } });
     try {
       w.webContents.setAudioMuted(true);
@@ -789,13 +867,15 @@ app.whenReady().then(async () => {
       await Promise.race([
         w.loadURL(url),
         new Promise((_, rej) => setTimeout(() => rej(new Error("The page did not load in 45 s.")), 45000)),
-      ]).catch((e) => { if (/ERR_ABORTED/.test(String(e?.message))) throw new Error("This link is a file to download, not a page."); throw new Error(`The page could not be opened: ${String(e?.message ?? e).replace(/^Error invoking remote method[^:]*: /, "") || "no answer"}`); });
+      ]).catch(async (e) => {
+        if (/ERR_ABORTED/.test(String(e?.message))) { // the load was cut short: by a download, or by the page itself going on to another address (a redirect of its script): then that page is the one to read
+          for (let t = 0; t < 30 && w.webContents.isLoading(); t++) await new Promise((r) => setTimeout(r, 500));
+          if (/^https?:/i.test(w.webContents.getURL()) && await w.webContents.executeJavaScript("Boolean(document.body && document.body.childElementCount)").catch(() => false)) return;
+          throw new Error("This link is a file to download, not a page.");
+        } throw new Error(`The page could not be opened: ${String(e?.message ?? e).replace(/^Error invoking remote method[^:]*: /, "") || "no answer"}`); });
       await new Promise((r) => setTimeout(r, 1000));
       await settlePage(w);
-      const read = await w.webContents.executeJavaScript(`({ title: document.title || "", text: (document.body?.innerText || "").slice(0, 200000) })`);
-      const pic = await pictureOf(w.webContents).catch(() => null);
-      if (status >= 400 && !read.text.trim()) throw new Error(`The page answered with the error ${status}.`);
-      return { ...read, pic };
+      return await read(w, () => status);
     } finally { w.destroy(); }
   };
   const captureSource = async (projectName, rel) => {
@@ -817,6 +897,8 @@ app.whenReady().then(async () => {
   const docHome = () => (current ? { name: current, dir: projects.dirOf(current) } : { name: STAGING, dir: path.join(root, STAGING) });
   fs.promises.rm(path.join(root, STAGING), { recursive: true, force: true }).catch(() => {}); // what an earlier run left behind
   ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const home = docHome(); return docFetcher.fetchDoc(home.dir, String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(home.name, rel), readPage: readWebPage }); }));
+  // the structure of the pages behind a link (the menu of a book, the pages and links of a document or portal, the navigation of a web site): nothing is saved
+  ipcMain.handle("docs:structure", guard((_e, url, opts) => docFetcher.structure(String(url ?? ""), { allowLogin: Boolean(opts?.login), readLinks: readWebLinks })));
   ipcMain.handle("docs:adopt", guard(() => { if (!current) throw new Error("No project is open."); return adoptStaging(root, current); }));
   // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
   ipcMain.handle("docs:shot", guard(async (_e, file) => {

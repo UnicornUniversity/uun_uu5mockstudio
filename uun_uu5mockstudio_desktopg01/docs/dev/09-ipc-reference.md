@@ -73,6 +73,8 @@ All take the **file name** of the screen; `ordinals` is the chain of ordinals (`
 | Function (channel) | Arguments → result |
 | --- | --- |
 | `docsSearch(query, library)`, `docsLibraries`, `docsDetail(name)`, `docsDescribe(names)` (`docs:*`) | the component documentation of the `uu5-development` and `uu5bricks` plugins |
+| `docStructure(url, { login })` (`docs:structure`) | the structure of the pages behind a link, to pick the pages of a sitemap from: `{ ok, kind, title, tree }` or `{ error: "login" \| "territory" \| "npx" \| message }`; read-only, nothing is saved |
+| `docWebLogin(url)` (`docs:webLogin`) | opens an https page in a window of the preview session so the user can sign in; resolves when the window is closed (the structure of the site is then read with that sign-in) |
 | `iconCatalog` (`icons:catalog`), `uuBml` (`icons:bml`) | icon catalogs |
 | `exportHtml(file)`, `exportImage(file, format)`, `iconsMdi()` (the MDI catalog), `exportText(name, text)`, `copyText(text)`, `copyOut(kind, file)` (Copy of the Share menu: `png` image, `html` source, `zip` file), `exportZip`, `shareMail(kind, file)`, `dragPrepare(kind, file)`, `dragStart(path)` | export, share, native drag of a prepared file |
 | `cdnStatus`, `cdnSetOffline(v)`, `cdnClear`, `cdnWarmup` (`cdn:*`) | the CDN cache; progress arrives as `cdn:progress` |
