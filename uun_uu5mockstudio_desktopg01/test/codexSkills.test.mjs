@@ -9,7 +9,7 @@ import { sumUsage } from "../src/main/codexService.mjs";
 async function install() {
   const h = await tmp(), base = path.join(h, ".codex", "plugins", "cache", "uu-technical-products-mp");
   const put = async (p, f) => { await mkdir(path.dirname(path.join(base, p)), { recursive: true }); await writeFile(path.join(base, p, ".."), "").catch(() => {}); await mkdir(path.join(base, path.dirname(p)), { recursive: true }); await writeFile(path.join(base, p), f ?? "x"); };
-  await put("uu5-mockup/0.2.1/skills/create-mockup/SKILL.md"); await put("uu5-mockup/0.10.0/skills/create-mockup/SKILL.md"); await put("uu5-mockup/0.10.0/skills/mockup-iterate/SKILL.md");
+  await put("uu5-mockup/0.2.1/skills/create-mockup/SKILL.md"); await put("uu5-mockup/0.10.0/skills/create-mockup/SKILL.md"); await put("uu5-mockup/0.10.0/skills/mockup-iterate/SKILL.md"); await put("uu5-mockup/0.10.0/skills/mockup-route-layout/SKILL.md");
   await put("uu5-mockup/0.10.0/rules/uu5-mockup-coding.mdc"); await put("uugds/1.0.0/skills/uugds-icons/SKILL.md"); await put("uu5-development/1.0.0/skills/uu5-knowledge/SKILL.md");
   return h;
 }
@@ -20,7 +20,12 @@ test("the newest installed version is read, rules first, then the skills", async
   await mkdir(path.join(h, ".codex", "plugins", "cache", "uu-technical-products-mp", "uugds", "1.0.0", "rules"), { recursive: true });
   await writeFile(path.join(h, ".codex", "plugins", "cache", "uu-technical-products-mp", "uugds", "1.0.0", "rules", "uugds-content.mdc"), "x");
   const f = requiredFiles({ home: h }).map((x) => x.split(path.sep).slice(-3).join("/"));
-  assert.deepEqual(f, ["0.10.0/rules/uu5-mockup-coding.mdc", "skills/create-mockup/SKILL.md", "skills/mockup-iterate/SKILL.md", "1.0.0/rules/uugds-content.mdc", "skills/uugds-icons/SKILL.md", "skills/uu5-knowledge/SKILL.md"].map((x) => x.split("/").slice(-3).join("/")));
+  assert.deepEqual(f, ["0.10.0/rules/uu5-mockup-coding.mdc", "skills/create-mockup/SKILL.md", "skills/mockup-iterate/SKILL.md", "skills/mockup-route-layout/SKILL.md", "1.0.0/rules/uugds-content.mdc", "skills/uugds-icons/SKILL.md", "skills/uu5-knowledge/SKILL.md"].map((x) => x.split("/").slice(-3).join("/")));
+});
+
+test("a page without an app shell does not demand mockup-route-layout", async () => {
+  const h = await install();
+  assert.equal(requiredFiles({ home: h, shell: false }).some((f) => f.includes("mockup-route-layout")), false);
 });
 
 test("a content page (Page template) also demands the uu5bricks knowledge", async () => {

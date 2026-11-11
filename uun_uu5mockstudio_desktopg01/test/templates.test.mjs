@@ -66,6 +66,8 @@ test("applying a template keeps the starter files as a reference for the agent, 
   assert.equal(templatePrompt(null), "");
   assert.match(templatePrompt(meta), /every route has its own route header/i);
   assert.match(templatePrompt({ ...meta, level: "route" }), /one route \(uu5Route\).*route header/i);
+  assert.match(templatePrompt({ ...meta, level: "route" }), /simulated.*mockup-route-layout/i);
+  assert.doesNotMatch(templatePrompt({ ...meta, level: "route" }), /RouteHeader with/);
   assert.doesNotMatch(templatePrompt({ ...meta, level: "component" }), /route header/i);
 });
 

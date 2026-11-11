@@ -6,7 +6,7 @@
     <title>Home – Application</title>
     <script src="https://cdn.plus4u.net/uu-uu5loaderg01/1.0.0/uu5loaderg01.min.js" crossorigin></script>
     <script>
-      var uu5DemoDependencies = { uu_plus4u5g02: "1.x", "uu_plus4u5g02-app": "1.x" };
+      var uu5DemoDependencies = {};
     </script>
     <script src="https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-uu5g05/1.x/assets/example-config.js" crossorigin></script>
     <style>
@@ -21,7 +21,6 @@
     <script type="text/babel">
       import { Utils, useState } from "uu5g05";
       import Uu5Elements from "uu5g05-elements";
-      import Plus4U5App from "uu_plus4u5g02-app";
 
       const SP = Uu5Elements.UuGds.SpacingPalette;
 
@@ -81,7 +80,9 @@
               }}
             >
               <div style={{ flex: "1 1 12rem", minWidth: 0 }}>
-                <Plus4U5App.RouteHeader title="Home" category="interface" segment="title" type="major" />
+                <Uu5Elements.Text category="interface" segment="title" type="major">
+                  Home
+                </Uu5Elements.Text>
               </div>
               <Uu5Elements.ActionGroup itemList={ACTION_LIST} />
             </div>

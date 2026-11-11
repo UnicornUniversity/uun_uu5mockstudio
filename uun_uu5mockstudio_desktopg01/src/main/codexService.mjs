@@ -86,7 +86,7 @@ export class CodexService {
     await (pluginsDone ??= ensureCodexPlugins({ bin }).catch(() => null));
     const { instructions, docs, templateMeta } = await agentInstructions(this, { plan, economy });
     this.docSetup = docs; // the MCP servers of the Plus4U documents for both runs
-    const files = requiredFiles({ bricks: templateMeta?.level === "page" }), skills = skillsPrompt(files);
+    const files = requiredFiles({ bricks: templateMeta?.level === "page", shell: !["web", "page"].includes(templateMeta?.level) }), skills = skillsPrompt(files);
     let run = await this._run(bin, `${instructions}\n${CODEX_NOTE}${skills ? `\n${skills}` : ""}\n\n--- The request of the user ---\n${prompt}`, { model, plan, economy });
     // Codex only "may" use a skill: when it wrote a screen without having read them, it is sent back once.
     if (!this.stopped && run.finished && !plan && files.length && run.wrote && !run.read) {

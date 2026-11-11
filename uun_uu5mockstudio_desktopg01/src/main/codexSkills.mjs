@@ -23,11 +23,11 @@ export function pluginRoot(name, { home = os.homedir(), mp = MP } = {}) {
 
 const mdc = (root) => { try { return fs.readdirSync(path.join(root, "rules")).filter((f) => /\.mdc?$/.test(f)).sort().map((f) => path.join(root, "rules", f)); } catch { return []; } };
 
-/** The files to read before a screen is written, in the order of reading; only those that exist. `bricks`: a content page (template level Page) also needs the uu5bricks knowledge. */
+/** The files to read before a screen is written, in the order of reading; only those that exist. `shell: false`: a page without an application shell (web, content page) does not need mockup-route-layout; `bricks`: a content page (template level Page) also needs the uu5bricks knowledge. */
 export function requiredFiles(opts = {}) {
   const mock = pluginRoot("uu5-mockup", opts), gds = pluginRoot("uugds", opts), dev = pluginRoot("uu5-development", opts), bricks = opts.bricks ? pluginRoot("uu5bricks", opts) : null;
   const list = [
-    ...(mock ? [...mdc(mock), path.join(mock, "skills", "create-mockup", "SKILL.md"), path.join(mock, "skills", "mockup-iterate", "SKILL.md")] : []),
+    ...(mock ? [...mdc(mock), path.join(mock, "skills", "create-mockup", "SKILL.md"), path.join(mock, "skills", "mockup-iterate", "SKILL.md"), ...(opts.shell === false ? [] : [path.join(mock, "skills", "mockup-route-layout", "SKILL.md")])] : []),
     ...(gds ? [...mdc(gds), path.join(gds, "skills", "uugds-icons", "SKILL.md")] : []),
     ...(dev ? [path.join(dev, "skills", "uu5-knowledge", "SKILL.md")] : []),
     ...(bricks ? [path.join(bricks, "skills", "uu5bricks-knowledge", "SKILL.md")] : []),
@@ -40,7 +40,7 @@ export function skillsPrompt(files) {
   if (!files.length) return "";
   return [
     "MANDATORY SKILLS (this is not optional and it overrides your own habits). Screens are built ONLY from uu5 components (Uu5Elements, Uu5Forms, Uu5Tiles, Plus4U5Elements …; Uu5Bricks and the other Bricks on a content page meant for a document) with uuGDS values (colorScheme, significance, size, gaps, spacing, icons); hand-written HTML/CSS layout, custom colours and invented component names are wrong and the screen will be thrown away and redone.",
-    "Before you write or change ANY screen file, read ALL of these files completely with the shell (cat) and follow them: use create-mockup for a new screen and mockup-iterate for an existing one; look every component and its props up in the uu5-knowledge wiki (the Bricks in uu5bricks-knowledge) before you use it; take icons only from uugds-icons.",
+    "Before you write or change ANY screen file, read ALL of these files completely with the shell (cat) and follow them: use create-mockup for a new screen and mockup-iterate for an existing one; look every component and its props up in the uu5-knowledge wiki (the Bricks in uu5bricks-knowledge) before you use it; for the route shell (simulated Top, route header, local navigation) follow mockup-route-layout; take icons only from uugds-icons.",
     ...files.map((f) => `- ${f}`),
     "Start the first line of your answer with `Skills read:` and the names of the skills you read.",
   ].join("\n");
