@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commentsOf, groupComments, updateNodes, reviseMessage, normalizeSitemap, extractSitemap, replaceSitemapBlock, serializeSitemap, countPages, countNodes, countSections, getNode, updateNode, addChild, addSibling, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles } from "../src/renderer/sitemap.js";
+import { isLocked, lockedIn, countApproved, commentsOf, groupComments, updateNodes, reviseMessage, normalizeSitemap, extractSitemap, replaceSitemapBlock, serializeSitemap, countPages, countNodes, countSections, getNode, updateNode, addChild, addSibling, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles } from "../src/renderer/sitemap.js";
 
 const sample = () => normalizeSitemap({ root: { title: "Portal", children: [{ title: "Study", type: "group", children: [{ title: "Theses", file: "theses.html" }, { title: "Exams" }] }, { title: "Library", file: "library.html" }, { title: "Moodle", type: "external" }] } });
 
@@ -364,4 +364,30 @@ test("searchNodes finds pages by title, file, note and comment, ignores case and
   assert.deepEqual(_searchNodes(sm, "services.html").hits.map((h) => h.id), ["a"]);
   assert.deepEqual(_searchNodes(sm, "map").hits.map((h) => h.id), ["c"]);
   assert.deepEqual(_searchNodes(sm, "  "), { hits: [], open: [] });
+});
+
+test("approved is a flag of any node, kept by normalize, update and the outline; a copy is not approved", () => {
+  let sm = normalizeSitemap({ root: { title: "P", children: [{ title: "A", file: "a.html", approved: true }, { title: "B", approved: "yes" }, { title: "C", notSolved: true }] } });
+  assert.equal(sm.root.children[0].approved, true); assert.equal("approved" in sm.root.children[1], false);
+  sm = updateNode(sm, [1], { approved: true }); assert.equal(getNode(sm, [1]).approved, true);
+  assert.equal("approved" in updateNode(sm, [1], { approved: false }).root.children[1], false);
+  assert.equal("approved" in updateNode(sm, [0], { type: "group" }).root.children[0], true);
+  assert.equal("approved" in duplicateNode(sm, [1]).sitemap.root.children[2], false);
+  assert.match(sitemapOutline(sm), /A \[APPROVED: keep as it is\] -> a\.html/);
+  assert.deepEqual(countApproved(sm), { approved: 2, all: 3 });
+});
+
+test("an approved page with a screen is locked; the agent is told to keep approved nodes", () => {
+  const sm = normalizeSitemap({ root: { title: "P", approved: false, children: [{ title: "A", file: "a.html", approved: true, children: [{ title: "A1", file: "a1.html", approved: true }] }, { title: "B", approved: true }] } });
+  const exists = (f) => f === "a.html";
+  assert.equal(isLocked(sm.root.children[0], exists), true); assert.equal(isLocked(sm.root.children[1], exists), false); assert.equal(isLocked(sm.root.children[0].children[0], exists), false);
+  assert.deepEqual(lockedIn(sm.root, exists).map((n) => n.title), ["A"]);
+  assert.match(reviseMessage({ slug: null, sm }), /Do NOT rename, move, retype, delete or re-link them/);
+  assert.doesNotMatch(reviseMessage({ slug: null, sm: normalizeSitemap({ root: { title: "P" } }) }), /approved/);
+});
+
+test("the uu5string marks an approved node with a positive APPROVED badge", () => {
+  const sm = normalizeSitemap({ root: { title: "P", children: [{ title: "A", approved: true }, { title: "B" }] } });
+  const [root] = u5parse(sitemapUu5String(sm));
+  assert.ok(root.itemList[0].header.endsWith('<Uu5Bricks.Badge colorScheme="positive">APPROVED</Uu5Bricks.Badge>')); assert.ok(!root.itemList[1].header.includes("APPROVED"));
 });

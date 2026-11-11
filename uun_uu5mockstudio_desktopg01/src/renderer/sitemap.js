@@ -3,7 +3,8 @@ import { parseLink } from "./docLinks.js";
 
 /**
  * The sitemap of a portal or a web site: a tree of pages. In a plan it is the fenced block `uu5-sitemap`:
- * { "kind"?: "web" | "portal", "root": { "id", "title", "type": "page" | "sheet" | "section" | "group" | "external", "notSolved"?: true, "file"?: "x.html", "note"?, "source"?, "children"?: [ … ] } }.
+ * { "kind"?: "web" | "portal", "root": { "id", "title", "type": "page" | "sheet" | "section" | "group" | "external", "notSolved"?: true, "approved"?: true, "file"?: "x.html", "note"?, "source"?, "children"?: [ … ] } }.
+ * `approved` marks a node the user has reviewed and approved: the agent keeps it as it is (title, place, type, file).
  * `notSolved` is a flag of a page, a sheet or a section that exists but is not solved here: it stays in the map, no screen is built for it and it is not counted.
  * An external link is always not solved here (it leads out), so it looks the same. The old type "stub" is read as a page with the flag.
  * `kind` says what the map is: a web site (pages and their sections, the default, not written) or portals (documents of uuManagementKit: a portal is a node
@@ -16,6 +17,12 @@ export const NODE_TYPES = ["page", "sheet", "section", "group", "external"];
 export const canFlag = (t) => t === "page" || t === "sheet" || t === "section";
 /** What is not solved here: a node with the flag, and an external link always (it leads out). */
 export const isOutside = (n) => Boolean(n && (n.type === "external" || (n.notSolved && canFlag(n.type))));
+/** A node that is approved and has its screen: changing its name, place or type changes what the user has settled (and the file that is linked). */
+export const isLocked = (n, exists) => Boolean(n?.approved && n.file && exists(n.file));
+/** The nodes of the subtree (the node included) that are approved and have a screen. */
+export function lockedIn(n, exists) { const out = []; const walk = (x) => { if (isLocked(x, exists)) out.push(x); x.children.forEach(walk); }; if (n) walk(n); return out; }
+/** How many pages are approved, of all the pages that count (not groups, external links or pages that are not solved here). */
+export function countApproved(sm) { let ok = 0, all = 0; const walk = (x) => { if (canFlag(x.type) && !x.notSolved) { all++; if (x.approved) ok++; } x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return { approved: ok, all }; }
 /** What the map is: a web site, or portals (documents of uuManagementKit made of sheets). */
 export const MAP_KINDS = ["web", "portal"];
 export const kindOf = (sm) => (sm?.kind === "portal" ? "portal" : "web");
@@ -59,8 +66,8 @@ export function normalizeSitemap(raw) {
     const kids = depth < MAX_DEPTH && Array.isArray(n.children) ? n.children.map((c) => walk(c, depth + 1)).filter(Boolean) : [];
     const file = FILE.test(String(n.file ?? "")) ? String(n.file) : undefined;
     const type = typeOf(n.type) ?? "page", note = clip(n.note, 240), comment = clip(n.comment, 1000), source = sourceOf(n.source);
-    const notSolved = (n.notSolved === true || n.type === "stub") && canFlag(type);
-    return { id: myId, title, type, ...(notSolved ? { notSolved } : {}), ...(file ? { file } : {}), ...(note ? { note } : {}), ...(source ? { source } : {}), ...(comment ? { comment } : {}), children: kids };
+    const notSolved = (n.notSolved === true || n.type === "stub") && canFlag(type), approved = n.approved === true;
+    return { id: myId, title, type, ...(notSolved ? { notSolved } : {}), ...(approved ? { approved } : {}), ...(file ? { file } : {}), ...(note ? { note } : {}), ...(source ? { source } : {}), ...(comment ? { comment } : {}), children: kids };
   };
   const root = walk(src, 0), kind = raw?.kind === "portal" ? "portal" : null;
   return root ? { ...(kind ? { kind } : {}), root } : null;
@@ -112,6 +119,7 @@ export function updateNode(sm, path, patch) {
     if (k === "title") n.title = clip(v, 80) || n.title;
     else if (k === "type") { const t = typeOf(v); if (t) { n.type = t; if (!canFlag(t)) delete n.notSolved; } }
     else if (k === "notSolved") { if (v && canFlag(n.type)) n.notSolved = true; else delete n.notSolved; }
+    else if (k === "approved") { if (v) n.approved = true; else delete n.approved; }
     else if (k === "file") { if (!v) delete n.file; else if (FILE.test(String(v))) n.file = String(v); }
     else if (k === "note") { const t = clip(v, 240); if (t) n.note = t; else delete n.note; }
     else if (k === "source") { const u = sourceOf(v); if (u) n.source = u; else delete n.source; }
@@ -216,6 +224,7 @@ export function groupComments(sm) {
 }
 
 /** The request to the agent to revise the map: the comments of the user on pages and/or a general wish, with the plan as it is now. */
+const hasApproved = (sm) => { let f = false; const walk = (x) => { if (x.approved) f = true; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return f; };
 export function reviseMessage({ slug, sm, extra = "", body = "" }) {
   const list = groupComments(sm), wish = String(extra).trim();
   const head = slug ? `Revise the SITEMAP of this plan, it is the file plans/${slug}.md (the user may have edited it, so start from this text).` : "Revise the SITEMAP of this project, it is the file sitemap.json (the user may have edited it, so start from the map below, comments included).";
@@ -223,6 +232,7 @@ export function reviseMessage({ slug, sm, extra = "", body = "" }) {
     head,
     ...(kindOf(sm) === "portal" ? ["", "It is a map of PORTALS (`\"kind\": \"portal\"`, keep it): a node of type `page` is a portal (a document of uuManagementKit), a `sheet` is a sheet of the portal above it with its own screen, a `section` is a part of the sheet above it."] : []),
     ...(list.length ? ["", "The user commented on these pages of the map (the `comment` field of each node). Resolve every comment: change the map as it asks (rename, move, merge, split, make a page a section or the other way round, add or remove pages), or when you disagree say why in the `note` of that node. Then leave the `comment` fields out of the new map.", ...list.map((c) => `- ${c.wheres.join("; ")}${c.wheres.length > 1 ? " (together)" : ""}: ${c.comment}`)] : []),
+    ...(hasApproved(sm) ? ["", "Nodes with `\"approved\": true` are reviewed and approved by the user. Do NOT rename, move, retype, delete or re-link them, and do not change their `file`; keep the `approved` flag and the `file` in the new map. Add or change other nodes around them as needed."] : []),
     ...(wish ? ["", `The user also asks, about the map as a whole: ${wish}`] : []),
     "", slug ? "Keep the rest of the plan as it is, and answer with the whole plan, the changed `uu5-sitemap` block included." : "Answer with a short plan in the usual format: what you changed and why, and the whole revised map as the `uu5-sitemap` block (no component tree). The user reviews it and approves it; only then it replaces the sitemap of the project.",
     "", slug ? String(body).trim() : "```uu5-sitemap\n" + serializeSitemap(sm) + "\n```",
@@ -329,7 +339,7 @@ export function searchNodes(sm, query) {
 /** The map as indented lines for the agent: title, type, file, note and source of every node (what exists, what is planned). */
 export function sitemapOutline(sm, { limit = 6000 } = {}) {
   const lines = [];
-  const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.notSolved ? " [not solved here: no screen]" : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
+  const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.notSolved ? " [not solved here: no screen]" : ""}${n.approved ? " [APPROVED: keep as it is]" : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
   if (kindOf(sm) === "portal") lines.push("(a map of portals: [page] nodes are portals, documents of uuManagementKit; a [sheet] is a sheet of the portal above, with its own screen; a [section] is a part of the sheet above)");
   if (sm?.root) walk(sm.root, 0);
   const text = lines.join("\n");
@@ -429,7 +439,7 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
 const U5_SCHEME = { page: "primary", sheet: "secondary", section: "neutral", group: "neutral", external: "neutral" };
 const u5Text = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 /**
- * The whole map as a uu5string with `Uu5TreeBricks.Tree`: a title and a badge with the kind of each node, nested as in the map.
+ * The whole map as a uu5string with `Uu5TreeBricks.Tree`: a title and a badge with the kind of each node (plus NOT SOLVED and APPROVED badges), nested as in the map.
  * The branches in `collapsed` (ids) stay folded, as in the app. Comments, notes, files and sources are left out. Returns "" when there is no map.
  */
 export function sitemapUu5String(sm, { collapsed = new Set() } = {}) {
@@ -438,7 +448,7 @@ export function sitemapUu5String(sm, { collapsed = new Set() } = {}) {
   const item = (n) => {
     const out = isOutside(n), scheme = out ? "neutral" : U5_SCHEME[n.type] ?? "neutral", label = typeShort(kind, n.type).toUpperCase();
     const badge = (s, text) => `<Uu5Bricks.Badge colorScheme="${s}">${text}</Uu5Bricks.Badge>`;
-    const it = { header: `<uu5string />${u5Text(n.title)} ${badge(scheme, label)}${n.notSolved ? ` ${badge("neutral", "NOT SOLVED")}` : ""}`, colorScheme: scheme };
+    const it = { header: `<uu5string />${u5Text(n.title)} ${badge(scheme, label)}${n.notSolved ? ` ${badge("neutral", "NOT SOLVED")}` : ""}${n.approved ? ` ${badge("positive", "APPROVED")}` : ""}`, colorScheme: scheme };
     if (out || n.type === "group") it.significance = "subdued";
     if (n.children.length) { it.expanded = !collapsed.has(n.id); it.itemList = n.children.map(item); }
     return it;

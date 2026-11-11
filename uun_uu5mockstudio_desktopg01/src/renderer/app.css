@@ -1410,6 +1410,15 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 .sm-searchn{font-size:12px;color:var(--mute);white-space:nowrap;padding:0 4px}
 .sm-sb{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:50%;background:none;color:var(--mute);cursor:pointer;padding:0}.sm-sb:hover{background:var(--code);color:var(--fg)}
 .sm-node.dim:not(#a){opacity:.35}.sm-node.hit{box-shadow:0 0 0 2px color-mix(in srgb,#e0b92f 70%,transparent)}.sm-node.hit.cur{box-shadow:0 0 0 3px #e0b92f}
+.sm-srcrow{display:flex;gap:6px;min-width:0}.sm-srcrow input{flex:1;min-width:0}.sm-srcrow .sm-srcopen{flex:0 0 36px;height:auto}
 .sm-screenpick{display:flex;flex-direction:column;gap:4px;min-width:0}.sm-screenpick select{font:inherit;font-size:12px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:3px 6px}
 .sm-searchbar.intool{position:static;height:28px;flex:none}.pc-treehead .sm-searchbar.intool .sm-search{font-size:13px}
 .pc-treehead>.sm-searchbar.intool+.pc-mini:first-of-type{margin-left:0}
+
+/* approval of a page: a check on the right of the node (the screen mark stays on the left) */
+.sm-ap{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:10px;line-height:1;color:var(--mute);border:1px solid transparent;opacity:0;transition:opacity .12s}
+.sm-node:hover .sm-ap,.sm-node.sel .sm-ap,.sm-ap:focus-visible{opacity:.6}.sm-ap:hover{opacity:1;color:var(--acc);border-color:var(--acc)}
+.sm-ap.on{opacity:1;background:var(--acc);color:#fff;border-color:var(--acc)}.sm-ap.on:hover{filter:brightness(1.15)}
+.sm-node.ap:not(#a){border-color:color-mix(in srgb,var(--acc) 55%,var(--line));background:color-mix(in srgb,var(--acc) 8%,var(--panel))}
+.sm-node.apdim:not(#a){opacity:.4}.sm-node.apdim:not(#a):hover{opacity:1}
+.sm-apcount{font-size:12px;color:var(--mute);white-space:nowrap;padding:0 4px}

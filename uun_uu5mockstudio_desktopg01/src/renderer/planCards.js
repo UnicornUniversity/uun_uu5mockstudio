@@ -192,6 +192,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       screens: ctx.screens?.() ?? [],
       query: c.query ?? "", hit: c.hit ?? 0, searchFocus: take(c, "searchFocus"), searchScroll: take(c, "searchScroll"),
       onSearch: (q, hit, open) => { c.query = q; c.hit = hit; c.searchFocus = true; c.searchScroll = Boolean(q.trim()); for (const id of open) c.collapsed.delete(id); renderView(c); },
+      dimApproved: Boolean(c.dimApproved), onDimApproved: (v) => { c.dimApproved = v; renderView(c); },
       collapsed: c.collapsed, onToggle: (id) => { if (!c.collapsed.delete(id)) c.collapsed.add(id); renderView(c); },
       sel: c.sel ?? null, sels: c.sels?.length ? c.sels : c.sel ? [c.sel] : [], isScreen: exists,
       onSelect: (path, multi) => {
