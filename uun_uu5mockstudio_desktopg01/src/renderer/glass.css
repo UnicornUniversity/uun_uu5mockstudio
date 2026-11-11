@@ -57,6 +57,7 @@ body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions
   border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
 body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip){border-radius:14px!important}
 body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#devmenu,.pm-pop,.rc-sugg) :is(button,.item,[role=menuitem]):hover{background:var(--glass-hover)}
+body[data-glass] #histmenu .row:hover{background:var(--glass-hover)}body[data-glass] #histmenu :is(.open,.del):hover{background:none}
 body[data-glass] #toast{border-radius:999px!important}
 
 /* floating panels get a rim, a top highlight and elevation */

@@ -475,7 +475,7 @@ window.__plan = { dryRun: false, lastBuild: null, lastAnswer: null, answer(text)
 {
   const menu = $("modemenu"), btn = $("modebtn");
   const setOpen = (on) => { menu.hidden = !on; btn.setAttribute("aria-expanded", String(on)); };
-  btn.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
+  btn.onclick = (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); setOpen(willOpen); }; // closes the other dropdowns, then toggles this one
   for (const b of menu.querySelectorAll(".mm-item")) b.onclick = () => { setPlanMode(b.dataset.mode === "plan"); setOpen(false); $("prompt").focus(); };
   addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) setOpen(false); });
   menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); btn.focus(); } });
@@ -937,7 +937,7 @@ $("fit").onclick = () => { const m = mapZoom(); if (m) { m.fit(); syncZoomLabel(
 {
   const menu = $("zmenu"), pill = $("zpct");
   const setOpen = (on) => { menu.hidden = !on; pill.setAttribute("aria-expanded", String(on)); };
-  pill.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
+  pill.onclick = (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); setOpen(willOpen); };
   menu.addEventListener("click", (e) => { if (e.target.closest("#zin,#zout")) return; setOpen(false); }); // + / − stay open so they can be repeated
   document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !e.target.closest("#zoompill")) setOpen(false); }, true); // capture: the cards of the canvas stop the event on their way up
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
@@ -2006,10 +2006,13 @@ async function renderProjectMenu() {
     b.dataset.act = act; m.append(b);
   }
 }
+/** Only one dropdown is open at a time: a button that opens one (it stops its click, so the "click outside" closers do not run) first closes every other dropdown the way a click outside would. */
+function dismissMenus() { document.body.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
 $("projbtn").onclick = async (e) => {
   if (dock.collapsed()) return; // on a minimized bar the click restores the chat instead (handled by the header)
   e.stopPropagation(); const m = $("projmenu");
-  if (!m.hidden) { m.hidden = true; return; }
+  const wasOpen = !m.hidden; dismissMenus();
+  if (wasOpen) return;
   await renderProjectMenu(); m.hidden = false;
   const r = $("projbtn").getBoundingClientRect(); // open right under the button, wherever the chat panel is
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; m.style.top = r.bottom + 6 + "px";
@@ -2381,7 +2384,8 @@ async function renderHistMenu() {
     const open = document.createElement("button"); open.className = "open"; open.type = "button";
     open.append(Object.assign(document.createElement("b"), { textContent: c.title }), Object.assign(document.createElement("small"), { textContent: `${fmtWhen(c.updatedAt)} · ${chatCount(c.messages)}` }));
     open.onclick = () => { m.hidden = true; switchToChat(c.id); };
-    const del = Object.assign(document.createElement("button"), { className: "del", type: "button", textContent: "✕", title: "Delete conversation" });
+    const del = Object.assign(document.createElement("button"), { className: "del", type: "button", title: "Delete conversation", innerHTML: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' });
+    del.setAttribute("aria-label", "Delete conversation");
     del.onclick = async (e) => {
       e.stopPropagation(); m.hidden = true;
       if (!(await askConfirm({ title: `Delete the conversation “${c.title}”?`, detail: "This conversation will be removed. The screens on the canvas stay unchanged.", ok: "Delete conversation" }))) return;
@@ -2392,7 +2396,8 @@ async function renderHistMenu() {
 }
 $("chathist").onclick = async (e) => {
   e.stopPropagation(); const m = $("histmenu");
-  if (!m.hidden) { m.hidden = true; return; }
+  const wasOpen = !m.hidden; dismissMenus();
+  if (wasOpen) return;
   await renderHistMenu(); m.hidden = false;
   const r = $("chathist").getBoundingClientRect(); // right under the button, wherever the chat panel is
   m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + "px"; m.style.top = r.bottom + 6 + "px";
