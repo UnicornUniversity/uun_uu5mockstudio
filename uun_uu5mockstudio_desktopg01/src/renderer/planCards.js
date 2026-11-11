@@ -2,7 +2,7 @@ import { markdownDoc, esc } from "./markdown.js";
 import { parsePlan, serializePlan } from "./planDoc.js";
 import { extractPlan, replaceTreeBlock, removeTreeBlock } from "./planTree.js";
 import { renderTree } from "./planView.js";
-import { replaceSitemapBlock, countPages, countSections, updateNode, reviseMessage, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
+import { replaceSitemapBlock, countScreens, mapSummary, kindOf, setKind, updateNode, reviseMessage, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
 import { renderSitemap } from "./sitemapView.js";
 
 const GAP = 120, W = 520, H = 640, SITEMAP_W = 840, SITEMAP_H = 920, MIN_W = 320, MIN_H = 240, TITLE_H = 34;
@@ -149,7 +149,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
    */
   function mapSection(c, sitemap, io, note = "") {
     c.collapsed ??= new Set(defaultCollapsed(sitemap));
-    const exists = (f) => ctx.isScreen?.(f) ?? false, built = countBuilt(sitemap, exists), pages = countPages(sitemap), sections = countSections(sitemap);
+    const exists = (f) => ctx.isScreen?.(f) ?? false, built = countBuilt(sitemap, exists), screens = countScreens(sitemap), kind = kindOf(sitemap);
     const mini = (label, title, fn) => { const b = el("button", { type: "button", className: "pc-mini", textContent: label, title }); b.onclick = fn; return b; };
     const hide = mini(c.mapHidden ? "Show" : "Hide", c.mapHidden ? "Show the sitemap" : "Hide the sitemap", () => { c.mapHidden = !c.mapHidden; renderView(c); });
     hide.setAttribute("aria-expanded", String(!c.mapHidden));
@@ -168,10 +168,15 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     // the card fills the whole work area (the canvas is covered, not changed); it is moved out of the scaled canvas for that, and back
     const expand = mini(c.expanded ? "Canvas" : "Full view", c.expanded ? "Back to the canvas (Esc)" : "The map instead of the canvas", () => setExpanded(c, !c.expanded));
     expand.setAttribute("aria-pressed", String(Boolean(c.expanded)));
-    const head = el("div", { className: "pc-treehead" }, el("h4", { textContent: `Sitemap (${pages} pages${sections ? `, ${sections} sections` : ""})` }), el("span", { className: "pc-progress", textContent: `${built} of ${pages} with a screen`, title: "Pages that have a screen: designed. The others are only in the map." }),
+    // what the map is: a web site (pages and sections) or portals (documents of uuManagementKit: portals, sheets, sections)
+    const kindSw = el("div", { className: "sm-kindsw", role: "radiogroup", "aria-label": "What the map is" }, ...[["web", "Web", "A map of a web site: pages and their sections"], ["portal", "Portals", "A map of portals (documents of uuManagementKit): portals, their sheets and the sections of a sheet"]].map(([k, label, title]) => {
+      const b = el("button", { type: "button", role: "radio", className: `pc-mini${kind === k ? " on" : ""}`, textContent: label, title }); b.setAttribute("aria-checked", String(kind === k));
+      b.onclick = () => { if (kind !== k) io.write(setKind(sitemap, k)); }; return b;
+    }));
+    const head = el("div", { className: "pc-treehead" }, el("h4", { textContent: `${kind === "portal" ? "Portal map" : "Sitemap"} (${mapSummary(sitemap)})` }), kindSw, el("span", { className: "pc-progress", textContent: `${built} of ${screens} with a screen`, title: kind === "portal" ? "Portals and sheets that have a screen: designed. The others are only in the map." : "Pages that have a screen: designed. The others are only in the map." }),
       c.mapHidden ? null : mini("Fold all", "Fold every branch below the first level", () => { c.collapsed = new Set(foldable(sitemap, 1)); renderView(c); }),
       c.mapHidden ? null : mini("Unfold all", "Show every page", () => { c.collapsed = new Set(); renderView(c); }), exportBtn, c.expanded ? null : hide, c.expanded ? null : expand);
-    head.querySelector(".pc-mini")?.style.setProperty("margin-left", "auto");
+    head.querySelector(":scope > .pc-mini")?.style.setProperty("margin-left", "auto");
     const box = el("div", { className: "pc-sitemap" }, head);
     if (note || io.adopt) {
       const row = el("p", { className: "pc-note", textContent: note });
@@ -181,6 +186,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     if (c.mapHidden) return box;
     box.append(el("div", { className: "pc-mapbox" }, renderSitemap(sitemap, {
       editorHost: c.expanded ? sideHost(true) : undefined,
+      zoom: c.mapZoom ?? 1, onZoom: (z) => { c.mapZoom = z; if (c === viewCard) ctx.zoomChanged?.(); },
       collapsed: c.collapsed, onToggle: (id) => { if (!c.collapsed.delete(id)) c.collapsed.add(id); renderView(c); },
       sel: c.sel ?? null, sels: c.sels?.length ? c.sels : c.sel ? [c.sel] : [], isScreen: exists,
       onSelect: (path, multi) => {
@@ -272,8 +278,8 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
 
   function syncHead(c) {
     if (c.kind === "sitemap") {
-      const pages = countPages(c.sm), built = countBuilt(c.sm, (f) => ctx.isScreen?.(f) ?? false);
-      c.name.textContent = "Sitemap"; c.name.title = "sitemap.json"; c.stat.textContent = `${pages} pages${countSections(c.sm) ? ` · ${countSections(c.sm)} sections` : ""} · ${built} with a screen`; c.el.dataset.status = "sitemap";
+      const built = countBuilt(c.sm, (f) => ctx.isScreen?.(f) ?? false);
+      c.name.textContent = kindOf(c.sm) === "portal" ? "Portal map" : "Sitemap"; c.name.title = "sitemap.json"; c.stat.textContent = `${mapSummary(c.sm).replace(/, /g, " · ")} · ${built} with a screen`; c.el.dataset.status = "sitemap";
       c.modeBtn.hidden = true; c.buildBtn.hidden = true; c.delBtn.hidden = true; c.view.hidden = false; c.ta.hidden = true;
       return;
     }
@@ -431,6 +437,8 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
   function focus(slug) { return openView(slug); }
 
   return {
+    /** The zoom of the map shown as the view ({ by(f), reset(), fit(), percent() }), or null when the view is not a map: the zoom of the toolbar then zooms the canvas. */
+    mapZoom: () => (viewCard && !viewCard.mapHidden ? viewCard.view.querySelector(".sm")?.zoom ?? null : null),
     setPlans, setSitemap, focus, arrange, openView, closeView, viewKey: () => (viewCard ? [...cards].find(([, c]) => c === viewCard)?.[0] ?? null : null),
     /** How many cards are on the canvas now (not hidden). */
     visibleCount: () => [...cards.values()].filter((c) => !c.hidden).length,

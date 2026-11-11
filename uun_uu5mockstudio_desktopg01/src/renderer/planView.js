@@ -1,7 +1,7 @@
 import { KINDS, CHANGES, getNode, updateNode, addChild, addSibling, removeNode, duplicateNode, moveNode, indentNode, outdentNode, moveTo, countNodes } from "./planTree.js";
 import { markdown } from "./markdown.js";
 import { renderDiagram } from "./planDiagram.js";
-import { countPages } from "./sitemap.js";
+import { mapSummary } from "./sitemap.js";
 import { isAnswered, unanswered } from "./planTree.js";
 
 const el = (tag, props = {}, ...kids) => {
@@ -29,7 +29,7 @@ export function renderPlan(entry, ctx) {
   // ----- header
   const stateText = entry.state === "superseded" ? "replaced by a newer plan" : entry.state === "approved" ? ((entry.sitemap || entry.sitemapMoved) && !entry.tree ? "map approved" : "approved, building") : entry.state === "discarded" ? "discarded" : entry.editing ? "editing" : "proposed";
   // the full plan (the file) and the sitemap open in the large view, like "Open Full Plan" in VS Code; the chat card stays a short preview
-  const count = entry.sitemap ? `${countPages(entry.sitemap)} pages` : entry.tree ? `${countNodes(entry.tree)} components` : "";
+  const count = entry.sitemap ? mapSummary(entry.sitemap) : entry.tree ? `${countNodes(entry.tree)} components` : "";
   const openBtn = (label, title, fn, cls = "") => el("button", { type: "button", className: `plan-open ${cls}`.trim(), textContent: label, title, onclick: fn });
   const canOpen = Boolean(entry.planSlug && ctx.openPlan);
   root.append(el("div", { className: "plan-head" },

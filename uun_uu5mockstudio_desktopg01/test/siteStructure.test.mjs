@@ -138,3 +138,17 @@ test("the picked pages become a sitemap with their sources, or an outline for th
   assert.deepEqual(defaultChecked(portal), [portal.id]);
   assert.equal(pickToSitemap(portal, idsBelow(portal)).root.children[0].type, "external");
 });
+
+test("a document of uuManagementKit becomes a map of portals: its own pages are sheets, a linked document is a portal; a book keeps its pages", () => {
+  const other = "https://uuapp.plus4u.net/uu-managementkit-maing02/38744216cb324edca986789798259ba9/document?oid=aaaaaaaaaaaaaaaaaaaaaaaa";
+  const meta = { name: "Portal", pageList: [{ pageOid: "660d8eb8e75ca600355fe1aa", name: "Offers" }] };
+  const t = eccToTree({ meta, sections: [`<uu5string/><UuContentKit.Bricks.Menu><Uu5Bricks.Link href="${other}">Students</Uu5Bricks.Link><Uu5Bricks.Link href="${page("rooms")}">Handbook</Uu5Bricks.Link></UuContentKit.Bricks.Menu>`] }, ECC);
+  const sm = pickToSitemap(t, idsBelow(t));
+  assert.equal(sm.kind, "portal");
+  assert.equal(sm.root.type, "page");
+  assert.deepEqual(sm.root.children.map((c) => [c.title, c.type]), [["Offers", "sheet"], ["Students", "page"], ["Handbook", "page"]]);
+  const book = bookToTree({ itemMap: { a: { label: "A", indent: 0 } } }, BOOK, { title: "Book" });
+  const bm = pickToSitemap(book, idsBelow(book));
+  assert.equal(bm.kind, undefined);
+  assert.deepEqual(bm.root.children.map((c) => c.type), ["page"]);
+});

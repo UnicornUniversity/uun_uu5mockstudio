@@ -1179,12 +1179,18 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .pc-tree .pd{height:380px}
 .pc-mini{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:2px 9px;cursor:pointer;white-space:nowrap}.pc-mini:hover{background:var(--code)}
 .pc-mini.accent{background:var(--acc);border-color:var(--acc);color:#fff}.pc-mini.accent:hover{filter:brightness(1.08)}
-.pc-treehead .pc-mini:first-of-type{margin-left:auto}.pc-treehead{border-bottom:1px solid var(--line);margin-bottom:6px}.pc-treehead h4{margin:.8em 0 .4em!important}
+.pc-treehead>.pc-mini:first-of-type{margin-left:auto}.pc-treehead{border-bottom:1px solid var(--line);margin-bottom:6px}.pc-treehead h4{margin:.8em 0 .4em!important}
 .pc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin:0 0 12px;padding:6px 10px;border:1px dashed var(--line);border-radius:9px;font-size:12.5px;color:var(--mute)}
 /* a block of a page: part of the design like a page (full colour), but no screen of its own, so a small tinted pill without the bar of a page; grey is kept for what is not solved here */
 .sm-node.t-section{border:1px solid color-mix(in srgb,var(--acc) 32%,var(--line));border-radius:999px;background:color-mix(in srgb,var(--acc) 9%,var(--panel));font-size:12px;color:var(--fg);padding:3px 11px}.sm-node.t-section:hover{background:color-mix(in srgb,var(--acc) 16%,var(--panel))}
 .sm-cm{flex:none;width:15px;height:15px;border-radius:50%;background:#e0912f;color:#fff;font:700 10px/15px system-ui,sans-serif;text-align:center}
 .sm-node.has-cm{box-shadow:0 0 0 1px #e0912f55}
+/* a sheet of a portal: a page of its own (its own screen) with a teal bar; the chip names the type of the node (portal / sheet / section) */
+.sm-node.t-sheet{border-left-color:var(--sm-sheet)}
+:root{--sm-sheet:#14a3a3}
+.sm-kind{flex:none;font-size:9.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;line-height:1;padding:2px 5px;border-radius:5px;color:var(--mute);background:var(--code)}
+.sm-kind.k-page{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent)}.sm-kind.k-sheet{color:var(--sm-sheet);background:color-mix(in srgb,var(--sm-sheet) 14%,transparent)}
+.sm-kindsw{display:inline-flex;gap:0}.sm-kindsw .pc-mini{border-radius:0}.sm-kindsw .pc-mini:first-child{border-radius:7px 0 0 7px}.sm-kindsw .pc-mini:last-child{border-radius:0 7px 7px 0;margin-left:-1px}.sm-kindsw .pc-mini.on{position:relative;z-index:1} /* the accent border of the chosen one is drawn over the shared edge, on both sides */
 .sm-review{display:flex;gap:8px;align-items:center;margin:0 0 8px}.sm-wish{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
 .pc-mini:disabled{opacity:.45;cursor:default}
 .sm-edit>.sm-f{margin-bottom:8px}
@@ -1322,6 +1328,8 @@ body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;back
 .sm-ib .ico{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .sm-ib:hover:not([disabled]){background:var(--bg)}.sm-ib[disabled]{opacity:.35;cursor:default}.sm-ib.danger{color:var(--mute)}.sm-ib.danger:hover:not([disabled]){color:#e5484d;border-color:color-mix(in srgb,#e5484d 45%,var(--line))}
 .sm-bsep{flex:none;width:1px;height:20px;background:var(--line)}
+/* the icon buttons share the width of the bar and may get narrow (the general padding of the buttons of .sm-acts would push them out of the side panel) */
+.sm-acts .sm-bar{flex:1 1 100%;min-width:0;gap:4px}.sm-acts .sm-bar .sm-ib{flex:1 1 0;min-width:0;padding:0}
 #smside .sm-acts{margin-top:14px;gap:10px}
 .sm-ib.off{opacity:.38;cursor:default}.sm-ib.off:hover{background:var(--panel)}.sm-ib.danger.off:hover{color:var(--mute);border-color:var(--line)}
 /* sitemap from a link: the picker of pages (sitePicker.js) */

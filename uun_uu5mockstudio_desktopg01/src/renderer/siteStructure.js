@@ -345,13 +345,15 @@ const picked = (tree, checked) => {
 export function pickToSitemap(tree, checked, { title = "" } = {}) {
   const p = picked(tree, checked);
   if (!p || (!p.on && !p.kids.length)) return null;
+  // only the documents of uuManagementKit have sheets: a document read from such a link starts a map of portals (a document is a portal, its own pages are its sheets); a book of uuBookKit has pages
+  const portal = tree.kind === "mkEcc", sheet = (n) => portal && n.kind === "mkEcc" && n.group === "pages";
   const walk = ({ n, on, kids }, top) => ({
     title: top && clip(title) ? clip(title) : n.title,
-    type: top ? "page" : !on ? "group" : n.kind === "web" && tree.kind !== "web" ? "external" : "page",
+    type: top ? "page" : !on ? "group" : n.kind === "web" && tree.kind !== "web" ? "external" : sheet(n) ? "sheet" : "page",
     ...(on && n.url ? { source: n.url } : {}),
     children: kids.map((k) => walk(k, false)),
   });
-  return normalizeSitemap({ root: walk(p, true) });
+  return normalizeSitemap({ ...(portal ? { kind: "portal" } : {}), root: walk(p, true) });
 }
 
 /** The picked pages as indented lines for the agent: the title and the address of each, the nodes kept only for the hierarchy marked. */

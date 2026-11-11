@@ -33,7 +33,7 @@ import { createStructureDialog } from "./structureDialog.js";
 import { createPlanCards } from "./planCards.js";
 import { createPlansMenu } from "./plansMenu.js";
 import { parsePlan, serializePlan, slugify, withStatus } from "./planDoc.js";
-import { serializeSitemap, extractSitemap, normalizeSitemap, countPages, countBuilt, sitemapFromScreens, sitemapSvg, sitemapOffered } from "./sitemap.js";
+import { serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapOffered } from "./sitemap.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
@@ -746,7 +746,7 @@ const canvas = createCanvas({
   onTemplate: (file) => saveAsTemplate(file),
   onRequestSize: askSize,
   onGone: (file) => { window.studio.unregisterView(file); renderTabs(); },
-  onChange: (what) => { $("zval").textContent = canvas.zoomPercent() + "%"; if (what === "layout" || what === "move") flow?.draw(); if (what === "layout" || what === "move" || what === "camera") vlayer?.draw(); if (what === "layout") persistLayout(); },
+  onChange: (what) => { if (!mapZoom()) $("zval").textContent = canvas.zoomPercent() + "%"; if (what === "layout" || what === "move") flow?.draw(); if (what === "layout" || what === "move" || what === "camera") vlayer?.draw(); if (what === "layout") persistLayout(); },
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
@@ -769,12 +769,12 @@ function canvasInset() {
 planCards = createPlanCards({
   root: $("canvas"), world: $("world"), canvas,
   api: { read: (slug) => window.studio.plansRead(slug), write: (slug, text) => window.studio.plansWrite(slug, text) },
-  ctx: { saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), exportSitemap: (kind, sm, collapsed) => exportSitemapAs(kind, sm, collapsed), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); }, getInset: () => canvasInset() },
+  ctx: { saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), exportSitemap: (kind, sm, collapsed) => exportSitemapAs(kind, sm, collapsed), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); syncZoomLabel(); }, zoomChanged: () => syncZoomLabel(), getInset: () => canvasInset() },
 });
 // the Plans menu of the toolbar: the sitemap and the plans of the project, to show, hide or make
 let plansCache = [];
 const menuState = () => ({
-  sitemap: projectSitemap ? { pages: countPages(projectSitemap.sitemap), built: countBuilt(projectSitemap.sitemap, (f) => Boolean(canvas.get(f))), hidden: planCards.isHidden("@sitemap") } : null,
+  sitemap: projectSitemap ? { pages: countScreens(projectSitemap.sitemap), portal: kindOf(projectSitemap.sitemap) === "portal", built: countBuilt(projectSitemap.sitemap, (f) => Boolean(canvas.get(f))), hidden: planCards.isHidden("@sitemap") } : null,
   plans: plansCache.map((p) => ({ ...p, hidden: planCards.isHidden(p.slug) })), screens: canvas.files().length, viewing: planCards.viewKey(), offered: mapOffered(),
 });
 const menuActions = {
@@ -792,7 +792,7 @@ const menuActions = {
     setProjectSitemap(r); planCards.focus("@sitemap");
   },
   empty: async () => {
-    const r = await window.studio.sitemapWrite({ root: { title: project || "Home", type: "page", children: [] } }); if (r?.error) return toast(r.error, { err: true });
+    const r = await window.studio.sitemapWrite({ ...(projectLevel === "page" ? { kind: "portal" } : {}), root: { title: project || "Home", type: "page", children: [] } }); if (r?.error) return toast(r.error, { err: true });
     setProjectSitemap(r); planCards.focus("@sitemap");
   },
   fromLink: () => pickFromLink(),
@@ -913,8 +913,17 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   if (fsFile && !screens.includes(fsFile)) closeFullscreen();
   if (fresh.length) canvas.focus(fresh[fresh.length - 1]);
 });
-$("zin").onclick = () => canvas.zoomBy(1.25); $("zout").onclick = () => canvas.zoomBy(0.8);
-$("z100").onclick = () => canvas.zoom100(); $("fit").onclick = () => canvas.fitAll(true);
+// while a map is the view (instead of the canvas), the zoom of the toolbar and ⌘ + / − / 0 zoom the map
+function mapZoom() { return planCards?.mapZoom?.() ?? null; }
+function syncZoomLabel() {
+  const m = mapZoom();
+  $("zval").textContent = `${m ? m.percent() : canvas.zoomPercent()}%`;
+  $("fit").textContent = m ? "Fit the map" : "Fit all screens";
+}
+$("zin").onclick = () => { const m = mapZoom(); if (m) { m.by(1.25); syncZoomLabel(); } else canvas.zoomBy(1.25); };
+$("zout").onclick = () => { const m = mapZoom(); if (m) { m.by(0.8); syncZoomLabel(); } else canvas.zoomBy(0.8); };
+$("z100").onclick = () => { const m = mapZoom(); if (m) { m.reset(); syncZoomLabel(); } else canvas.zoom100(); };
+$("fit").onclick = () => { const m = mapZoom(); if (m) { m.fit(); syncZoomLabel(); } else canvas.fitAll(true); };
 // one pill: the percentage opens a small menu (zoom in / out, 100 %, fit)
 {
   const menu = $("zmenu"), pill = $("zpct");
@@ -941,9 +950,9 @@ addEventListener("keydown", (e) => {
   if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") || ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.target.matches("textarea,input,select"))) { e.preventDefault(); toggleFullscreen(canvas.selected()); return; }
   if (fsFile || confirmOpen) return;
   if (e.target.matches("textarea,input,select")) return;
-  if ((e.metaKey || e.ctrlKey) && e.key === "0") { e.preventDefault(); canvas.fitAll(true); }
-  else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); canvas.zoomBy(1.25); }
-  else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); canvas.zoomBy(0.8); }
+  if ((e.metaKey || e.ctrlKey) && e.key === "0") { e.preventDefault(); $("fit").click(); }
+  else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); $("zin").click(); }
+  else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); $("zout").click(); }
   else if (e.key === "i" && !e.metaKey && !e.ctrlKey) setInspect(!inspector.on);
   else if (inspector.on && !chatPick && marked.length && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) deleteInScreen(g); }
   else if (inspector.on && !chatPick && marked.length && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) duplicateInScreen(g); }

@@ -272,3 +272,35 @@ test("a page keeps the address it was taken from (source), only when it is a lin
   assert.match(set.root.children[1].source, /code=b$/);
   assert.equal(updateNode(set, [1], { source: "" }).root.children[1].source, undefined);
 });
+
+import { kindOf, setKind, mapSummary, typesFor, typeLabels, countScreens, isScreenType, svgLegend, sitemapOutline } from "../src/renderer/sitemap.js";
+test("a map of portals keeps its kind; portals are made of sheets and sheets of sections", () => {
+  const sm = normalizeSitemap({ kind: "portal", root: { title: "Doc", type: "portal", children: [{ title: "A", type: "list", file: "a.html", children: [{ title: "S", type: "section" }] }, { title: "B", type: "sheet" }] } });
+  assert.equal(kindOf(sm), "portal");
+  assert.equal(serializeSitemap(sm).indexOf('"kind"') < serializeSitemap(sm).indexOf('"root"'), true);
+  assert.deepEqual([sm.root.type, sm.root.children[0].type], ["page", "sheet"]); // the aliases of the agent
+  assert.equal(mapSummary(sm), "1 portal, 2 sheets, 1 section");
+  assert.equal(countScreens(sm), 3); assert.equal(countBuilt(sm, () => true), 1); // only the sheet has a file
+  assert.ok(isScreenType("sheet") && !isScreenType("section"));
+  assert.equal(getNode(addChild(sm, []).sitemap, [2]).type, "sheet");
+  assert.equal(getNode(addChild(sm, [0]).sitemap, [0, 1]).type, "section");
+  assert.equal(getNode(addSibling(sm, [1]).sitemap, [2]).type, "sheet");
+  assert.equal(typeLabels("portal").page, "Portal (document)");
+  assert.ok(typesFor(sm).includes("sheet"));
+  assert.ok(sitemapOutline(sm).includes("[sheet]") && sitemapOutline(sm).includes("map of portals"));
+  assert.ok(reviseMessage({ sm }).includes("map of PORTALS"));
+  assert.ok(sitemapSvg(sm, { isScreen: () => true }).svg.includes("Sheet of the portal, its screen is built"));
+  assert.ok(sitemapSvg(sm).svg.includes("Portal, no screen yet"));
+  assert.equal(svgLegend("web")[0].label, "Page, its screen is built");
+});
+test("a map of a web site has no kind in its file, no sheets offered, and new nodes are pages", () => {
+  const sm = normalizeSitemap({ kind: "nonsense", root: { title: "Home", children: [{ title: "A" }] } });
+  assert.equal(sm.kind, undefined); assert.equal(kindOf(sm), "web");
+  assert.ok(!typesFor(sm).includes("sheet"));
+  assert.equal(getNode(addChild(sm, [0]).sitemap, [0, 0]).type, "page");
+  assert.equal(getNode(addChild(sm, [0]).sitemap, [0, 0]).title, "New page");
+  assert.equal(mapSummary(sm), "2 pages");
+  const p = setKind(sm, "portal"); assert.equal(p.kind, "portal"); assert.equal(setKind(p, "web").kind, undefined);
+  assert.equal(normalizeSitemap(p).kind, "portal");
+  assert.equal(extractSitemap(replaceSitemapBlock("Plan", p)).sitemap.kind, "portal"); // the block of a plan keeps the kind
+});

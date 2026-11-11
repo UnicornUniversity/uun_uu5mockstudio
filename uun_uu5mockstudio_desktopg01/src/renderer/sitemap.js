@@ -3,11 +3,34 @@ import { parseLink } from "./docLinks.js";
 
 /**
  * The sitemap of a portal or a web site: a tree of pages. In a plan it is the fenced block `uu5-sitemap`:
- * { "root": { "id", "title", "type": "page" | "section" | "group" | "external" | "stub", "file"?: "x.html", "note"?, "source"?, "children"?: [ … ] } }.
+ * { "kind"?: "web" | "portal", "root": { "id", "title", "type": "page" | "sheet" | "section" | "group" | "external" | "stub", "file"?: "x.html", "note"?, "source"?, "children"?: [ … ] } }.
+ * `kind` says what the map is: a web site (pages and their sections, the default, not written) or portals (documents of uuManagementKit: a portal is a node
+ * of type page, it is made of sheets, a sheet of sections). A sheet has a screen of its own, as a page.
  * `source` is the address the page was taken from (a page of a book, a document, a web page): its content is read when the screen is built.
  * Everything here is pure; a node is addressed by its path (list of child indexes, the root is []).
  */
-export const NODE_TYPES = ["page", "section", "group", "external", "stub"]; // a stub is a page that exists in the portal but is not solved here: it stays in the map, no screen is built for it and it is not counted
+export const NODE_TYPES = ["page", "sheet", "section", "group", "external", "stub"]; // a stub is a page that exists in the portal but is not solved here: it stays in the map, no screen is built for it and it is not counted
+/** What the map is: a web site, or portals (documents of uuManagementKit made of sheets). */
+export const MAP_KINDS = ["web", "portal"];
+export const kindOf = (sm) => (sm?.kind === "portal" ? "portal" : "web");
+/** The kinds of nodes that have a screen of their own. */
+export const isScreenType = (t) => t === "page" || t === "sheet";
+const TYPE_ALIAS = { portal: "page", document: "page", list: "sheet" }; // what the agent may write for a portal or a sheet
+const typeOf = (t) => (NODE_TYPES.includes(t) ? t : TYPE_ALIAS[t]);
+/** The names of the types as the user reads them, in a map of a web site or of portals. */
+export function typeLabels(kind = "web") {
+  const portal = kind === "portal";
+  return {
+    page: portal ? "Portal (document)" : "Page (own screen)",
+    sheet: portal ? "Sheet (own screen)" : "Sheet (of a portal)",
+    section: portal ? "Section (part of a sheet)" : "Section (part of a page)",
+    group: "Group (menu only)", external: "External link", stub: portal ? "Not solved here" : "Page (not solved here)",
+  };
+}
+/** The short name of a type (the chip on a node, the counts). */
+export const typeShort = (kind, t) => (({ page: kind === "portal" ? "Portal" : "Page", sheet: "Sheet", section: "Section", group: "Group", external: "Link", stub: "Stub" })[t] ?? t);
+/** The types the map offers: a map of a web site has no sheets (unless it has one already). */
+export const typesFor = (sm) => (kindOf(sm) === "portal" || countType(sm, (t) => t === "sheet") ? NODE_TYPES : NODE_TYPES.filter((t) => t !== "sheet"));
 const MAX_NODES = 200, MAX_DEPTH = 8, FILE = /^[A-Za-z0-9][\w.-]*\.html$/;
 /** Several comments on one page are kept in the one `comment` field, apart by this mark. */
 export const CM_SEP = " ¦ ";
@@ -29,11 +52,11 @@ export function normalizeSitemap(raw) {
     const title = clip(n.title ?? n.name, 80) || "Page", myId = id(n.id ?? title); // the id before the children's: a parent keeps the plain one
     const kids = depth < MAX_DEPTH && Array.isArray(n.children) ? n.children.map((c) => walk(c, depth + 1)).filter(Boolean) : [];
     const file = FILE.test(String(n.file ?? "")) ? String(n.file) : undefined;
-    const type = NODE_TYPES.includes(n.type) ? n.type : "page", note = clip(n.note, 240), comment = clip(n.comment, 1000), source = sourceOf(n.source);
+    const type = typeOf(n.type) ?? "page", note = clip(n.note, 240), comment = clip(n.comment, 1000), source = sourceOf(n.source);
     return { id: myId, title, type, ...(file ? { file } : {}), ...(note ? { note } : {}), ...(source ? { source } : {}), ...(comment ? { comment } : {}), children: kids };
   };
-  const root = walk(src, 0);
-  return root ? { root } : null;
+  const root = walk(src, 0), kind = raw?.kind === "portal" ? "portal" : null;
+  return root ? { ...(kind ? { kind } : {}), root } : null;
 }
 
 export const serializeSitemap = (sm) => JSON.stringify(sm, null, 2);
@@ -43,6 +66,17 @@ const countType = (sm, ok) => { let n = 0; const walk = (x) => { if (ok(x.type))
 /** The pages (their own screens): sections are parts of a page, groups only gather pages in the menu, external ones lead out. */
 export const countPages = (sm) => countType(sm, (t) => t === "page");
 export const countSections = (sm) => countType(sm, (t) => t === "section");
+export const countSheets = (sm) => countType(sm, (t) => t === "sheet");
+/** The nodes that have (or will have) a screen of their own: pages and sheets. */
+export const countScreens = (sm) => countType(sm, isScreenType);
+const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/** What the map holds, in words: "12 pages, 4 sections" or, for portals, "3 portals, 18 sheets, 9 sections". */
+export function mapSummary(sm) {
+  const portal = kindOf(sm) === "portal", pages = countPages(sm), sheets = countSheets(sm), sections = countSections(sm);
+  return [plural(pages, portal ? "portal" : "page"), ...(sheets || portal ? [plural(sheets, "sheet")] : []), ...(sections ? [plural(sections, "section")] : [])].join(", ");
+}
+/** The map of another kind (web site or portals); the nodes stay as they are. */
+export function setKind(sm, kind) { const out = clone(sm); if (kind === "portal") return { kind, root: out.root }; return { root: out.root }; }
 
 const block = /```uu5-sitemap[^\n]*\n([\s\S]*?)```/;
 /** The text without the `uu5-sitemap` block, and the sitemap read from it (null when absent or not valid JSON: the block then stays in the text). */
@@ -69,7 +103,7 @@ export function updateNode(sm, path, patch) {
   const out = clone(sm), n = getNode(out, path); if (!n) return sm;
   for (const [k, v] of Object.entries(patch)) {
     if (k === "title") n.title = clip(v, 80) || n.title;
-    else if (k === "type") { if (NODE_TYPES.includes(v)) n.type = v; }
+    else if (k === "type") { const t = typeOf(v); if (t) n.type = t; }
     else if (k === "file") { if (!v) delete n.file; else if (FILE.test(String(v))) n.file = String(v); }
     else if (k === "note") { const t = clip(v, 240); if (t) n.note = t; else delete n.note; }
     else if (k === "source") { const u = sourceOf(v); if (u) n.source = u; else delete n.source; }
@@ -82,18 +116,21 @@ export function updateNode(sm, path, patch) {
 export function updateNodes(sm, paths, patch) { return paths.reduce((acc, p) => updateNode(acc, p, patch), sm); }
 
 const uniqueId = (sm, base) => { const ids = new Set(); const walk = (n) => { ids.add(n.id); n.children.forEach(walk); }; walk(sm.root); let v = base, i = 2; while (ids.has(v)) v = `${base}-${i++}`; return v; };
-const blank = (sm, title = "New page") => ({ id: uniqueId(sm, slugify(title)), title, type: "page", children: [] });
+const blank = (sm, title, type = "page") => { const t = title || (kindOf(sm) === "portal" ? `New ${typeShort("portal", type).toLowerCase()}` : "New page"); return { id: uniqueId(sm, slugify(t)), title: t, type, children: [] }; };
+/** In a map of portals a portal is made of sheets and a sheet of sections; in a web site a new node is a page. */
+export function childType(sm, parent) { if (kindOf(sm) !== "portal") return "page"; return parent?.type === "page" ? "sheet" : parent?.type === "sheet" || parent?.type === "section" ? "section" : "page"; }
+const siblingType = (sm, node) => (kindOf(sm) === "portal" && ["page", "sheet", "section"].includes(node?.type) ? node.type : "page");
 
 /** A child at the end of the node; returns { sitemap, path } with the path of the new node. */
 export function addChild(sm, path, title) {
   const out = clone(sm), n = getNode(out, path); if (!n || countNodes(out) >= MAX_NODES || path.length >= MAX_DEPTH) return { sitemap: sm, path };
-  n.children.push(blank(out, title)); return { sitemap: out, path: [...path, n.children.length - 1] };
+  n.children.push(blank(out, title, childType(out, n))); return { sitemap: out, path: [...path, n.children.length - 1] };
 }
 /** A sibling right after the node (a child of the root for the root itself). */
 export function addSibling(sm, path, title) {
   if (!path.length) return addChild(sm, path, title);
   const out = clone(sm), p = parentOf(out, path); if (!p || countNodes(out) >= MAX_NODES) return { sitemap: sm, path };
-  const at = path[path.length - 1] + 1; p.children.splice(at, 0, blank(out, title)); return { sitemap: out, path: [...path.slice(0, -1), at] };
+  const at = path[path.length - 1] + 1; p.children.splice(at, 0, blank(out, title, siblingType(out, getNode(out, path)))); return { sitemap: out, path: [...path.slice(0, -1), at] };
 }
 /** A copy of a leaf right after it: the same type and note, the title with "(copy)"; the screen file and the comments stay with the original. Nothing changes for the root or a page with sub-pages. */
 export function duplicateNode(sm, path) {
@@ -176,6 +213,7 @@ export function reviseMessage({ slug, sm, extra = "", body = "" }) {
   const head = slug ? `Revise the SITEMAP of this plan, it is the file plans/${slug}.md (the user may have edited it, so start from this text).` : "Revise the SITEMAP of this project, it is the file sitemap.json (the user may have edited it, so start from the map below, comments included).";
   return [
     head,
+    ...(kindOf(sm) === "portal" ? ["", "It is a map of PORTALS (`\"kind\": \"portal\"`, keep it): a node of type `page` is a portal (a document of uuManagementKit), a `sheet` is a sheet of the portal above it with its own screen, a `section` is a part of the sheet above it."] : []),
     ...(list.length ? ["", "The user commented on these pages of the map (the `comment` field of each node). Resolve every comment: change the map as it asks (rename, move, merge, split, make a page a section or the other way round, add or remove pages), or when you disagree say why in the `note` of that node. Then leave the `comment` fields out of the new map.", ...list.map((c) => `- ${c.wheres.join("; ")}${c.wheres.length > 1 ? " (together)" : ""}: ${c.comment}`)] : []),
     ...(wish ? ["", `The user also asks, about the map as a whole: ${wish}`] : []),
     "", slug ? "Keep the rest of the plan as it is, and answer with the whole plan, the changed `uu5-sitemap` block included." : "Answer with a short plan in the usual format: what you changed and why, and the whole revised map as the `uu5-sitemap` block (no component tree). The user reviews it and approves it; only then it replaces the sitemap of the project.",
@@ -253,8 +291,8 @@ export function sitemapOffered({ hasSitemap = false, scope = null, level = null 
 }
 
 // ---------------------------------------------------------------- progress and folding
-/** How many pages (type page with a file) have a screen that exists. */
-export function countBuilt(sm, exists) { let n = 0; const walk = (x) => { if (x.type === "page" && x.file && exists(x.file)) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; }
+/** How many pages and sheets (with a file) have a screen that exists. */
+export function countBuilt(sm, exists) { let n = 0; const walk = (x) => { if (isScreenType(x.type) && x.file && exists(x.file)) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; }
 /** ids of the nodes below the first level that have children (what "Collapse all" folds; the root and its pages stay in sight). */
 export function foldable(sm, minDepth = 1) { const ids = []; const walk = (x, d) => { if (d >= minDepth && x.children.length) ids.push(x.id); x.children.forEach((c) => walk(c, d + 1)); }; if (sm?.root) walk(sm.root, 0); return ids; }
 /** A big map starts folded below its second level; a small one open. */
@@ -266,6 +304,7 @@ export const descendants = (n) => n.children.reduce((a, c) => a + 1 + descendant
 export function sitemapOutline(sm, { limit = 6000 } = {}) {
   const lines = [];
   const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
+  if (kindOf(sm) === "portal") lines.push("(a map of portals: [page] nodes are portals, documents of uuManagementKit; a [sheet] is a sheet of the portal above, with its own screen; a [section] is a part of the sheet above)");
   if (sm?.root) walk(sm.root, 0);
   const text = lines.join("\n");
   return text.length > limit ? `${text.slice(0, limit)}\n… (shortened, read sitemap.json for the rest)` : text;
@@ -275,25 +314,31 @@ export function sitemapOutline(sm, { limit = 6000 } = {}) {
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const cut = (t, n) => (String(t).length > n ? `${String(t).slice(0, n - 1)}…` : String(t));
 /** The kinds of nodes the picture tells apart, in the order of the legend (what each one means for the user reading the picture). */
-export const SVG_LEGEND = [
-  { key: "built", type: "page", label: "Page, its screen is built" },
-  { key: "planned", type: "page", label: "Page, no screen yet" },
-  { key: "section", type: "section", label: "Section, part of the page above" },
-  { key: "group", type: "group", label: "Group, only a menu item" },
-  { key: "external", type: "external", label: "Link out of the site" },
-  { key: "stub", type: "stub", label: "Page not solved here" },
-  { key: "folded", type: "page", label: "Folded branch, pages below" },
-];
+export function svgLegend(kind = "web") {
+  const portal = kind === "portal", P = portal ? "Portal" : "Page";
+  return [
+    { key: "built", type: "page", label: `${P}, its screen is built` },
+    { key: "planned", type: "page", label: `${P}, no screen yet` },
+    { key: "sheet-built", type: "sheet", label: `Sheet${portal ? " of the portal" : ""}, its screen is built` },
+    { key: "sheet-planned", type: "sheet", label: `Sheet${portal ? " of the portal" : ""}, no screen yet` },
+    { key: "section", type: "section", label: portal ? "Section, part of the sheet above" : "Section, part of the page above" },
+    { key: "group", type: "group", label: "Group, only a menu item" },
+    { key: "external", type: "external", label: portal ? "Link out of the portal" : "Link out of the site" },
+    { key: "stub", type: "stub", label: portal ? "Not solved here" : "Page not solved here" },
+    { key: "folded", type: "page", label: "Folded branch, pages below" },
+  ];
+}
+export const SVG_LEGEND = svgLegend("web");
 /** One node as SVG: the box, the accent bar, the mark (✔ ○ ↗ –), the title and, for a folded branch, the number below. */
 function nodeSvg({ x, y, w, h, type: t, built, title = "", folded = 0, maxChars = 31 }) {
-  const out = [], accent = t === "external" ? "#e0912f" : t === "page" ? "#2f6df6" : t === "group" ? "#98a2b3" : "#cdd3dd";
+  const out = [], accent = t === "external" ? "#e0912f" : t === "page" ? "#2f6df6" : t === "sheet" ? "#14a3a3" : t === "group" ? "#98a2b3" : "#cdd3dd";
   const dash = t === "group" ? ` stroke-dasharray="5 3"` : "";
   const sec = t === "section"; // a block of a page: a tinted pill in full colour, without the bar of a page (grey is for what is not solved here)
   const fill = t === "stub" ? "#f4f5f7" : sec ? "#eef3fe" : "#ffffff", ink = t === "stub" || t === "group" ? "#667085" : "#1d1f24";
   out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${sec ? h / 2 : 8}" fill="${fill}" stroke="${sec ? "#b9cdfb" : "#d6dbe4"}"${dash}/>`);
   if (!sec) out.push(`<rect x="${x}" y="${y + 6}" width="3" height="${h - 12}" rx="1.5" fill="${accent}"/>`);
   let mark = "", col = "#667085";
-  if (t === "external") mark = "↗"; else if (t === "stub") mark = "–"; else if (t === "page") { mark = built ? "✔" : "○"; col = built ? "#2f8f49" : "#667085"; }
+  if (t === "external") mark = "↗"; else if (t === "stub") mark = "–"; else if (isScreenType(t)) { mark = built ? "✔" : "○"; col = built ? "#2f8f49" : "#667085"; }
   if (mark) out.push(`<text x="${x + 14}" y="${y + h / 2 + 4.5}" fill="${col}">${mark}</text>`);
   if (title) out.push(`<text x="${x + (mark ? 32 : 14)}" y="${y + h / 2 + 4.5}" fill="${ink}"${sec ? ` font-size="12"` : ""}>${esc(cut(title, (mark ? maxChars - 3 : maxChars) - (folded ? 5 : 0)))}</text>`);
   if (folded) out.push(`<text x="${x + w - 12}" y="${y + h / 2 + 4}" text-anchor="end" fill="#667085" font-size="12">▸ ${folded}</text>`);
@@ -320,10 +365,11 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
   // ----- the legend: the kinds used by this map, as small nodes with a text, in rows as wide as the map
   const used = new Set();
   for (const { n, folded } of flat) {
-    used.add(n.type === "page" ? (n.file && isScreen(n.file) ? "built" : "planned") : n.type);
+    const b = n.file && isScreen(n.file);
+    used.add(n.type === "page" ? (b ? "built" : "planned") : n.type === "sheet" ? (b ? "sheet-built" : "sheet-planned") : n.type);
     if (folded) used.add("folded");
   }
-  const items = legend ? SVG_LEGEND.filter((l) => used.has(l.key)) : [];
+  const items = legend ? svgLegend(kindOf(sm)).filter((l) => used.has(l.key)) : [];
   const LW = 64, LH = 26, LGAP = 10, LROW = LH + 10, textW = (t) => Math.ceil(t.length * 6.6);
   width = Math.max(width, items.length ? PAD * 2 + LW + LGAP + Math.max(...items.map((l) => textW(l.label))) : 0);
   const placed = []; let lx = PAD, ly = 0;
@@ -343,7 +389,7 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
     out.push(`<text x="${PAD}" y="${top + 24}" fill="#667085" font-size="11" font-weight="600" letter-spacing=".06em">LEGEND</text>`);
     for (const l of placed) {
       const y = top + 24 + 14 + l.y;
-      out.push(nodeSvg({ x: l.x, y, w: LW, h: LH, type: l.type, built: l.key === "built", folded: l.key === "folded" ? "N" : 0 }));
+      out.push(nodeSvg({ x: l.x, y, w: LW, h: LH, type: l.type, built: l.key === "built" || l.key === "sheet-built", folded: l.key === "folded" ? "N" : 0 }));
       out.push(`<text x="${l.x + LW + LGAP}" y="${y + LH / 2 + 4}" fill="#344054" font-size="12">${esc(l.label)}</text>`);
     }
     out.push("</g>");

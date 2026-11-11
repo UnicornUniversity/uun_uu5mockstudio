@@ -35,7 +35,7 @@ export function createPlansMenu({ button, menu, state, actions, show = "plans" }
   function render() {
     const s = state(), parts = [];
     if (show === "sitemap") {
-    if (s.sitemap) parts.push(row("@sitemap", "Open the sitemap", `${s.sitemap.built} of ${s.sitemap.pages} pages with a screen`, s.sitemap.hidden));
+    if (s.sitemap) parts.push(row("@sitemap", "Open the sitemap", `${s.sitemap.built} of ${s.sitemap.pages} ${s.sitemap.portal ? "portals and sheets" : "pages"} with a screen`, s.sitemap.hidden));
     else parts.push(...makeMap(s, "This project has no sitemap yet. Make one:"));
     menu.replaceChildren(...parts); return;
     }

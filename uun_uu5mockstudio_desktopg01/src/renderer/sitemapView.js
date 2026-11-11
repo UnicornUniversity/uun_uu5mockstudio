@@ -1,4 +1,4 @@
-import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, NODE_TYPES, fileFor, pathTitles } from "./sitemap.js";
+import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType } from "./sitemap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -6,6 +6,8 @@ const el = (tag, props = {}, ...kids) => {
   n.append(...kids.filter((x) => x != null));
   return n;
 };
+export const ZOOM_MIN = 0.3, ZOOM_MAX = 2;
+const clampZoom = (z) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(z) || 1));
 const same = (a, b) => Boolean(a && b) && a.length === b.length && a.every((x, i) => x === b[i]);
 const IC = {
   inside: '<path d="M5 4v8a3 3 0 0 0 3 3h9M13 11l4 4-4 4"/>', after: '<path d="M12 4v9M7.5 8.5h9M5 20h14"/>',
@@ -14,7 +16,6 @@ const IC = {
   indent: '<path d="M3 6h18M12 12h9M3 18h18M3 9l3 3-3 3"/>', outdent: '<path d="M3 6h18M12 12h9M3 18h18M6 9l-3 3 3 3"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
-const TYPE_LABEL = { page: "Page (own screen)", section: "Section (part of a page)", group: "Group (menu only)", external: "External link", stub: "Page (not solved here)" };
 
 /**
  * The sitemap as a map: the root on the left, the pages to the right, and below it a small editor of the selected page.
@@ -31,6 +32,8 @@ if (typeof document !== "undefined") document.addEventListener("keydown", (e) =>
 export function renderSitemap(sm, opts) {
   const { sel, sels = sel ? [sel] : [], isScreen = () => false, onSelect, onChange, onBulk, onOpen, onCreate, onCreateMany, onRevise, links, collapsed = new Set(), onToggle } = opts;
   const picked = (path) => sels.some((p) => same(p, path));
+  const kind = kindOf(sm), TYPE_LABEL = typeLabels(kind), TYPES = typesFor(sm), portal = kind === "portal";
+  const word = (t) => typeShort(kind, t).toLowerCase(); // "page", "portal", "sheet", "section"
   const root = el("div", { className: "sm" });
 
   const status = (n) => {
@@ -70,8 +73,9 @@ export function renderSitemap(sm, opts) {
     const act = (r) => onChange?.(r.sitemap, r.path);
     const isRoot = path.length === 0;
     if (!many) menu.append(item("Rename", () => { const b = [...document.querySelectorAll(".sm-node.sel")].find((x) => x.querySelector(".sm-title")?.textContent === n.title); if (b) renameNode(b, n, path); }));
-    menu.append(head(many ? `Type of ${many.length} pages` : "Type"), ...NODE_TYPES.map((t) => item(TYPE_LABEL[t], () => (many ? onBulk?.(updateNodes(sm, many, { type: t })) : onChange?.(updateNode(sm, path, { type: t }), path)), { on: !many && n.type === t })));
-    if (!many) menu.append(el("hr"), item("Add page inside", () => act(addChild(sm, path))), item("Add page after", () => act(addSibling(sm, path)), { disabled: isRoot }), item("Duplicate", () => act(duplicateNode(sm, path)), { disabled: isRoot || n.children.length > 0 }),
+    menu.append(head(many ? `Type of ${many.length} pages` : "Type"), ...TYPES.map((t) => item(TYPE_LABEL[t], () => (many ? onBulk?.(updateNodes(sm, many, { type: t })) : onChange?.(updateNode(sm, path, { type: t }), path)), { on: !many && n.type === t })));
+    const inside = word(childType(sm, n)), after = portal && ["page", "sheet", "section"].includes(n.type) ? word(n.type) : "page";
+    if (!many) menu.append(el("hr"), item(`Add ${inside} inside`, () => act(addChild(sm, path))), item(`Add ${after} after`, () => act(addSibling(sm, path)), { disabled: isRoot }), item("Duplicate", () => act(duplicateNode(sm, path)), { disabled: isRoot || n.children.length > 0 }),
       el("hr"), item("Delete", () => { if (!n.children.length || confirm(`Delete “${n.title}” with its ${n.children.length} sub-page(s)?`)) act(removeNode(sm, path)); }, { danger: true, disabled: isRoot }));
     document.body.append(menu);
     const w = menu.offsetWidth, h = menu.offsetHeight;
@@ -108,7 +112,7 @@ export function renderSitemap(sm, opts) {
     document.addEventListener("pointermove", move, true); document.addEventListener("pointerup", up, true); document.addEventListener("keydown", key, true);
   }
   const nodeEl = (n, path) => {
-    const b = el("button", { type: "button", className: `sm-node t-${n.type}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
+    const b = el("button", { type: "button", className: `sm-node t-${n.type}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
     if (n.children.length) {
       const folded = collapsed.has(n.id), tgl = el("span", { className: "sm-tgl", role: "button", tabIndex: 0, textContent: folded ? `▸ ${descendants(n)}` : "▾", title: folded ? `Show the ${descendants(n)} pages below` : "Fold the branch" });
       tgl.setAttribute("aria-label", folded ? `Unfold ${n.title}` : `Fold ${n.title}`); tgl.setAttribute("aria-expanded", String(!folded));
@@ -193,8 +197,41 @@ export function renderSitemap(sm, opts) {
       root.append(row);
     }
   }
-  const scroll = el("div", { className: "sm-scroll" }, el("div", { className: "sm-treewrap" }, el("ul", { className: "sm-tree" }, branch(sm.root, []))));
+  const treewrap = el("div", { className: "sm-treewrap" }, el("ul", { className: "sm-tree" }, branch(sm.root, [])));
+  const scroll = el("div", { className: "sm-scroll" }, treewrap);
   scroll.onclick = (e) => { if (e.target === scroll || e.target.tagName === "UL" || e.target.tagName === "LI") onSelect?.(null, false); }; // the empty map: nothing selected
+
+  // ----- zoom of the map: ⌘ / Ctrl + wheel and the pinch of a trackpad (Chromium sends it as Ctrl + wheel) around the pointer,
+  // and the zoom pill of the toolbar while the map is the view (root.zoom); the map has no zoom bar of its own. The map is zoomed with CSS zoom, so it is laid out (and scrolls) at its size.
+  let zoom = clampZoom(opts.zoom ?? 1);
+  /** The scale of the card itself (it is scaled with the canvas when it lies on it). */
+  const cardScale = () => scroll.getBoundingClientRect().width / (scroll.offsetWidth || 1) || 1;
+  const applyZoom = () => { treewrap.style.zoom = String(zoom); };
+  const setZoom = (z, clientX, clientY) => {
+    z = clampZoom(z); if (Math.abs(z - zoom) < 1e-4) return;
+    const r = scroll.getBoundingClientRect(), k = cardScale();
+    const px = clientX == null ? scroll.clientWidth / 2 : (clientX - r.left) / k, py = clientY == null ? scroll.clientHeight / 2 : (clientY - r.top) / k; // the point that stays where it is
+    const cx = (scroll.scrollLeft + px) / zoom, cy = (scroll.scrollTop + py) / zoom;
+    zoom = z; applyZoom();
+    scroll.scrollLeft = cx * zoom - px; scroll.scrollTop = cy * zoom - py;
+    root.draw?.(); opts.onZoom?.(zoom);
+  };
+  /** The whole map in sight (never larger than 100 %). */
+  const fitZoom = () => {
+    const nodes = [...treewrap.querySelectorAll(".sm-node")]; if (!nodes.length) return;
+    const w = treewrap.getBoundingClientRect(), k = cardScale() * zoom;
+    const right = Math.max(...nodes.map((n) => n.getBoundingClientRect().right)), bottom = Math.max(...nodes.map((n) => n.getBoundingClientRect().bottom));
+    const cw = (right - w.left) / k + 24, ch = (bottom - w.top) / k + 24; // the size of the map at 100 %
+    const z = clampZoom(Math.min(1, (scroll.clientWidth - 24) / cw, (scroll.clientHeight - 16) / ch));
+    zoom = z; applyZoom(); scroll.scrollLeft = 0; scroll.scrollTop = 0; root.draw?.(); opts.onZoom?.(zoom);
+  };
+  scroll.addEventListener("wheel", (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return; // a plain wheel scrolls the map
+    e.preventDefault(); e.stopPropagation(); // the canvas below does not zoom
+    setZoom(zoom * Math.exp(-Math.max(-40, Math.min(40, e.deltaY)) * 0.01), e.clientX, e.clientY);
+  }, { passive: false });
+  applyZoom();
+  root.zoom = { by: (f) => setZoom(zoom * f), reset: () => setZoom(1), fit: fitZoom, percent: () => Math.round(zoom * 100) };
   root.append(scroll);
 
   const field = (label, control) => el("label", { className: "sm-f" }, el("span", { textContent: label }), control);
@@ -254,7 +291,7 @@ export function renderSitemap(sm, opts) {
     const addAll = (t) => onBulk?.(paths.reduce((m, p) => { const n = getNode(m, p); return updateNode(m, p, { comment: joinComments([...splitComments(n.comment), t]) }); }, sm));
     const cbox = same1 ? commentBox(splitComments(nodes[0].comment), `Comments on the ${paths.length} selected pages`, (l) => bulk({ comment: joinComments(l) }), `the same on all ${paths.length} pages`)
       : commentBox([], `Comment on the ${paths.length} selected pages`, (l) => addAll(l[0]), "the pages have different comments: a new one is added to each");
-    const type = el("select", { "aria-label": "Type of all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), ...NODE_TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t] })));
+    const type = el("select", { "aria-label": "Type of all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), ...TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t] })));
     type.onchange = () => { if (type.value) bulk({ type: type.value }); };
     return el("div", { className: "sm-edit", role: "group", "aria-label": `${paths.length} selected pages` },
       el("div", { className: "sm-multi" }, el("b", { textContent: `${paths.length} pages selected` }), el("span", { className: "mute", textContent: nodes.map((n) => n.title).join(" · ") })),
@@ -263,14 +300,14 @@ export function renderSitemap(sm, opts) {
   }
   /** Several pages at once: the screens are created for the selected pages only, not for the whole map. */
   function createMany(paths) {
-    const pages = paths.filter((p) => getNode(sm, p)?.type === "page"), tooMany = pages.length > 8;
-    return el("button", { type: "button", className: "primary", textContent: `Create the screens (${pages.length})`, disabled: !pages.length || tooMany, title: tooMany ? "Select at most 8 pages at a time" : pages.length ? "The agent builds a screen for each selected page (and for nothing else)" : "Select pages (not sections or groups)", onclick: () => onCreateMany?.(pages.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) }))) });
+    const pages = paths.filter((p) => isScreenType(getNode(sm, p)?.type)), tooMany = pages.length > 8;
+    return el("button", { type: "button", className: "primary", textContent: `Create the screens (${pages.length})`, disabled: !pages.length || tooMany, title: tooMany ? "Select at most 8 pages at a time" : pages.length ? "The agent builds a screen for each selected page (and for nothing else)" : portal ? "Select portals or sheets (not sections or groups)" : "Select pages (not sections or groups)", onclick: () => onCreateMany?.(pages.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) }))) });
   }
 
   // ----- the editor of the selected page
   const set = (patch) => onChange?.(updateNode(sm, sel, patch), sel);
   const text = (value, key, ph = "") => { const i = el("input", { type: "text", value: value ?? "", placeholder: ph, spellcheck: false }); i.onchange = () => set({ [key]: i.value }); return i; };
-  const type = el("select", {}, ...NODE_TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t], selected: t === node.type })));
+  const type = el("select", {}, ...[...new Set([...TYPES, node.type])].map((t) => el("option", { value: t, textContent: TYPE_LABEL[t], selected: t === node.type })));
   type.onchange = () => set({ type: type.value });
   const btn = (label, fn, { title = "", disabled = false, cls = "" } = {}) => el("button", { type: "button", className: cls, textContent: label, title, disabled, onclick: fn });
   const parent = sel.length ? getNode(sm, sel.slice(0, -1)) : null, i = sel[sel.length - 1];
@@ -285,12 +322,12 @@ export function renderSitemap(sm, opts) {
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     cbox,
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
-    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), field("Screen file", text(node.file, "file", node.type === "page" ? fileFor(sm, node) : node.type === "section" ? "(part of the page above)" : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
+    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), field("Screen file", text(node.file, "file", isScreenType(node.type) ? fileFor(sm, node) : node.type === "section" ? (portal ? "(part of the sheet above)" : "(part of the page above)") : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
       // one row of icon buttons (the name is in the tooltip): add | move | delete; the screen is the one primary button
       el("div", { className: "sm-bar", role: "toolbar", "aria-label": "Actions on the page" },
-        ibtn(IC.inside, "Add a page inside this one", () => act(addChild(sm, sel))), ibtn(IC.after, "Add a page after this one (next to it)", () => act(addSibling(sm, sel))), ibtn(IC.copy, "Duplicate this page (a copy right after it)", () => act(duplicateNode(sm, sel)), !sel.length || node.children.length > 0, "", sel.length ? "only a page without sub-pages can be duplicated" : "the root cannot be duplicated"), el("span", { className: "sm-bsep" }),
+        ibtn(IC.inside, `Add a ${word(childType(sm, node))} inside this one`, () => act(addChild(sm, sel))), ibtn(IC.after, `Add a ${portal && ["page", "sheet", "section"].includes(node.type) ? word(node.type) : "page"} after this one (next to it)`, () => act(addSibling(sm, sel))), ibtn(IC.copy, "Duplicate this page (a copy right after it)", () => act(duplicateNode(sm, sel)), !sel.length || node.children.length > 0, "", sel.length ? "only a page without sub-pages can be duplicated" : "the root cannot be duplicated"), el("span", { className: "sm-bsep" }),
         ibtn(IC.up, "Move up among the pages of the same level", () => act(moveNode(sm, sel, -1)), !parent || i === 0, "", "it is the first one"), ibtn(IC.down, "Move down among the pages of the same level", () => act(moveNode(sm, sel, 1)), !parent || i === parent.children.length - 1, "", "it is the last one"),
         ibtn(IC.indent, "Put it inside the page above (one level deeper)", () => act(indentNode(sm, sel)), !parent || i === 0, "", "there is no page above it to go into"), ibtn(IC.outdent, "Move it one level up", () => act(outdentNode(sm, sel)), sel.length < 2, "", "it is already on the first level"), el("span", { className: "sm-bsep" }),
         ibtn(IC.trash, "Delete the page with its sub-pages", () => { if (!node.children.length || confirm(`Delete “${node.title}” with its ${node.children.length} sub-page(s)?`)) act(removeNode(sm, sel)); }, !sel.length, "danger", "the root cannot be deleted")),

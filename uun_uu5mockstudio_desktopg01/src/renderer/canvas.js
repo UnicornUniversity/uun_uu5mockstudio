@@ -342,7 +342,7 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
   // ----- canvas gestures: wheel = pan, ctrl/cmd+wheel (and trackpad pinch) = zoom, drag background/shield = pan, click shield = select
   root.addEventListener("wheel", (e) => {
     if (e.target.closest("webview") || (e.target !== root && !e.target.closest("#world"))) return;
-    if (e.target.closest(".pd") && (e.ctrlKey || e.metaKey)) return; // the diagram of a plan zooms itself
+    if (e.target.closest(".pd, .sm-scroll") && (e.ctrlKey || e.metaKey)) return; // the diagram of a plan and a sitemap zoom themselves
     if (e.target.closest(".fnote, .pc-body") && !(e.ctrlKey || e.metaKey) && !e.altKey) return; // scrolling inside a note or a plan; Alt / Option moves the canvas, as over a screen
     e.preventDefault();
     const r = root.getBoundingClientRect();
