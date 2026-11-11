@@ -426,7 +426,7 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
 }
 
 // ---------------------------------------------------------------- the map as a uu5string (Uu5TreeBricks.Tree, to paste it into a book)
-const U5_SCHEME = { page: "primary", sheet: "info", section: "neutral", group: "neutral", external: "neutral" };
+const U5_SCHEME = { page: "primary", sheet: "secondary", section: "neutral", group: "neutral", external: "neutral" };
 const u5Text = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 /**
  * The whole map as a uu5string with `Uu5TreeBricks.Tree`: a title and a badge with the kind of each node, nested as in the map.

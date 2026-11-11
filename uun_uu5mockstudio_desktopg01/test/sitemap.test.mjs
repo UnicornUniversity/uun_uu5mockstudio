@@ -343,6 +343,15 @@ test("sitemapUu5String keeps folded branches folded and names portal kinds", () 
   assert.ok(root.header.includes(">PORTAL<")); assert.equal(root.itemList[0].expanded, false); assert.ok(root.itemList[0].header.includes(">SHEET<"));
 });
 
+test("sitemapUu5String uses only colour schemes that Uu5TreeBricks.Tree supports (no 'info')", () => {
+  const sm = normalizeSitemap({ root: { title: "R", children: [{ title: "S", type: "sheet" }, { title: "G", type: "group" }, { title: "E", type: "external" }] } });
+  const s = sitemapUu5String(sm);
+  assert.ok(!/"info"|colorScheme=\\+"info/.test(s));
+  const schemes = [...s.matchAll(/colorScheme\\*"(?::\s*\\*")?([a-z]+)/g)].map((m) => m[1]);
+  assert.ok(schemes.length > 0);
+  for (const c of schemes) assert.ok(["primary", "secondary", "neutral"].includes(c), c);
+});
+
 import { searchNodes as _searchNodes } from "../src/renderer/sitemap.js";
 test("searchNodes finds pages by title, file, note and comment, ignores case and diacritics, lists the pages to unfold", () => {
   const sm = { root: { id: "r", title: "Home", type: "page", children: [
