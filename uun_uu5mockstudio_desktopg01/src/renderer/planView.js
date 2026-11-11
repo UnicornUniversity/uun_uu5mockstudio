@@ -56,34 +56,7 @@ export function renderPlan(entry, ctx) {
   }
 
   // ----- questions of the agent
-  if (entry.questions?.length) root.append(questionsView());
-  function questionsView() {
-    const open = entry.state === "proposed", answers = (entry.answers ??= {});
-    const box = el("div", { className: "plan-qs" });
-    const left = unanswered(entry.questions, answers).length;
-    box.append(el("div", { className: "plan-qhead" }, el("b", { textContent: "Questions" }), el("span", { className: "mute", textContent: `${entry.questions.length - left} of ${entry.questions.length} answered` })));
-    for (const q of entry.questions) {
-      const a = (answers[q.id] ??= { choices: [] }), card = el("fieldset", { className: "plan-q", disabled: !open });
-      card.append(el("legend", {}, q.header ? el("span", { className: "qh", textContent: q.header }) : null, el("span", { textContent: q.question })));
-      const opts = el("div", { className: "plan-opts", role: q.multiSelect ? "group" : "radiogroup", "aria-label": q.question });
-      for (const o of q.options) {
-        const on = a.choices.includes(o.label);
-        const b = el("button", { type: "button", className: `plan-opt${on ? " on" : ""}`, role: q.multiSelect ? "checkbox" : "radio", "aria-checked": String(on) },
-          el("span", { className: "ob", "aria-hidden": "true", textContent: on ? "✓" : "" }), el("span", { className: "ot" }, el("b", { textContent: o.label }), o.description ? el("small", { textContent: o.description }) : null));
-        b.onclick = () => {
-          a.choices = q.multiSelect ? (on ? a.choices.filter((x) => x !== o.label) : [...a.choices, o.label]) : (on ? [] : [o.label]);
-          if (!q.multiSelect && a.choices.length) a.other = "";
-          ctx.change(entry);
-        };
-        opts.append(b);
-      }
-      const other = el("input", { type: "text", className: "plan-other", value: a.other ?? "", placeholder: "Other…", spellcheck: false, "aria-label": `Other answer: ${q.question}` });
-      other.oninput = () => { a.other = other.value; if (!q.multiSelect && other.value.trim()) a.choices = []; ctx.persist?.(entry); };
-      other.onchange = () => ctx.change(entry);
-      card.append(opts, other); box.append(card);
-    }
-    return box;
-  }
+  if (entry.questions?.length) root.append(renderQuestions(entry, ctx));
 
   // ----- tree: a diagram (default) or an outline (renderTree below, shared with the plan card on the canvas)
   entry.mode ??= "diagram";
@@ -152,6 +125,38 @@ export function renderPlan(entry, ctx) {
     root.append(actions);
   }
   return root;
+}
+
+/**
+ * The questions of the agent with their options, as buttons: the answers are kept in `entry.answers`. Used by the plan card in the chat and by the card on the canvas.
+ * `entry` = { questions, answers, state }, `ctx` = { change(entry), persist?(entry) }.
+ */
+export function renderQuestions(entry, ctx) {
+  const open = entry.state === "proposed", answers = (entry.answers ??= {});
+  const box = el("div", { className: "plan-qs" });
+  const left = unanswered(entry.questions, answers).length;
+  box.append(el("div", { className: "plan-qhead" }, el("b", { textContent: "Questions" }), el("span", { className: "mute", textContent: `${entry.questions.length - left} of ${entry.questions.length} answered` })));
+  for (const q of entry.questions) {
+    const a = (answers[q.id] ??= { choices: [] }), card = el("fieldset", { className: "plan-q", disabled: !open });
+    card.append(el("div", { className: "plan-ql" }, q.header ? el("span", { className: "qh", textContent: q.header }) : null, el("span", { textContent: q.question })));
+    const opts = el("div", { className: "plan-opts", role: q.multiSelect ? "group" : "radiogroup", "aria-label": q.question });
+    for (const o of q.options) {
+      const on = a.choices.includes(o.label);
+      const b = el("button", { type: "button", className: `plan-opt${on ? " on" : ""}`, role: q.multiSelect ? "checkbox" : "radio", "aria-checked": String(on) },
+        el("span", { className: "ob", "aria-hidden": "true", textContent: on ? "✓" : "" }), el("span", { className: "ot" }, el("b", { textContent: o.label }), o.description ? el("small", { textContent: o.description }) : null));
+      b.onclick = () => {
+        a.choices = q.multiSelect ? (on ? a.choices.filter((x) => x !== o.label) : [...a.choices, o.label]) : (on ? [] : [o.label]);
+        if (!q.multiSelect && a.choices.length) a.other = "";
+        ctx.change(entry);
+      };
+      opts.append(b);
+    }
+    const other = el("input", { type: "text", className: "plan-other", value: a.other ?? "", placeholder: "Other…", spellcheck: false, "aria-label": `Other answer: ${q.question}` });
+    other.oninput = () => { a.other = other.value; if (!q.multiSelect && other.value.trim()) a.choices = []; ctx.persist?.(entry); };
+    other.onchange = () => ctx.change(entry);
+    card.append(opts, other); box.append(card);
+  }
+  return box;
 }
 
 /**

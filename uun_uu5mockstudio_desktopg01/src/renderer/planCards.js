@@ -1,7 +1,7 @@
 import { markdownDoc, esc } from "./markdown.js";
 import { parsePlan, serializePlan } from "./planDoc.js";
 import { extractPlan, replaceTreeBlock, removeTreeBlock } from "./planTree.js";
-import { renderTree } from "./planView.js";
+import { renderTree, renderQuestions } from "./planView.js";
 import { replaceSitemapBlock, countScreens, mapSummary, kindOf, setKind, updateNode, reviseMessage, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
 import { renderSitemap } from "./sitemapView.js";
 
@@ -255,6 +255,24 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       c.view.replaceChildren(el("p", { className: "mute", textContent: `This plan could not be shown (${e?.message ?? e}). Its file is plans/${c.slug}.md: choose Edit to read or fix its text.` }));
     }
   }
+  /**
+   * The questions of the agent as buttons, the same as in the chat: the answers belong to the plan of the chat (`ctx.chatPlan(slug)`), so both places show the same ones.
+   * A plan without a chat card (or an old one) shows the questions as a list only.
+   */
+  function questionsSection(c, questions) {
+    const e = ctx.chatPlan?.(c.slug);
+    if (!e || !e.questions?.length) return el("div", { innerHTML: `<h4>Questions</h4><ul>${questions.map((x) => `<li>${esc(x.question)}${x.options?.length ? ` <span class="mute">(${x.options.map((o) => esc(o.label)).join(" / ")})</span>` : ""}</li>`).join("")}</ul>` });
+    const box = el("div", { className: "pc-questions" });
+    box.append(renderQuestions(e, { change: () => { ctx.answersChanged?.(e); renderView(c); }, persist: () => ctx.answersTyped?.(e) }));
+    const given = e.questions.filter((q) => (e.answers?.[q.id]?.choices?.length ?? 0) > 0 || e.answers?.[q.id]?.other?.trim()).length;
+    if (e.state === "proposed" && given) {
+      const send = el("button", { type: "button", className: "pc-mini accent", textContent: "Update the plan with my answers", title: "The agent revises the plan with your answers" });
+      send.onclick = () => ctx.sendAnswers?.(e);
+      box.append(el("div", { className: "pc-bar-acts pc-qsend" }, send));
+    }
+    return box;
+  }
+
   function renderViewNow(c) {
     if (c.kind === "sitemap") { syncHead(c); return paint(c, [mapSection(c, c.sm, projectIo(c))]); }
     const { text, tree, questions, sitemap } = extractPlan(c.body);
@@ -272,7 +290,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     parts.push(doc);
     if (sitemap) parts.push(mapSection(c, sitemap, planIo(c), ctx.hasSitemap?.() ? "Approving this plan replaces the sitemap of the project; the current one is kept and can be taken back." : "Approving this plan makes this map the sitemap of the project (a card of its own).")); // the text first, then the map and the tree, each of them only when the plan has it
     if (tree) { parts.push(treeSection(c, tree)); refreshKnown(c, tree); }
-    if (questions.length) parts.push(el("div", { innerHTML: `<h4>Questions</h4><ul>${questions.map((x) => `<li>${esc(x.question)}${x.options?.length ? ` <span class="mute">(${x.options.map((o) => esc(o.label)).join(" / ")})</span>` : ""}</li>`).join("")}</ul>` }));
+    if (questions.length) parts.push(questionsSection(c, questions));
     paint(c, parts);
   }
 
