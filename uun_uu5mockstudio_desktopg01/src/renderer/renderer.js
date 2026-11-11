@@ -1134,7 +1134,7 @@ function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new Reg
 // ---------- project menu: export + offline CDN cache ----------
 let toastTimer;
 function toast(msg, { reveal, err, action } = {}) {
-  const t = $("toast"); t.className = err ? "err" : ""; t.textContent = msg; t.hidden = false;
+  const t = $("toast"); t.className = err ? "err" : ""; t.replaceChildren(Object.assign(document.createElement("span"), { className: "toast-msg", textContent: msg })); t.hidden = false;
   for (const x of [].concat(action ?? [])) { const a = Object.assign(document.createElement("a"), { textContent: x.label }); a.onclick = x.run; t.append(a); }
   if (reveal) { const a = Object.assign(document.createElement("a"), { textContent: "Show" }); a.onclick = () => window.studio.reveal(reveal); t.append(a); }
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), err ? 8000 : 5000);
