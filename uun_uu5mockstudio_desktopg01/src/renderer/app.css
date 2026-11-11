@@ -1370,3 +1370,17 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 #toast{width:max-content;max-width:min(720px,calc(100vw - 48px));align-items:center;gap:16px;padding:10px 16px;line-height:1.45}
 #toast .toast-msg{flex:1 1 auto;min-width:0;text-wrap:pretty}
 #toast a{flex:none;white-space:nowrap;font-weight:600}
+
+/* sitemap search: a pill floating over the top right of the map; the matches are marked, the rest is dimmed */
+.sm-mapwrap{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
+.sm-searchbar{position:absolute;top:6px;right:0;cursor:text;z-index:4;display:flex;align-items:center;gap:2px;height:30px;padding:0 4px 0 9px;background:var(--code);border:1px solid transparent;border-radius:999px;transition:background .15s}.sm-searchbar:hover{border-color:var(--line)}.sm-searchbar:focus-within,.sm-searchbar.on{background:var(--panel);border-color:var(--line)}
+.sm-searchbar:focus-within{border-color:var(--acc)}.sm-searchbar.none{border-color:#d9534f}
+.sm-sicon{display:flex;color:var(--mute)}.sm-sicon .ico,.sm-sb .ico{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sm-search{width:0;padding:0!important;transition:width .15s;font:inherit;font-size:13px;color:var(--fg);background:none;border:0;outline:0;padding:0 4px}.sm-searchbar:focus-within .sm-search,.sm-searchbar.on .sm-search{width:170px;padding:0 4px!important}
+.sm-searchbar:not(:focus-within):not(.on){padding:0 7px;gap:0;cursor:pointer}.sm-searchbar:not(:focus-within):not(.on) .sm-search{pointer-events:none}
+.sm-searchn{font-size:12px;color:var(--mute);white-space:nowrap;padding:0 4px}
+.sm-sb{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:50%;background:none;color:var(--mute);cursor:pointer;padding:0}.sm-sb:hover{background:var(--code);color:var(--fg)}
+.sm-node.dim:not(#a){opacity:.35}.sm-node.hit{box-shadow:0 0 0 2px color-mix(in srgb,#e0b92f 70%,transparent)}.sm-node.hit.cur{box-shadow:0 0 0 3px #e0b92f}
+.sm-screenpick{display:flex;flex-direction:column;gap:4px;min-width:0}.sm-screenpick select{font:inherit;font-size:12px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:3px 6px}
+.sm-searchbar.intool{position:static;height:28px;flex:none}.pc-treehead .sm-searchbar.intool .sm-search{font-size:13px}
+.pc-treehead>.sm-searchbar.intool+.pc-mini:first-of-type{margin-left:0}

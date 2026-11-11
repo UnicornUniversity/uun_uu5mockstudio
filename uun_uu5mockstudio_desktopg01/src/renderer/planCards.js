@@ -141,6 +141,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     if (!keepOpen) { dv.hidden = true; sideHost(false); }
     renderView(c); if (!keepOpen) ctx.viewChanged?.();
   }
+  const openScreen = (f) => { closeView(); ctx.openScreen?.(f); }; // a screen opens on the canvas: the full view of the map or plan is left first
   const setExpanded = (c, on) => { if (on) openView(c.slug); else closeView(); };
 
   /**
@@ -184,9 +185,13 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       box.append(row);
     }
     if (c.mapHidden) return box;
+    const take = (o, k) => { const v = o[k]; o[k] = false; return v; }; // focus and scroll of the search happen once, after the repaint it caused
     box.append(el("div", { className: "pc-mapbox" }, renderSitemap(sitemap, {
       editorHost: c.expanded ? sideHost(true) : undefined,
       zoom: c.mapZoom ?? 1, onZoom: (z) => { c.mapZoom = z; if (c === viewCard) ctx.zoomChanged?.(); },
+      screens: ctx.screens?.() ?? [],
+      query: c.query ?? "", hit: c.hit ?? 0, searchFocus: take(c, "searchFocus"), searchScroll: take(c, "searchScroll"),
+      onSearch: (q, hit, open) => { c.query = q; c.hit = hit; c.searchFocus = true; c.searchScroll = Boolean(q.trim()); for (const id of open) c.collapsed.delete(id); renderView(c); },
       collapsed: c.collapsed, onToggle: (id) => { if (!c.collapsed.delete(id)) c.collapsed.add(id); renderView(c); },
       sel: c.sel ?? null, sels: c.sels?.length ? c.sels : c.sel ? [c.sel] : [], isScreen: exists,
       onSelect: (path, multi) => {
@@ -209,7 +214,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         if (cur !== sitemap) io.write(cur);
         ctx.createScreens?.({ slug: io.slug, items: out });
       },
-      onOpen: (f) => ctx.openScreen?.(f),
+      onOpen: openScreen,
       links: ctx.flowEdges ? {
         on: Boolean(c.linksOn), edges: c.edges ?? [], screens: ctx.screens?.() ?? [],
         onToggle: async () => { c.linksOn = !c.linksOn; if (c.linksOn) { c.edges = (await ctx.flowEdges()) ?? []; if (!Array.isArray(c.edges)) c.edges = []; } renderView(c); },
@@ -221,6 +226,9 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         ctx.createScreen?.({ slug: io.slug, node, file, where });
       },
     })));
+    // the search sits on the toolbar of the card, before Fold all
+    const bar = box.querySelector(".pc-mapbox > .sm")?.searchBar, first = head.querySelector(":scope > .pc-mini");
+    if (bar && first) { bar.classList.add("intool"); head.insertBefore(bar, first); first.style.removeProperty("margin-left"); bar.style.setProperty("margin-left", "auto"); }
     return box;
   }
 
@@ -379,7 +387,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     c.hideBtn.onclick = () => { setMode(c, "view"); setHidden(c, true); };
     c.ta.addEventListener("input", () => { c.body = c.ta.value; clearTimeout(c.timer); c.timer = setTimeout(() => flush(c), 500); });
     c.ta.addEventListener("blur", () => flush(c));
-    c.view.addEventListener("click", (e) => { const a = e.target.closest("a[data-screen]"); if (a) ctx.openScreen?.(a.dataset.screen); });
+    c.view.addEventListener("click", (e) => { const a = e.target.closest("a[data-screen]"); if (a) openScreen(a.dataset.screen); });
 
     title.onpointerdown = (e) => {
       if (e.button !== 0 || e.target.closest("button") || c.expanded) return;

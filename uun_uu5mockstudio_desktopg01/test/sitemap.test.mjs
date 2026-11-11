@@ -342,3 +342,17 @@ test("sitemapUu5String keeps folded branches folded and names portal kinds", () 
   const [root] = u5parse(sitemapUu5String(sm, { collapsed: new Set([sm.root.children[0].id]) }));
   assert.ok(root.header.includes(">PORTAL<")); assert.equal(root.itemList[0].expanded, false); assert.ok(root.itemList[0].header.includes(">SHEET<"));
 });
+
+import { searchNodes as _searchNodes } from "../src/renderer/sitemap.js";
+test("searchNodes finds pages by title, file, note and comment, ignores case and diacritics, lists the pages to unfold", () => {
+  const sm = { root: { id: "r", title: "Home", type: "page", children: [
+    { id: "a", title: "Přehled služeb", type: "page", file: "services.html", children: [{ id: "b", title: "Ceník", type: "page", note: "Price list", children: [] }] },
+    { id: "c", title: "Contact", type: "page", comment: "add a map", children: [] },
+  ] } };
+  assert.deepEqual(_searchNodes(sm, "prehled").hits.map((h) => h.id), ["a"]);
+  assert.deepEqual(_searchNodes(sm, "PRICE list").hits, [{ path: [0, 0], id: "b" }]);
+  assert.deepEqual(_searchNodes(sm, "price").open.sort(), ["a", "r"]);
+  assert.deepEqual(_searchNodes(sm, "services.html").hits.map((h) => h.id), ["a"]);
+  assert.deepEqual(_searchNodes(sm, "map").hits.map((h) => h.id), ["c"]);
+  assert.deepEqual(_searchNodes(sm, "  "), { hits: [], open: [] });
+});

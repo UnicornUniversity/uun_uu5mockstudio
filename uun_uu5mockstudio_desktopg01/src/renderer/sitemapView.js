@@ -1,4 +1,4 @@
-import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside } from "./sitemap.js";
+import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside, searchNodes } from "./sitemap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -116,8 +116,12 @@ export function renderSitemap(sm, opts) {
     const up = () => end(true), key = (ev) => { if (ev.key === "Escape") { cancelled = true; ev.stopPropagation(); end(false); } };
     document.addEventListener("pointermove", move, true); document.addEventListener("pointerup", up, true); document.addEventListener("keydown", key, true);
   }
+  // ----- search: the pages that match are marked, the rest is dimmed; Enter / Shift + Enter goes from one match to the next, Esc clears it
+  const query = String(opts.query ?? ""), found = searchNodes(sm, query), hitIds = new Set(found.hits.map((h) => h.id));
+  const hitAt = found.hits.length ? ((Number(opts.hit) || 0) % found.hits.length + found.hits.length) % found.hits.length : -1, curId = hitAt >= 0 ? found.hits[hitAt].id : null;
+  const hitClass = (n) => (!query.trim() ? "" : hitIds.has(n.id) ? ` hit${n.id === curId ? " cur" : ""}` : " dim");
   const nodeEl = (n, path) => {
-    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
+    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}${hitClass(n)}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
     if (n.children.length) {
       const folded = collapsed.has(n.id), tgl = el("span", { className: "sm-tgl", role: "button", tabIndex: 0, textContent: folded ? `▸ ${descendants(n)}` : "▾", title: folded ? `Show the ${descendants(n)} pages below` : "Fold the branch" });
       tgl.setAttribute("aria-label", folded ? `Unfold ${n.title}` : `Fold ${n.title}`); tgl.setAttribute("aria-expanded", String(!folded));
@@ -237,7 +241,31 @@ export function renderSitemap(sm, opts) {
   }, { passive: false });
   applyZoom();
   root.zoom = { by: (f) => setZoom(zoom * f), reset: () => setZoom(1), fit: fitZoom, percent: () => Math.round(zoom * 100) };
-  root.append(scroll);
+  // search: one small pill (the card moves it to its toolbar) (a magnifier, the text, "2 / 5", ↑ ↓ and a cross); the controls appear only when they are of use
+  const mapwrap = el("div", { className: "sm-mapwrap" }, scroll);
+  if (opts.onSearch) {
+    const q = query.trim(), n = found.hits.length;
+    const inp = el("input", { type: "text", className: "sm-search", placeholder: "Search the map", value: query, spellcheck: false, "aria-label": "Search the map" });
+    const mini = (svg, title, fn) => { const b = el("button", { type: "button", className: "sm-sb", title, innerHTML: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>` }); b.setAttribute("aria-label", title); b.onclick = fn; return b; };
+    const go = (t, hit) => opts.onSearch(t, hit, searchNodes(sm, t).open);
+    inp.oninput = () => go(inp.value, 0);
+    inp.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); if (n) go(inp.value, hitAt + (e.shiftKey ? -1 : 1)); }
+      else if (e.key === "Escape" && inp.value) { e.preventDefault(); go("", 0); }
+    };
+    const icon = el("span", { className: "sm-sicon", "aria-hidden": "true", innerHTML: '<svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' });
+    const bar = el("div", { className: `sm-searchbar${q ? " on" : ""}${q && !n ? " none" : ""}`, role: "search" }, icon, inp);
+    if (q) bar.append(el("span", { className: "sm-searchn", textContent: n ? `${hitAt + 1} / ${n}` : "No match", "aria-live": "polite" }));
+    if (n > 1) bar.append(mini('<path d="M6 15l6-6 6 6"/>', "Previous match (Shift + Enter)", () => go(query, hitAt - 1)), mini('<path d="M6 9l6 6 6-6"/>', "Next match (Enter)", () => go(query, hitAt + 1)));
+    if (q) bar.append(mini('<path d="M6 6l12 12M18 6L6 18"/>', "Clear the search (Esc)", () => go("", 0)));
+    bar.onclick = (e) => { if (!e.target.closest("button")) inp.focus(); }; // a click on the lupa opens the field
+    root.searchBar = bar; // the card puts it on its toolbar (Fold all, Unfold all, Export); without a toolbar it floats over the map
+    mapwrap.append(bar);
+    if (opts.searchFocus) requestAnimationFrame(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); });
+    if (opts.searchScroll && curId) requestAnimationFrame(() => [...scroll.querySelectorAll(".sm-node.cur")][0]?.scrollIntoView({ block: "center", inline: "center" }));
+  }
+  root.append(mapwrap);
 
   const field = (label, control) => el("label", { className: "sm-f" }, el("span", { textContent: label }), control);
   // the links of the screens that the map does not say: curves between the pages (drawn when the map is in the document: the card calls root.draw())
@@ -325,6 +353,18 @@ export function renderSitemap(sm, opts) {
   const exists = node.file && isScreen(node.file);
   const where = pathTitles(sm, sel);
   const screenBtn = isOutside(node) || node.type === "section" ? null : exists ? btn("Open the screen", () => onOpen?.(node.file), { cls: "primary" }) : btn("Create the screen", () => onCreate?.({ node, path: sel, file: node.file ?? fileFor(sm, node), where }), { title: "The agent builds this page as a screen", cls: "primary" });
+  /** The file of the screen of the page: typed, or picked from the screens that exist (the ones no page names yet first), so an existing screen is linked to the page. */
+  function screenField() {
+    const input = text(node.file, "file", isScreenType(node.type) ? fileFor(sm, node) : node.type === "section" ? (portal ? "(part of the sheet above)" : "(part of the page above)") : ""), wrap = el("span", { className: "sm-screenpick" }, input), known = opts.screens ?? [];
+    if (isScreenType(node.type) && known.length) {
+      const used = fileNodes(sm), free = known.filter((f) => !used.has(f) || used.get(f).join(".") === sel.join(".")), taken = known.filter((f) => !free.includes(f));
+      const pick = el("select", { "aria-label": "Link an existing screen to this page", title: "Link a screen that already exists to this page" }, el("option", { value: "", textContent: "Link an existing screen…" }),
+        ...free.map((f) => el("option", { value: f, textContent: f, selected: f === node.file })), ...taken.map((f) => el("option", { value: f, textContent: `${f} (used by ${getNode(sm, used.get(f))?.title ?? "another page"})` })));
+      pick.onchange = () => { if (pick.value) set({ file: pick.value }); };
+      wrap.append(pick);
+    }
+    return wrap;
+  }
   /** The flag "not solved here": the page stays in the map, no screen is built for it, it is not counted. */
   function flagField() {
     const cb = el("input", { type: "checkbox", checked: Boolean(node.notSolved) }); cb.onchange = () => set({ notSolved: cb.checked });
@@ -335,7 +375,7 @@ export function renderSitemap(sm, opts) {
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     cbox,
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
-    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, field("Screen file", text(node.file, "file", isScreenType(node.type) ? fileFor(sm, node) : node.type === "section" ? (portal ? "(part of the sheet above)" : "(part of the page above)") : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
+    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, field("Screen file", screenField()), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
       // one row of icon buttons (the name is in the tooltip): add | move | delete; the screen is the one primary button

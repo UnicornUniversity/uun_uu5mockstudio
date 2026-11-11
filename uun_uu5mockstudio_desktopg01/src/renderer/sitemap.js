@@ -308,6 +308,24 @@ export const defaultCollapsed = (sm, limit = 40) => (countNodes(sm) > limit ? fo
 /** The number of nodes below a node. */
 export const descendants = (n) => n.children.reduce((a, c) => a + 1 + descendants(c), 0);
 
+/** Text without diacritics and case, to compare what the user types with the map. */
+const fold = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/**
+ * The pages that match a search: the title, the screen file, the note or the comment of a page contains every word of `query` (no case, no diacritics).
+ * Returns { hits: [{ path, id }] in the order of the map, open: ids of the pages above the hits (they have to be unfolded to show them) }.
+ */
+export function searchNodes(sm, query) {
+  const words = fold(query).split(/\s+/).filter(Boolean), hits = [], open = new Set();
+  if (!words.length || !sm?.root) return { hits, open: [] };
+  const walk = (n, path, up) => {
+    const text = fold([n.title, n.file, n.note, n.comment].filter(Boolean).join(" "));
+    if (words.every((w) => text.includes(w))) { hits.push({ path, id: n.id }); up.forEach((id) => open.add(id)); }
+    n.children.forEach((c, i) => walk(c, [...path, i], [...up, n.id]));
+  };
+  walk(sm.root, [], []);
+  return { hits, open: [...open] };
+}
+
 /** The map as indented lines for the agent: title, type, file, note and source of every node (what exists, what is planned). */
 export function sitemapOutline(sm, { limit = 6000 } = {}) {
   const lines = [];
