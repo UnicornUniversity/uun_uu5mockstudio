@@ -1163,9 +1163,9 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .sm-tree ul>li:first-child::after{top:50%}.sm-tree ul>li:last-child::after{bottom:50%}.sm-tree ul>li:only-child::after{display:none}
 .sm-node{display:flex;align-items:center;gap:6px;max-width:240px;font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:5px 10px;cursor:pointer;text-align:left;white-space:nowrap}
 .sm-node:hover{background:var(--code)}.sm-node.sel{outline:2px solid var(--acc);outline-offset:0}
-.sm-node.t-group{border-left-color:var(--mute);border-style:dashed;color:var(--mute)}.sm-node.t-external{border-left-color:#e0912f}
+.sm-node.t-group{border-left-color:var(--mute);border-style:dashed;color:var(--mute)}
 .sm-title{overflow:hidden;text-overflow:ellipsis}
-.sm-st{font-size:12px;flex:none}.sm-st.ok{color:#34c759}.sm-st.todo{color:var(--mute)}.sm-st.ext{color:#e0912f}
+.sm-st{font-size:12px;flex:none}.sm-st.ok{color:#34c759}.sm-st.todo{color:var(--mute)}.sm-st.ext{color:var(--mute)}
 .sm-hint{font-size:12.5px;margin:.4em 0}
 .sm-edit{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--code)}
 .sm-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -1281,7 +1281,11 @@ body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;back
 /* Delete in the menu of a page: a plain item with red text (the global filled red button made it red on red) */
 #smmenu .sm-ci.danger,.sm-ci.danger{background:none;border-color:transparent;color:color-mix(in srgb,#e5484d 80%,var(--fg))}
 .sm-ci.danger:hover:not([disabled]){background:color-mix(in srgb,#e5484d 8%,transparent);color:#e5484d}
-.sm-node.t-stub{border-left-color:var(--line);color:var(--mute);background:color-mix(in srgb,var(--panel) 60%,transparent)}.sm-st.stub{color:var(--mute)}
+/* not solved here (the flag of a page, a sheet or a section, and an external link always): grey, the shape of its type stays */
+.sm-node.ns:not(#a){border-left-color:var(--line);color:var(--mute);background:color-mix(in srgb,var(--panel) 60%,transparent)}.sm-node.ns:not(#a):hover{background:var(--code)}.sm-st.ns{color:var(--mute)}
+.sm-node.t-section.ns:not(#a){border-color:var(--line)}.sm-node.ns .sm-kind{color:var(--mute);background:var(--code)}
+body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(--panel) 45%,transparent)}
+.sm-f.sm-flag{flex-direction:row;align-items:center;gap:6px;cursor:pointer}.sm-f.sm-flag input{margin:0;padding:0;width:auto;border:0;background:none}.sm-f.sm-flag span{font-size:13px;color:var(--fg)}
 .sm-node.dragging{opacity:.4}.sm-ghost{position:fixed;z-index:200;pointer-events:none;max-width:240px;padding:5px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--acc);box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}body.sm-dragging{cursor:grabbing!important}body.sm-dragging *{cursor:grabbing!important}
 .sm-node.drop-inside{outline:2px solid var(--acc);outline-offset:1px;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
 .sm-node.drop-before{box-shadow:0 -3px 0 0 var(--acc)}.sm-node.drop-after{box-shadow:0 3px 0 0 var(--acc)}
@@ -1357,3 +1361,7 @@ body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;back
 #dash-attachments .att.doc .att-mode button{position:static;flex:1;width:auto;height:auto;padding:5px 2px;border-radius:0;border:0;background:var(--bg);color:var(--mute);font-size:11px;line-height:1.2;cursor:pointer;display:block}
 #dash-attachments .att.doc .att-mode button.on{background:var(--acc);color:#fff;font-weight:600}
 #attachments .att.doc .doc-err,#dash-attachments .att.doc .doc-err{color:#ff7b7b}
+/* the model on the dashboard looks like the one in the chat: only its text, right-aligned before the send button, no wide box with a chevron; the list of models opens the same */
+.dash-row #dash-model{field-sizing:content;width:auto;min-width:0;max-width:190px;margin-left:auto;border:0;background:none;color:var(--mute);-webkit-appearance:none;appearance:none;text-align:right;padding:4px 8px;border-radius:999px;outline:none;box-shadow:none;cursor:pointer}
+.dash-row #dash-model:hover{color:var(--fg)}
+.dash-row #dash-model:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}

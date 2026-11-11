@@ -1,4 +1,4 @@
-import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType } from "./sitemap.js";
+import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside } from "./sitemap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -37,8 +37,8 @@ export function renderSitemap(sm, opts) {
   const root = el("div", { className: "sm" });
 
   const status = (n) => {
-    if (n.type === "external") return el("span", { className: "sm-st ext", textContent: "↗", title: "Leads out of the portal" });
-    if (n.type === "stub") return el("span", { className: "sm-st stub", textContent: "–", title: "A page that is not solved here: no screen is built for it" });
+    if (n.type === "external") return el("span", { className: "sm-st ext", textContent: "↗", title: `Leads out of the ${portal ? "portal" : "site"}: not solved here` });
+    if (isOutside(n)) return el("span", { className: "sm-st ns", textContent: "–", title: "Not solved here: it stays in the map, no screen is built for it" });
     if ((n.type === "group" && !n.file) || n.type === "section") return null;
     if (n.file && isScreen(n.file)) return el("span", { className: "sm-st ok", textContent: "✔", title: `Screen ${n.file} exists` });
     return el("span", { className: "sm-st todo", textContent: "○", title: n.file ? `Screen ${n.file} does not exist yet` : "No screen yet" });
@@ -74,6 +74,11 @@ export function renderSitemap(sm, opts) {
     const isRoot = path.length === 0;
     if (!many) menu.append(item("Rename", () => { const b = [...document.querySelectorAll(".sm-node.sel")].find((x) => x.querySelector(".sm-title")?.textContent === n.title); if (b) renameNode(b, n, path); }));
     menu.append(head(many ? `Type of ${many.length} pages` : "Type"), ...TYPES.map((t) => item(TYPE_LABEL[t], () => (many ? onBulk?.(updateNodes(sm, many, { type: t })) : onChange?.(updateNode(sm, path, { type: t }), path)), { on: !many && n.type === t })));
+    const flaggable = (many ? many.map((p) => getNode(sm, p)) : [n]).filter((x) => canFlag(x.type));
+    if (flaggable.length) {
+      const allOn = flaggable.every((x) => x.notSolved), v = !allOn;
+      menu.append(el("hr"), item(`${allOn ? "✓ " : ""}Not solved here`, () => (many ? onBulk?.(updateNodes(sm, many.filter((p) => canFlag(getNode(sm, p).type)), { notSolved: v })) : onChange?.(updateNode(sm, path, { notSolved: v }), path)), { on: allOn }));
+    }
     const inside = word(childType(sm, n)), after = portal && ["page", "sheet", "section"].includes(n.type) ? word(n.type) : "page";
     if (!many) menu.append(el("hr"), item(`Add ${inside} inside`, () => act(addChild(sm, path))), item(`Add ${after} after`, () => act(addSibling(sm, path)), { disabled: isRoot }), item("Duplicate", () => act(duplicateNode(sm, path)), { disabled: isRoot || n.children.length > 0 }),
       el("hr"), item("Delete", () => { if (!n.children.length || confirm(`Delete “${n.title}” with its ${n.children.length} sub-page(s)?`)) act(removeNode(sm, path)); }, { danger: true, disabled: isRoot }));
@@ -112,7 +117,7 @@ export function renderSitemap(sm, opts) {
     document.addEventListener("pointermove", move, true); document.addEventListener("pointerup", up, true); document.addEventListener("keydown", key, true);
   }
   const nodeEl = (n, path) => {
-    const b = el("button", { type: "button", className: `sm-node t-${n.type}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
+    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null);
     if (n.children.length) {
       const folded = collapsed.has(n.id), tgl = el("span", { className: "sm-tgl", role: "button", tabIndex: 0, textContent: folded ? `▸ ${descendants(n)}` : "▾", title: folded ? `Show the ${descendants(n)} pages below` : "Fold the branch" });
       tgl.setAttribute("aria-label", folded ? `Unfold ${n.title}` : `Fold ${n.title}`); tgl.setAttribute("aria-expanded", String(!folded));
@@ -293,14 +298,17 @@ export function renderSitemap(sm, opts) {
       : commentBox([], `Comment on the ${paths.length} selected pages`, (l) => addAll(l[0]), "the pages have different comments: a new one is added to each");
     const type = el("select", { "aria-label": "Type of all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), ...TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t] })));
     type.onchange = () => { if (type.value) bulk({ type: type.value }); };
+    const flagPaths = paths.filter((p) => canFlag(getNode(sm, p).type));
+    const ns = el("select", { "aria-label": "Not solved here, for all the selected pages", disabled: !flagPaths.length }, el("option", { value: "", textContent: "(keep)" }), el("option", { value: "1", textContent: "Yes, no screen is built" }), el("option", { value: "0", textContent: "No, solved here" }));
+    ns.onchange = () => { if (ns.value) onBulk?.(updateNodes(sm, flagPaths, { notSolved: ns.value === "1" })); };
     return el("div", { className: "sm-edit", role: "group", "aria-label": `${paths.length} selected pages` },
       el("div", { className: "sm-multi" }, el("b", { textContent: `${paths.length} pages selected` }), el("span", { className: "mute", textContent: nodes.map((n) => n.title).join(" · ") })),
-      cbox, el("div", { className: "sm-settings" }, field("Type", type)),
+      cbox, el("div", { className: "sm-settings" }, field("Type", type), field("Not solved here", ns)),
       el("div", { className: "sm-acts" }, el("button", { type: "button", textContent: "Clear the selection", onclick: () => onSelect?.(paths[paths.length - 1], false) }), createMany(paths)));
   }
   /** Several pages at once: the screens are created for the selected pages only, not for the whole map. */
   function createMany(paths) {
-    const pages = paths.filter((p) => isScreenType(getNode(sm, p)?.type)), tooMany = pages.length > 8;
+    const pages = paths.filter((p) => { const x = getNode(sm, p); return isScreenType(x?.type) && !x.notSolved; }), tooMany = pages.length > 8;
     return el("button", { type: "button", className: "primary", textContent: `Create the screens (${pages.length})`, disabled: !pages.length || tooMany, title: tooMany ? "Select at most 8 pages at a time" : pages.length ? "The agent builds a screen for each selected page (and for nothing else)" : portal ? "Select portals or sheets (not sections or groups)" : "Select pages (not sections or groups)", onclick: () => onCreateMany?.(pages.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) }))) });
   }
 
@@ -316,13 +324,18 @@ export function renderSitemap(sm, opts) {
   const ibtn = (svgPath, title, fn, disabled = false, cls = "", why = "") => { const b = el("button", { type: "button", className: `sm-ib ${cls}${disabled ? " off" : ""}`.trim(), title: disabled && why ? `${title} (${why})` : title, innerHTML: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${svgPath}</svg>` }); b.setAttribute("aria-label", title); if (disabled) b.setAttribute("aria-disabled", "true"); b.onclick = () => { if (!disabled) fn(); }; return b; };
   const exists = node.file && isScreen(node.file);
   const where = pathTitles(sm, sel);
-  const screenBtn = node.type === "external" || node.type === "section" || node.type === "stub" ? null : exists ? btn("Open the screen", () => onOpen?.(node.file), { cls: "primary" }) : btn("Create the screen", () => onCreate?.({ node, path: sel, file: node.file ?? fileFor(sm, node), where }), { title: "The agent builds this page as a screen", cls: "primary" });
+  const screenBtn = isOutside(node) || node.type === "section" ? null : exists ? btn("Open the screen", () => onOpen?.(node.file), { cls: "primary" }) : btn("Create the screen", () => onCreate?.({ node, path: sel, file: node.file ?? fileFor(sm, node), where }), { title: "The agent builds this page as a screen", cls: "primary" });
+  /** The flag "not solved here": the page stays in the map, no screen is built for it, it is not counted. */
+  function flagField() {
+    const cb = el("input", { type: "checkbox", checked: Boolean(node.notSolved) }); cb.onchange = () => set({ notSolved: cb.checked });
+    return el("label", { className: "sm-f sm-flag", title: "It stays in the map, but no screen is built for it here and it is not counted" }, cb, el("span", { textContent: "Not solved here" }));
+  }
   const cbox = commentBox(splitComments(node.comment), "Comment on this page", (l) => set({ comment: joinComments(l) }));
   sideTitle(node.title, true);
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     cbox,
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
-    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), field("Screen file", text(node.file, "file", isScreenType(node.type) ? fileFor(sm, node) : node.type === "section" ? (portal ? "(part of the sheet above)" : "(part of the page above)") : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
+    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, field("Screen file", text(node.file, "file", isScreenType(node.type) ? fileFor(sm, node) : node.type === "section" ? (portal ? "(part of the sheet above)" : "(part of the page above)") : "")), field("Note", text(node.note, "note", "What the page is for")), field("Source", text(node.source, "source", "Address the page is taken from (read when its screen is built)"))),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
       // one row of icon buttons (the name is in the tooltip): add | move | delete; the screen is the one primary button

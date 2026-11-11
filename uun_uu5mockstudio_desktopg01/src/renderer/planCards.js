@@ -154,12 +154,12 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const hide = mini(c.mapHidden ? "Show" : "Hide", c.mapHidden ? "Show the sitemap" : "Hide the sitemap", () => { c.mapHidden = !c.mapHidden; renderView(c); });
     hide.setAttribute("aria-expanded", String(!c.mapHidden));
     // the map as a picture, to share it
-    const exportBtn = ctx.exportSitemap ? mini("Export", "The map as a picture to share", () => {
+    const exportBtn = ctx.exportSitemap ? mini("Export", "The map to share: a picture or a uu5string (Uu5TreeBricks.Tree)", () => {
       document.querySelector(".sm-ctx")?.remove();
       const menu = el("div", { className: "sm-ctx", role: "menu" }), r = exportBtn.getBoundingClientRect();
       const close = () => { menu.remove(); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc, true); };
       const away = (e) => { if (!menu.contains(e.target) && e.target !== exportBtn) close(); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
-      for (const [label, kind] of [["Save as PNG…", "png"], ["Save as SVG…", "svg"], ["Copy the picture", "copy"]]) {
+      for (const [label, kind] of [["Save as PNG…", "png"], ["Save as SVG…", "svg"], ["Copy the picture", "copy"], ["Copy as uu5string", "uu5copy"], ["Save as uu5string…", "uu5file"]]) {
         const b = el("button", { type: "button", role: "menuitem", className: "sm-ci", textContent: label }); b.onclick = () => { close(); ctx.exportSitemap(kind, sitemap, c.collapsed); }; menu.append(b);
       }
       document.body.append(menu); menu.style.left = `${Math.max(6, Math.min(r.left, innerWidth - menu.offsetWidth - 6))}px`; menu.style.top = `${r.bottom + 4}px`;

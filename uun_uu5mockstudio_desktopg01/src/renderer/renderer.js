@@ -33,7 +33,7 @@ import { createStructureDialog } from "./structureDialog.js";
 import { createPlanCards } from "./planCards.js";
 import { createPlansMenu } from "./plansMenu.js";
 import { parsePlan, serializePlan, slugify, withStatus } from "./planDoc.js";
-import { serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapOffered } from "./sitemap.js";
+import { serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapUu5String, sitemapOffered } from "./sitemap.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
@@ -869,6 +869,13 @@ function loadMapNotes(key) { try { const l = JSON.parse(localStorage.getItem(not
 function saveMapNotes(key, list) { try { if (list.length) localStorage.setItem(notesKey(key), JSON.stringify(list)); else localStorage.removeItem(notesKey(key)); } catch { /* not kept */ } }
 /** The sitemap as a picture to share: "png" and "svg" are saved (dialog), "copy" puts the PNG on the clipboard. */
 async function exportSitemapAs(kind, sm, collapsed) {
+  if (kind === "uu5copy" || kind === "uu5file") { // the map as a uu5string with Uu5TreeBricks.Tree
+    const text = sitemapUu5String(sm, { collapsed });
+    if (!text) return toast("There is no sitemap to export.", { err: true });
+    if (kind === "uu5copy") { try { await navigator.clipboard.writeText(text); toast("The sitemap is on the clipboard as a uu5string."); } catch { toast("The clipboard is not available.", { err: true }); } return; }
+    const r = await window.studio.exportData({ name: `${project || "project"}-sitemap-uu5string`, ext: "txt", text }); if (r?.error) toast(r.error, { err: true }); else if (r?.path) toast(`Saved ${r.path.split("/").pop()}.`);
+    return;
+  }
   const { svg, width, height } = sitemapSvg(sm, { isScreen: (f) => Boolean(canvas.get(f)), collapsed }); // as it is shown: the folded branches stay folded
   if (!svg) return toast("There is no sitemap to export.", { err: true });
   const base = `${project || "project"}-sitemap`;

@@ -190,10 +190,29 @@ import { relocateNode } from "../src/renderer/sitemap.js";
 const tree = () => normalizeSitemap({ root: { title: "R", children: [{ title: "A", children: [{ title: "A1" }] }, { title: "B" }, { title: "C", type: "stub" }] } });
 const names = (sm) => sm.root.children.map((c) => `${c.title}${c.children.length ? `(${c.children.map((x) => x.title)})` : ""}`).join(",");
 
-test("a stub is a valid type, kept in the map and not counted as a page", () => {
+test("an old stub becomes a page with the flag notSolved, kept in the map and not counted", () => {
   const sm = tree();
-  assert.equal(sm.root.children[2].type, "stub");
-  assert.equal(countPages(sm), 4); // R, A, A1, B (the stub is not one of them)
+  assert.equal(sm.root.children[2].type, "page");
+  assert.equal(sm.root.children[2].notSolved, true);
+  assert.equal(countPages(sm), 4); // R, A, A1, B (C is not solved here)
+});
+import { canFlag, isOutside } from "../src/renderer/sitemap.js";
+test("notSolved is a flag of a page, a sheet or a section; an external link is always outside", () => {
+  const sm = normalizeSitemap({ kind: "portal", root: { title: "P", children: [{ title: "S", type: "sheet", notSolved: true, file: "s.html" }, { title: "Sec", type: "section", notSolved: true }, { title: "G", type: "group", notSolved: true }, { title: "X", type: "external" }] } });
+  const [sh, sec, g, x] = sm.root.children;
+  assert.ok(sh.notSolved && sec.notSolved && !("notSolved" in g));
+  assert.ok(isOutside(sh) && isOutside(sec) && !isOutside(g) && isOutside(x));
+  assert.ok(canFlag("page") && canFlag("sheet") && canFlag("section") && !canFlag("group") && !canFlag("external"));
+  assert.equal(countSections(sm), 0); assert.equal(countBuilt(sm, () => true), 0);
+  assert.match(sitemapOutline(sm), /S \[sheet\] \[not solved here/);
+});
+test("updateNode sets and clears the flag; a type that cannot have it drops it; a duplicate keeps it", () => {
+  let sm = normalizeSitemap({ root: { title: "R", children: [{ title: "A" }] } });
+  sm = updateNode(sm, [0], { notSolved: true }); assert.equal(getNode(sm, [0]).notSolved, true);
+  assert.equal(duplicateNode(sm, [0]).sitemap.root.children[1].notSolved, true);
+  assert.equal("notSolved" in updateNode(sm, [0], { notSolved: false }).root.children[0], false);
+  assert.equal("notSolved" in updateNode(sm, [0], { type: "group" }).root.children[0], false);
+  assert.equal("notSolved" in updateNode(updateNode(sm, [0], { type: "group" }), [0], { notSolved: true }).root.children[0], false);
 });
 test("relocateNode: before, after and inside", () => {
   assert.equal(names(relocateNode(tree(), [1], [0], "before").sitemap), "B,A(A1),C");
@@ -211,7 +230,7 @@ test("relocateNode: root, itself and its own subtree stay as they are", () => {
 
 import { sitemapSvg } from "../src/renderer/sitemap.js";
 test("sitemapSvg draws every page once, escapes titles and leaves the comments out", () => {
-  const sm = normalizeSitemap({ root: { title: "Portal <A&B>", children: [{ title: "One", file: "one.html", comment: "secret review" }, { title: "Two", type: "stub" }, { title: "Out", type: "external" }] } });
+  const sm = normalizeSitemap({ root: { title: "Portal <A&B>", children: [{ title: "One", file: "one.html", comment: "secret review" }, { title: "Two", notSolved: true }, { title: "Out", type: "external" }] } });
   const { svg, width, height } = sitemapSvg(sm, { isScreen: (f) => f === "one.html" });
   assert.ok(svg.startsWith("<svg") && svg.endsWith("</svg>") && width > 0 && height > 0);
   assert.ok(svg.includes("Portal &lt;A&amp;B&gt;"));
@@ -303,4 +322,23 @@ test("a map of a web site has no kind in its file, no sheets offered, and new no
   const p = setKind(sm, "portal"); assert.equal(p.kind, "portal"); assert.equal(setKind(p, "web").kind, undefined);
   assert.equal(normalizeSitemap(p).kind, "portal");
   assert.equal(extractSitemap(replaceSitemapBlock("Plan", p)).sitemap.kind, "portal"); // the block of a plan keeps the kind
+});
+
+import { sitemapUu5String } from "../src/renderer/sitemap.js";
+const u5parse = (s) => { const m = s.match(/^<Uu5TreeBricks\.Tree itemList="<uu5json\/>(.*)" itemSignificance="distinct"\/>$/s); return JSON.parse(m[1].replace(/\\(["\\])/g, "$1")); };
+test("sitemapUu5String makes a Uu5Tree whose JSON survives the escaping, titles included", () => {
+  const sm = normalizeSitemap({ root: { title: 'A & <B> "x"', children: [{ title: "Sec", type: "section" }, { title: "Out", type: "external" }, { title: "NS", notSolved: true }] } });
+  const s = sitemapUu5String(sm);
+  assert.ok(s.startsWith('<Uu5TreeBricks.Tree itemList="<uu5json/>[{') && s.endsWith('/>'));
+  const [root] = u5parse(s);
+  assert.equal(root.header, '<uu5string />A &amp; &lt;B&gt; "x" <Uu5Bricks.Badge colorScheme="primary">PAGE</Uu5Bricks.Badge>');
+  assert.equal(root.expanded, true); assert.equal(root.itemList.length, 3);
+  assert.equal(root.itemList[1].significance, "subdued"); assert.ok(root.itemList[2].header.includes("NOT SOLVED"));
+  assert.equal(root.itemList[0].itemList, undefined);
+  assert.equal(sitemapUu5String(null), "");
+});
+test("sitemapUu5String keeps folded branches folded and names portal kinds", () => {
+  const sm = normalizeSitemap({ kind: "portal", root: { title: "P", children: [{ title: "S", type: "sheet", children: [{ title: "C", type: "section" }] }] } });
+  const [root] = u5parse(sitemapUu5String(sm, { collapsed: new Set([sm.root.children[0].id]) }));
+  assert.ok(root.header.includes(">PORTAL<")); assert.equal(root.itemList[0].expanded, false); assert.ok(root.itemList[0].header.includes(">SHEET<"));
 });
