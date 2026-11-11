@@ -33,5 +33,6 @@
 - **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, **Show Component Tree…**, Undo / Redo Screen Change, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. The same entries are in the context menu (right click) of a screen.
 - **Chat**: New Chat, Chat History…, Floating / Docked Chat.
 - **Edit**: Undo, Redo (typing or the last change of the screen), Cut, Copy, Paste, Select All.
-- **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Edit Components, **Appearance** (theme, Glass Effect), **Offline Use**.
-- **Help**: Welcome Tour…, Claude Code & Plugins…, Check for Plugin Updates…, Check for Updates….
+- **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Edit Components, Show / Hide Screen Flow.
+- **Settings…** (⌘, on macOS in the app menu; **File → Settings…** on Windows and Linux): everything that is set up once, see [Settings](09-appearance-and-settings.md#settings): your role, the projects folder, the theme and Glass effect, Claude Code and Codex, the uuAiChat MCP server, picture generation, offline use.
+- **Help**: Welcome Tour…, Check for Updates….

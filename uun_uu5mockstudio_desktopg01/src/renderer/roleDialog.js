@@ -1,6 +1,6 @@
 /**
  * The dialog "What describes your work best?": four cards, one per role (role.js). Opened before the welcome tour on the first run
- * and from Help > Your Role…. A click chooses the role; Skip (or Esc) on the first run chooses the simplest one.
+ * and from Settings > Your role. A click chooses the role; Skip (or Esc) on the first run chooses the simplest one.
  */
 import { addDialogClose } from "./dialogChrome.js";
 import { ROLES, ROLE_IDS } from "./role.js";
@@ -17,7 +17,7 @@ export function createRoleDialog({ onChoose, onSkip }) {
   box.id = "rolebox"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="rl-title">
     <h2 id="rl-title">What describes your work best?</h2>
-    <p class="rl-text">The app starts in the right place for you: the kind of template, how much it shows and what Share offers first. You can change it any time (Help → Your Role…); what you set by hand afterwards stays.</p>
+    <p class="rl-text">The app starts in the right place for you: the kind of template, how much it shows and what Share offers first. You can change it any time (Settings → Your role); what you set by hand afterwards stays.</p>
     <div class="rl-cards" role="radiogroup" aria-label="Role">${ROLE_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-role="${id}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><b>${ROLES[id].label}</b><small>${ROLES[id].hint}</small></button>`).join("")}</div>
     <div class="row"><button class="rl-skip" type="button">Skip</button><span class="grow"></span></div></div>`;
   document.body.append(box);

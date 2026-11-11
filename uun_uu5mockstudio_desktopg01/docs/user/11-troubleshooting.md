@@ -3,9 +3,9 @@
 | Problem | What to do |
 | --- | --- |
 | macOS says the app "is damaged" or cannot be opened | The build is not notarized. Run once: `xattr -dr com.apple.quarantine "/Applications/uu5Mock Studio.app"`. |
-| The setup dialog says Claude Code is missing or you are not signed in | Use **Help → Claude Code & Plugins…**: it installs Claude Code and opens the sign-in. |
+| The setup dialog says Claude Code is missing or you are not signed in | Use **Settings → AI providers → Claude Code & Plugins…**: it installs Claude Code and opens the sign-in. |
 | The plugins cannot be installed | They come from the uuCodebase marketplace over SSH: check that you have access to uuCodebase and that your SSH key works. |
-| A screen stays blank | Ask Claude to check the screen (it reads the console and takes a screenshot itself). Usually a library did not load (no network, see **Offline Use**) or the page has a script error. |
+| A screen stays blank | Ask Claude to check the screen (it reads the console and takes a screenshot itself). Usually a library did not load (no network, see **Settings → Offline use**) or the page has a script error. |
 | A screen does not render offline | Turn on **Offline Mode** only after **Warm Up CDN Cache** was done once with a network. |
 | The inspector says an item "is not an object written out in the JSX" | The list is built in code (a function or `.map`), so only the component itself can be edited. Ask in the chat, or rearrange the file. |
 | "has N items but M are rendered" | Some items are added or filtered by code. Ask Claude to change that list. |

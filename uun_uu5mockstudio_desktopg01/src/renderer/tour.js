@@ -81,7 +81,7 @@ const CARDS = [
   },
   {
     title: "Share, and stay up to date",
-    text: "Export a screen as an image or HTML, or the whole project as a ZIP, and share it from the menu. Help > Claude Code & Plugins… or Codex & Plugins… checks your setup, and the app tells you when a new version is out. On a Mac, View > Appearance > Glass Effect gives it a translucent look.",
+    text: "Export a screen as an image or HTML, or the whole project as a ZIP, and share it from the menu. Settings… (AI providers) checks your Claude Code and Codex setup, and the app tells you when a new version is out. On a Mac, Settings… > Appearance > Glass effect gives it a translucent look.",
     art: S(`${frame(14, 30, 170, 130)}${line(28, 48, 80)}<rect x="28" y="66" width="142" height="40" rx="5" class="t-fill"/>${line(28, 120, 100, "t-line s")}
       <path d="M204 95h50" class="t-arrow"/><path d="M246 86l10 9-10 9" class="t-arrow"/>
       <rect x="276" y="40" width="64" height="64" rx="10" class="t-card"/><text x="308" y="78" text-anchor="middle" class="t-text">PNG</text>

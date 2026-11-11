@@ -79,3 +79,11 @@ Ask the agent to use a picture from a web page or a Plus4U document ("download t
 - **A Plus4U document** (a uuBookKit page, a uuManagementKit document): the app downloads its pictures when it reads the document; the agent copies the ones the design needs into `assets` (`document_picture`).
 
 Only http(s) addresses on the internet work (never your own machine or network), only PNG, JPEG, GIF, WebP or SVG up to 10 MB. The app scrolls through the page once, so pictures that load on the way down are found; a picture the page keeps only in memory (it has no address) is saved by the app and the agent copies it into `assets`. A picture that shows only after a click (a later slide of a carousel, a tab) may be missing: then attach it to the message as "to use in the design". The pictures go into the Project ZIP and into the files of a uu5String (see Export and share).
+
+## Generated pictures
+
+The agent can also **create** a picture for a design (a hero image, an illustration, a background) with the OpenAI image model and save it into the `assets` folder like a downloaded one. It is off until you turn it on: **Settings → Integrations → Picture generation**, switch it on and enter your **OpenAI API key** (an API key from platform.openai.com; a ChatGPT or Codex sign-in is not an API key). The app stores the key encrypted by your operating system and never shows it again. The **Model** field is empty by default (the app then uses `gpt-image-2`); if OpenAI answers that the model does not exist, your key does not have it, so type the name of a model your OpenAI account offers (for example `gpt-image-1.5`).
+
+- **What leaves your computer:** the description of the picture goes to OpenAI. Each picture is billed to the OpenAI account of the key (cents per picture).
+- **Limits:** at most 4 pictures for one message, and the same description is not paid twice. The agent uses SVG, the icon set or a placeholder for icons and simple graphics.
+- Ask for it in words: "add a hero illustration of a mountain village to the home page". The picture goes into the Project ZIP with the other assets; a single exported HTML file does not contain it.

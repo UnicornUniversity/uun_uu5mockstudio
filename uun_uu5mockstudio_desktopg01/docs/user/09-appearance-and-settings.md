@@ -1,8 +1,22 @@
 # 9. Appearance and settings
 
+## Settings
+
+Everything that is set up once, and is not done to a project, is in one window: **Settings…** (⌘, in the app menu on macOS; **File → Settings…** on Windows and Linux). It has these groups:
+
+| Group | What it holds |
+| --- | --- |
+| **General** | Your role, the projects folder |
+| **Appearance** | Theme (Automatic, Light, Dark), Glass effect (macOS) |
+| **AI providers** | Claude Code & Plugins, Codex & Plugins (only the ones that apply: Claude Code is hidden when you work with Codex only) |
+| **Integrations** | uuAiChat MCP Server (reading Plus4U documents), Picture generation with an OpenAI API key |
+| **Offline use** | Offline mode, warm up and clear the CDN cache |
+
+The theme, Glass effect and Offline mode are changed right in the window. The others open the dialog that owns the setup on top of Settings; Esc or the cross closes only that dialog and you are back in Settings, with the values refreshed. The menus hold only actions: **View** the zoom and layout of the canvas, **Help** the Welcome Tour and Check for Updates.
+
 ## Theme and Glass Effect
 
-The theme is chosen in **View → Appearance** (the dashboard also has a ◐ button). It offers **Automatic** (follows the system), **Light** and **Dark**. On macOS **Glass Effect** gives the app a translucent, blurred look in light and dark; it is optional and can be switched off at any time. With it on, the whole app uses the same glass materials: the sidebars (chat, dashboard navigation) are a soft tint over a light colour wash, the toolbar, description strip, inspector and selection bar are frosted glass floating over the canvas, and menus, dialogs, toasts, dashboard cards and buttons are glass capsules and cards. With **Reduce transparency** on in the macOS accessibility settings the effect switches itself off.
+The theme is chosen in **Settings → Appearance** (the dashboard also has a ◐ button). It offers **Automatic** (follows the system), **Light** and **Dark**. On macOS **Glass Effect** gives the app a translucent, blurred look in light and dark; it is optional and can be switched off at any time. With it on, the whole app uses the same glass materials: the sidebars (chat, dashboard navigation) are a soft tint over a light colour wash, the toolbar, description strip, inspector and selection bar are frosted glass floating over the canvas, and menus, dialogs, toasts, dashboard cards and buttons are glass capsules and cards. With **Reduce transparency** on in the macOS accessibility settings the effect switches itself off.
 
 ## Your role
 
@@ -21,7 +35,7 @@ The simple view keeps what is needed to describe, look at, edit and share a desi
 
 The agent also gets a sentence about who you are (short and plain for Web and marketing and Quick start, exact and with decisions for the architect).
 
-Change it any time with the role button at the top right of the dashboard or in **Help → Your Role…**. Choosing a role sets the presets again; what you change by hand afterwards (Eco, Plan, the template level, the Share format) stays. If you already used the app, a quiet strip on the dashboard offers the choice once instead of a dialog.
+Change it any time with the role button at the top right of the dashboard or in **Settings → General → Your role**. Choosing a role sets the presets again; what you change by hand afterwards (Eco, Plan, the template level, the Share format) stays. If you already used the app, a quiet strip on the dashboard offers the choice once instead of a dialog.
 
 ## Layout of the chat
 
@@ -31,13 +45,13 @@ Change it any time with the role button at the top right of the dashboard or in 
 
 Screens load the uu5 libraries from the Plus4U CDN. The app caches them, so screens keep rendering without a network.
 
-- **View → Offline Use → Offline Mode**: everything loads from the cache only (the screens reload).
+- **Settings → Offline use → Offline mode**: everything loads from the cache only (the screens reload).
 - **Warm Up CDN Cache**: loads the common libraries (core, forms, tiles, charts, Plus4U5) once so that they are available offline.
 - **Clear CDN Cache**: empties it.
 
 ## Claude Code and plugins
 
-**Help → Claude Code & Plugins…** shows what is installed and signed in, and installs or repairs it. **Help → Check for Plugin Updates…** looks for newer plugins; updates are offered, never applied silently.
+**Settings → AI providers → Claude Code & Plugins…** shows what is installed and signed in, and installs or repairs it. Newer plugins are checked from those dialogs; updates are offered, never applied silently.
 
 ## Updates of the app
 

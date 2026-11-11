@@ -17,7 +17,7 @@ const fileParam = z.string().optional().describe("Mockup .html file name. Defaul
  * The canvas shows one <webview> per mockup file; the renderer registers each via `register(file, id)`.
  */
 /** `readImages(url)` lists the pictures of a page as the app sees it when it opens it; `fetchWithAccess` downloads with the sign-ins of the user (both optional). */
-export function createStudioBrowser({ baseUrl, onNavigated, readStructure, projectDir, readImages, fetchWithAccess }) {
+export function createStudioBrowser({ baseUrl, onNavigated, readStructure, projectDir, readImages, fetchWithAccess, generateImage }) {
   const views = new Map(); // file -> webContents id
   const logs = new Map(); // webContents id -> [{level,text}]
   let lastFile;
@@ -137,7 +137,19 @@ export function createStudioBrowser({ baseUrl, onNavigated, readStructure, proje
       async ({ url, name }) => {
         try { return text(`Saved: ${await downloadWebImage(projectDir(), url, name, { access: fetchWithAccess })}`); } catch (e) { return text(`Cannot download: ${e.message}`); }
       }),
-    tool("document_picture", "Copy a picture the app saved (a picture of a Plus4U document, or a picture of a web page that has no address: both are listed at the end of the snapshot in .studio/sources and by web_images, as files of .studio/sources/assets) into the assets folder of the project and return its path, e.g. assets/campus.jpg. Use the returned path in the screen exactly (<img src=\"assets/…\">). Only copy what the design needs.",
+    tool("generate_image", "Generate a NEW picture with an AI image model (OpenAI) and save it into the assets folder of the project; returns its path, e.g. assets/hero-mountains.png. Use the returned path in the screen exactly (<img src=\"assets/…\" alt=\"…\">). It costs the user money and is slow (up to a minute), so use it only for what the design really needs and the user asked for (a hero image, an illustration, a background, a product picture), never for icons, logos with exact text or what SVG, the icon set or a placeholder does. At most 4 pictures per request of the user; the same description is not generated twice. If it says the feature is off or has no key, tell the user how to turn it on and carry on with an SVG or a placeholder.",
+      {
+        prompt: z.string().describe("What the picture shows, in English: subject, style, colours, mood, composition. No text in the picture."),
+        name: z.string().optional().describe("Name for the file, without extension, after what it shows (e.g. 'hero-mountains')"),
+        size: z.enum(["1024x1024", "1536x1024", "1024x1536"]).optional().describe("Square (default), landscape or portrait"),
+        quality: z.enum(["low", "medium", "high"]).optional().describe("medium by default; low for a quick draft, high only when asked"),
+        transparent: z.boolean().optional().describe("A transparent background (an object or a figure to place on any colour)"),
+      },
+      async (args) => {
+        if (!generateImage) return text("Picture generation is not available.");
+        try { return text(await generateImage(projectDir(), args)); } catch (e) { return text(`Cannot generate the picture: ${e.message}`); }
+      }),
+    tool("document_picture","Copy a picture the app saved (a picture of a Plus4U document, or a picture of a web page that has no address: both are listed at the end of the snapshot in .studio/sources and by web_images, as files of .studio/sources/assets) into the assets folder of the project and return its path, e.g. assets/campus.jpg. Use the returned path in the screen exactly (<img src=\"assets/…\">). Only copy what the design needs.",
       { file: z.string().describe("File name (or path) of the picture in .studio/sources/assets, as the snapshot lists it"), name: z.string().optional().describe("Name for the file, without extension, after what the picture shows") },
       async ({ file, name }) => {
         try { return text(`Saved: ${await copySourcePicture(projectDir(), file, name)}`); } catch (e) { return text(`Cannot copy: ${e.message}`); }

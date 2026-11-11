@@ -1,5 +1,5 @@
 /*
- * Glass Effect (macOS, View > Appearance > Glass Effect): translucent, blurred materials in the spirit of macOS Liquid Glass.
+ * Glass Effect (macOS, Settings > Appearance > Glass effect): translucent, blurred materials in the spirit of macOS Liquid Glass.
  * Everything that changes the look is scoped by body[data-glass]; without it the app looks as before. macOS "Reduce transparency"
  * switches the effect off (main process), and prefers-reduced-transparency makes the materials opaque as a second guard.
  * The page background is a soft colour wash (--glass-wash); the sidebars (docked chat, dashboard navigation) are a tint over it and

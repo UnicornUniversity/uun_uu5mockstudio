@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, session, shell, ShareMenu } from "electron";
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, session, shell, ShareMenu } from "electron";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -12,6 +12,7 @@ import { codexStatus, codexVersion, findCodex } from "./codexEnv.mjs";
 import { ensureCodexPlugins, codexPluginVersions, codexPluginStates } from "./codexPlugins.mjs";
 import { listAgents } from "./agents.mjs";
 import { createStudioBrowser } from "./studioBrowserMcp.mjs";
+import { createKeyStore, createImageGenerator, DEFAULT_MODEL, MODEL_RE } from "./imageGen.mjs";
 import { startBrowserMcpHttp } from "./studioBrowserHttp.mjs";
 import { createScreenHistory } from "./screenHistory.mjs";
 import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude } from "./claudeEnv.mjs";
@@ -294,7 +295,24 @@ app.whenReady().then(async () => {
   ipcMain.handle("projects:folder", guard((_e, op) => projectsFolder(String(op))));
   if (process.env.STUDIO_TEST) globalThis.__studioTest = { Menu, win }; // lets automated checks inspect/click the menu through --inspect
 
+  // Picture generation (OpenAI): off until the user turns it on and enters a key; the key is kept encrypted by the OS, outside app-state.json
+  const imageKeys = createKeyStore({ file: path.join(app.getPath("userData"), "openai-key.bin"), safeStorage });
+  const imageModel = () => loadApp().imageModel || process.env.STUDIO_IMAGE_MODEL || DEFAULT_MODEL; // Settings, then the environment, then the default
+  const imageGen = createImageGenerator({ keyStore: imageKeys, isEnabled: async () => Boolean(loadApp().imageGen), getModel: async () => imageModel() });
+  const imageGenStatus = async () => ({ enabled: Boolean(loadApp().imageGen), model: loadApp().imageModel || "", effectiveModel: imageModel(), defaultModel: DEFAULT_MODEL, ...(await imageKeys.status()) });
+  ipcMain.handle("imagegen:status", guard(imageGenStatus));
+  ipcMain.handle("settings:agents", () => usableAgents); // which AI providers the Settings window lists (null = not known yet)
+  ipcMain.handle("imagegen:save", guard(async (_e, { enabled, key, model }) => {
+    const m = String(model ?? "").trim();
+    if (m && !MODEL_RE.test(m)) throw new Error("This does not look like the name of a model (letters, digits, . _ : -).");
+    if (typeof key === "string" && key.trim()) await imageKeys.set(key); // refuses a junk key and storing without encryption
+    saveApp({ imageGen: Boolean(enabled), imageModel: m });
+    return imageGenStatus();
+  }));
+  ipcMain.handle("imagegen:clearKey", guard(async () => { await imageKeys.clear(); return imageGenStatus(); }));
+
   const browser = createStudioBrowser({
+    generateImage: (dir, args) => imageGen.generate(dir, args),
     baseUrl: `http://127.0.0.1:${port}`,
     onNavigated: (screen) => emit("preview:navigated", screen),
     projectDir: () => dir(),
@@ -919,12 +937,13 @@ app.whenReady().then(async () => {
     const viaCodex = typeof model === "string" && /^codex(:|$)/.test(model), svc = viaCodex ? codex : claude;
     if (!svc) throw new Error("No project is open.");
     svc.runChat = currentChatId;
+    imageGen.reset(); // one message of the user = one run: the limit of generated pictures starts again
     svc.role = loadApp().role; // the sentence about who the user is (role.js) goes to the agent with every request
     return svc.send(prompt, viaCodex ? model.slice(6) || undefined : model, { plan: Boolean(plan), economy: Boolean(economy) });
   }));
   ipcMain.handle("chat:stop", () => stopAgents());
   ipcMain.handle("codex:status", (_e, refresh) => codexStatus({ refresh }));
-  // Help > Codex & Plugins: what the dialog shows (Codex installed and signed in, the state of each plugin).
+  // Settings > AI providers > Codex & Plugins: what the dialog shows (Codex installed and signed in, the state of each plugin).
   ipcMain.handle("codex:pluginsState", guard(async () => { const status = await codexStatus({ refresh: true }); return { status: { ...status, version: status.installed ? await codexVersion() : null }, plugins: codexPluginStates() }; }));
   // Help > Check for Plugin Updates: Codex keeps the copy it installed, so the plugins of the marketplace are installed again when it has newer ones.
   ipcMain.handle("codex:pluginsCheck", guard(async () => {
@@ -1289,7 +1308,7 @@ app.whenReady().then(async () => {
   }
   ipcMain.handle("update:check", () => (updater.enabled ? updater.check() : checkAppUpdate({ manual: true })));
   ipcMain.handle("update:install", () => updater.install());
-  ipcMain.handle("glass:toggle", () => (process.platform === "darwin" ? toggleGlass() : false)); // the same switch as View > Appearance > Glass Effect, for the ⋯ menu
+  ipcMain.handle("glass:toggle", () => (process.platform === "darwin" ? toggleGlass() : false)); // the same switch as Settings > Appearance > Glass effect, for the ⋯ menu
   // macOS without a Developer ID certificate: the app downloads the release zip, checks it, and a script swaps the bundle after it quits
   let selfInstalling = false;
   const selfUpdateOk = () => canSelfUpdate({ packaged: app.isPackaged, hasFeed: updater.enabled });

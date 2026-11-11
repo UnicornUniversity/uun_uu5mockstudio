@@ -21,11 +21,18 @@ A linked repository is read from a **`git archive` snapshot** of the chosen bran
 
 - Links in screens and in the app open in the system browser, **https only** (`setWindowOpenHandler`, `open:external`); no new app windows.
 - Library code comes from CDNs; responses are cached on disk (`cdn-cache/`) and can be served offline. The cache is keyed by URL and holds only public library files.
-- The only calls the app itself makes are the update check (GitHub API), the uuBml catalog and the documentation lookups of the installed plugins.
+- The only calls the app itself makes are the update check (GitHub API), the uuBml catalog and the documentation lookups of the installed plugins, and, **only when the user has turned on Picture Generation and entered a key**, requests to `api.openai.com` that carry the description of a picture written by the agent (see below). The renderer never makes this call; the main process does.
 
 ## Data at rest
 
 Everything is local: projects in the projects folder, app settings in `app-state.json`, chats in `.studio/state.json`. Attached images are copied to `.studio/attachments`. Nothing is uploaded except what Claude Code itself sends to Anthropic as part of a conversation. **Share** creates a mail draft or a file; the user sends it.
+
+## The OpenAI API key (picture generation)
+
+- Off by default (`imageGen` in `app-state.json`). The key is typed in the dialog and handed once to the main process; `createKeyStore` (`imageGen.mjs`) stores it **encrypted with Electron `safeStorage`** in `openai-key.bin` of the user data folder (mode 0600). It is never in `app-state.json`, never returned to the renderer (only `{ hasKey, source, canStore }`), never logged and never given to the agent. Where the OS cannot encrypt (`isEncryptionAvailable()` is false, e.g. Linux without a keyring) the key is not stored at all and the dialog points to the `OPENAI_API_KEY` environment variable, which is the only other source.
+- The app does **not** read the credentials of Codex (`~/.codex/auth.json`): a ChatGPT sign-in has no API key and its tokens are not meant for this API.
+- What goes to OpenAI: the picture description the agent wrote, size, quality and the model name. Nothing else of the project.
+- Cost guards: off by default, 4 pictures per message, the same description is not generated twice.
 
 ## Known limits
 

@@ -94,11 +94,11 @@ test("Edit menu keeps the standard text editing roles", () => {
   assert.deepEqual(steps.map((i) => i.label), ["Undo", "Redo"], "Undo and Redo go through the app: a text field or the last change of the screen");
 });
 
-test("View exposes canvas zoom, inspector and theme; developer tools only in dev", () => {
+test("View exposes canvas zoom and inspector; developer tools only in dev", () => {
   const view = (isDev) => find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", isDev }), "View").submenu;
   assert.equal(find(view(false), "Show All Screens").accelerator, "CmdOrCtrl+0");
   assert.ok(find(view(false), "Edit Components")); assert.ok(!find(view(false), "Fullscreen Preview of Selected Screen"), "fullscreen preview moved to Screen");
-  assert.deepEqual(find(view(false), "Appearance").submenu.map((i) => i.label).filter(Boolean), ["Automatic", "Light", "Dark", "Glass Effect"]);
+  for (const moved of ["Appearance", "Offline Use", "Picture Generation…"]) assert.equal(find(view(false), moved), undefined, `${moved} lives in Settings`);
   assert.ok(!view(false).some((i) => i.role === "toggleDevTools"));
   assert.ok(view(true).some((i) => i.role === "toggleDevTools"));
 });
@@ -111,21 +111,26 @@ test("every custom item has a click handler and no accelerator is used twice", (
   assert.equal(new Set(accs).size, accs.length, "duplicate accelerators: " + accs);
 });
 
-test("Glass Effect is a macOS-only checkbox in View > Appearance that follows the stored choice", () => {
-  const appearance = (platform, glass) => find(find(buildMenuTemplate({ platform, projects, current: "Alfa", glass }), "View").submenu, "Appearance").submenu;
-  const off = find(appearance("darwin", false), "Glass Effect"), on = find(appearance("darwin", true), "Glass Effect");
-  assert.equal(off.type, "checkbox"); assert.equal(off.checked, false); assert.equal(on.checked, true);
-  assert.equal(find(appearance("win32", true), "Glass Effect"), undefined); assert.equal(find(appearance("linux", false), "Glass Effect"), undefined);
-  const sent = []; find(find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", send: (a) => sent.push(a) }), "View").submenu, "Appearance").submenu.find((i) => i.label === "Glass Effect").click();
-  assert.deepEqual(sent, ["view:glass"]);
+test("Settings… is in the app menu on macOS and in File elsewhere, with ⌘, and without a second copy", () => {
+  const sent = [];
+  const t = (platform) => buildMenuTemplate({ platform, projects, current: "Alfa", send: (a) => sent.push(a) });
+  const settings = (items) => find(items, "Settings…");
+  const mac = t("darwin");
+  assert.equal(settings(find(mac, "uu5Mock Studio").submenu).accelerator, "CmdOrCtrl+,");
+  assert.equal(settings(find(mac, "File").submenu), undefined);
+  for (const p of ["win32", "linux"]) {
+    const item = settings(find(t(p), "File").submenu);
+    assert.equal(item.accelerator, "CmdOrCtrl+,");
+    item.click();
+  }
+  settings(find(mac, "uu5Mock Studio").submenu).click();
+  assert.deepEqual(sent, ["settings:open", "settings:open", "settings:open"]);
 });
 
-test("View holds the offline use items, with the checkbox following the state", () => {
-  const sent = [];
-  const view = (offline) => find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", offline, send: (a) => sent.push(a) }), "View").submenu;
-  const off = find(view(true), "Offline Use").submenu;
-  assert.equal(find(off, "Offline Mode").checked, true);
-  assert.equal(find(find(view(false), "Offline Use").submenu, "Offline Mode").checked, false);
-  find(off, "Offline Mode").click(); find(off, "Warm Up CDN Cache").click(); find(off, "Clear CDN Cache").click();
-  assert.deepEqual(sent, ["cdn:offline", "cdn:warmup", "cdn:clear"]);
+test("the setups moved into Settings are not in Help, View or the app menu any more", () => {
+  const labels = (platform) => JSON.stringify(buildMenuTemplate({ platform, agents: ["claude", "codex"] }).map((m) => (m.submenu ?? []).map((i) => [i.label, ...(i.submenu ?? []).map((x) => x.label)])));
+  for (const p of ["darwin", "win32"]) {
+    for (const moved of ["Your Role…", "Claude Code & Plugins…", "Codex & Plugins…", "uuAiChat MCP Server…", "Picture Generation…", "Appearance", "Offline Use"]) assert.ok(!labels(p).includes(moved), `${moved} (${p})`);
+  }
+  assert.deepEqual(find(buildMenuTemplate({ platform: "darwin" }), "Help").submenu.map((i) => i.label).filter(Boolean), ["Welcome Tour…", "Check for Updates…"]);
 });

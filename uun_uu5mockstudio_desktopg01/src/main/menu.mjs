@@ -4,10 +4,8 @@
  * standard roles (text editing shortcuts in the chat field depend on them).
  */
 export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, agents = null, send = () => {} }) {
-  // `agents`: the ids of the AI providers that are usable (null = not known yet). The Claude Code setup makes no sense for someone who works with Codex only;
-  // with no provider usable at all they stay, because that is where Claude Code is set up.
-  const claudeItems = !agents || !agents.length || agents.includes("claude");
-  const codexItems = Boolean(agents?.includes("codex"));
+  // Everything that is set up once (role, look, AI providers, integrations, offline cache) lives in Settings…; the menus hold actions.
+  // Which AI providers are shown there is decided in the renderer (settingsModel.js) from the same `agents`.
   const mac = platform === "darwin";
   const has = Boolean(current);
   const act = (id) => () => send(id);
@@ -49,6 +47,7 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
         item("Project ZIP…", "project:share-zip"),
       ] },
       sep,
+      ...(mac ? [] : [item("Settings…", "settings:open", { accelerator: "CmdOrCtrl+," }), sep]),
       mac ? { role: "close", label: "Close Window" } : { role: "quit", label: "Quit" },
     ],
   };
@@ -129,28 +128,19 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       sep,
       item("Edit Components", "view:inspector", { enabled: has }),
       item("Show / Hide Screen Flow", "view:flow", { enabled: has }),
-      sep,
-      { label: "Appearance", submenu: [
-        item("Automatic", "view:theme:auto"), item("Light", "view:theme:light"), item("Dark", "view:theme:dark"),
-        // glass panels (translucent, blurred) are a macOS look; the app handles the toggle itself because it keeps the choice
-        ...(mac ? [sep, { label: "Glass Effect", type: "checkbox", checked: glass, click: act("view:glass") }] : []),
-      ] },
-      { label: "Offline Use", submenu: [
-        { label: "Offline Mode", type: "checkbox", checked: offline, click: act("cdn:offline") },
-        item("Warm Up CDN Cache", "cdn:warmup"), item("Clear CDN Cache", "cdn:clear"),
-      ] },
-      ...(mac ? [] : [{ role: "togglefullscreen" }]), // macOS adds its own Enter Full Screen item to the View menu
+      ...(mac ? [] : [sep, { role: "togglefullscreen" }]), // macOS adds its own Enter Full Screen item to the View menu
       ...(isDev ? [sep, { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }] : []),
     ],
   };
 
   const windowMenu = { label: "Window", submenu: [{ role: "minimize" }, ...(mac ? [{ role: "zoom" }, sep, { role: "front" }] : [{ role: "close" }])] };
-  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), item("Your Role…", "app:role"), sep, ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), item("uuAiChat MCP Server…", "docs:territory"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
+  const help = { label: "Help", submenu: [item("Welcome Tour…", "app:tour"), sep, item("Check for Updates…", "update:check"), ...(mac ? [] : [sep, item(`About ${appName}`, "app:about")])] };
 
   const appMenu = {
     label: appName,
     submenu: [
-      item(`About ${appName}`, "app:about"), item("Check for Updates…", "update:check"), ...(claudeItems ? [item("Claude Code & Plugins…", "claude:setup")] : []), ...(codexItems ? [item("Codex & Plugins…", "codex:plugins")] : []), sep,
+      item(`About ${appName}`, "app:about"), item("Check for Updates…", "update:check"), sep,
+      item("Settings…", "settings:open", { accelerator: "CmdOrCtrl+," }), sep,
       { role: "services" }, sep, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, sep, { role: "quit" },
     ],
   };

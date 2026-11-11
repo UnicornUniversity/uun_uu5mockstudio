@@ -77,7 +77,7 @@ export function createLibraryPicker({ api, onAdd, onDragStart, previewUrl }) {
   async function run() {
     const my = ++seq, r = await api.docsSearch(search.value, lib.value).catch(() => null);
     if (my !== seq) return;
-    if (!r?.available) { results = []; list.replaceChildren(); detail.textContent = ""; note.textContent = "The plugin uu5-development is not installed, so there is no documentation of the library components to browse. Install it in Help > Claude Code & Plugins…"; return; }
+    if (!r?.available) { results = []; list.replaceChildren(); detail.textContent = ""; note.textContent = "The plugin uu5-development is not installed, so there is no documentation of the library components to browse. Install it in Settings… > AI providers > Claude Code & Plugins…"; return; }
     results = r.results;
     note.textContent = results.length >= 60 ? "Showing the first 60: narrow the search." : `${results.length} component${results.length === 1 ? "" : "s"}`;
     paint();

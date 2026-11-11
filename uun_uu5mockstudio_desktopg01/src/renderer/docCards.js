@@ -174,7 +174,7 @@ export function docsContext(docs) {
 }
 
 /**
- * Help → uuAiChat MCP Server… (and "Custom…" on a card): the territory whose uuAiChat servers read the documents, shared with the
+ * Settings → Integrations → uuAiChat MCP Server… (and "Custom…" on a card): the territory whose uuAiChat servers read the documents, shared with the
  * uuAiMarketplace plugins. A prepared one, or a custom one entered as the awid of uuAiChat and the instructionSet OID per kind.
  */
 export async function territoryDialog({ studio = window.studio, toast = () => {}, custom = false, onSaved = () => {} } = {}) {

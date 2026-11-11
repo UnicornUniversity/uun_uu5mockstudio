@@ -70,7 +70,7 @@ export function createSetup({ api, toast, isBusy, onStatus }) {
     return status;
   }
 
-  // ----- Codex: the same dialog with its own content (installed, signed in, plugins), opened from Help > Codex & Plugins
+  // ----- Codex: the same dialog with its own content (installed, signed in, plugins), opened from Settings > AI providers
   let codexState = null;
   async function renderCodex() {
     const r = codexState; if (!r) return;

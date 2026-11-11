@@ -23,7 +23,7 @@ Video je **tiché, anglicky** (titulky přes `--lang cs` česky). Natáčí ho s
 | 2:15 | **Fullscreen** obrazovky, **poznámka** k obrazovce, po zavření zůstane na plátně vedle obrazovky | Try it fullscreen and pin a note to the screen / Notes stay with the screen, right on the canvas |
 | 2:35 | **Inspektor**: tlačítko, změna `colorScheme` (obrazovka se hned přepíše), výběr ikony z katalogu uuGDS | Inspect real uu5 components, tweak props, pick icons / Change a prop: the screen rewrites itself / Icons straight from the uuGDS catalog |
 | 3:00 | **Share ▾**: obrázek, HTML, celý projekt jako ZIP | Export or share a screen, or the whole project as ZIP |
-| 3:05 | Help → **Claude Code & plugins…**, přehled a **Check for plugin updates** | Plugins stay current: check any time, update on your terms |
+| 3:05 | **Settings…** → AI providers → **Claude Code & plugins…**, přehled a kontrola aktualizací pluginů | Plugins stay current: check any time, update on your terms |
 | 3:10 | Help → **Check for Updates…**: pruh *Version X available* s tlačítky Download / Notes / Later (video na Download neklikne) | New release? You are told: download it, read the notes, or postpone |
 | 3:20 | Plovoucí chat, panel nástrojů a menu přes plátno, plátno se posouvá pod průhlednými panely | Floating chat, toolbar and menus: translucent and blurred |
 | 3:25 | Závěr | uu5Mock Studio · Marek Beránek, Unicorn University |
@@ -33,7 +33,7 @@ Skutečný záznam je delší, protože čekání na agenta se zrychluje (výcho
 ## 2. Příprava před natáčením
 
 - [ ] Claude Code je nainstalovaný a **přihlášený**, pluginy `uu5-mockup`, `uugds`, `uu5-development` jsou nainstalované (průvodce se při startu neobjeví).
-- [ ] Jsi **online**: uu5 stránky se načítají z CDN. Pro jistotu jednou View › Offline Use › *Warm Up CDN Cache*.
+- [ ] Jsi **online**: uu5 stránky se načítají z CDN. Pro jistotu jednou Settings › Offline use › *Warm up the CDN cache*.
 - [ ] Zavři ostatní aplikace a vypni notifikace (Nerušit); skript startuje vlastní okno s čistým profilem, **tvoje projekty ani nastavení se nedotknou**.
 - [ ] Skript si sám vytvoří **demo git repozitář** (dvě větve) v dočasné složce; tvoje skutečné repozitáře nepoužívá.
 - Oznámení o aktualizaci je **simulované**: skript spustí lokální falešný kanál vydání a aplikaci na něj nasměruje (`STUDIO_UPDATE_API`), ohlásí se další minor verze než ta skutečná. Nic se nestahuje.

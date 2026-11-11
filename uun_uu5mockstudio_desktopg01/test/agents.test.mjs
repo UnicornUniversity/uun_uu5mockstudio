@@ -39,12 +39,3 @@ test("only providers that are installed and signed in are listed", async () => {
   assert.deepEqual(await listAgents({ refresh: true, deps: deps({ state: "missing" }, { installed: false, loggedIn: false }, h) }), []);
 });
 
-test("the menu offers the Claude Code items only when they apply", () => {
-  const labels = (agents) => JSON.stringify(buildMenuTemplate({ platform: "darwin", agents }).map((m) => (m.submenu ?? []).map((i) => i.label)));
-  for (const a of [null, [], ["claude"], ["claude", "codex"]]) assert.match(labels(a), /Claude Code & Plugins…/);
-  assert.doesNotMatch(labels(["codex"]), /Claude Code & Plugins…/);
-  assert.match(labels(["codex"]), /Codex & Plugins…/);
-  assert.match(labels(["claude", "codex"]), /Claude Code & Plugins….*Codex & Plugins…/);
-  for (const a of [null, [], ["claude"]]) assert.doesNotMatch(labels(a), /Codex & Plugins…/);
-  for (const a of [null, [], ["claude"], ["codex"], ["claude", "codex"]]) assert.doesNotMatch(labels(a), /Check for Plugin Updates…/); // checked in the dialogs
-});

@@ -10,6 +10,8 @@ import { createFsNote } from "./fsnote.js";
 import { createSetup } from "./setup.js";
 import { createTour } from "./tour.js";
 import { createRoleDialog } from "./roleDialog.js";
+import { createImageGenDialog } from "./imageGenDialog.js";
+import { createSettingsDialog } from "./settingsDialog.js";
 import { createGuideDialog } from "./guideDialog.js";
 import { createCommentsPanel } from "./commentsPanel.js";
 import { createFlowLayer } from "./flowLayer.js";
@@ -944,7 +946,7 @@ $("fit").onclick = () => { const m = mapZoom(); if (m) { m.fit(); syncZoomLabel(
 for (const [box, btn] of [["sizebox", "sz-cancel"], ["confirm", "cf-cancel"], ["dialog", "dlg-cancel"], ["jsonbox", "jb-cancel"], ["setup", "setup-close"]]) addDialogClose($(box).firstElementChild, () => $(btn).click());
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "guidebox", "cmtbox", "varbox", "branddlg"]; // topmost first
+const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "imgenbox", "guidebox", "cmtbox", "varbox", "branddlg", "setbox"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = [...[...document.querySelectorAll(".docprev, .tsdbox")].reverse(), ...MODALS.map((id) => $(id))].filter((m) => m && !m.hidden);
@@ -1724,7 +1726,7 @@ $("selbar").onclick = (e) => {
 };
 addEventListener("click", (e) => { if (!e.target.closest("#selbar") && !e.target.closest("#selmenu")) $("selmenu").hidden = true; });
 
-/** Offline use (View > Offline Use): the CDN cache lets mockups keep rendering without a network. */
+/** Offline use (Settings > Offline use): the CDN cache lets mockups keep rendering without a network. */
 const cdnActions = {
   async offline() {
     const st = await window.studio.cdnSetOffline(!(await window.studio.cdnStatus()).offline);
@@ -2105,6 +2107,8 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
       case "app:about": return openAbout();
       case "app:tour": return tour.open();
       case "app:role": return roleDialog.open(meta.role);
+      case "imagegen:open": return imageGenDialog.open();
+      case "settings:open": return settingsDialog.open();
       case "claude:setup": return setup.open();
       case "codex:plugins": return setup.openCodex();
       case "update:check": return checkAppUpdates();
@@ -2159,8 +2163,23 @@ applyRole(meta.role, { preset: false });
 $("dash-role").onclick = () => roleDialog.open(meta.role);
 const guideDialog = createGuideDialog({ onDone: (a) => dashboard.fill(buildGuidePrompt(a), guideTemplate(a.type).template) }); // the request lands in the message field; nothing is sent
 $("dash-guide").onclick = () => guideDialog.open();
+const imageGenDialog = createImageGenDialog({ toast });
+// Settings…: the one place for what is set up once; a row changes a value here or opens the dialog that owns the setup
+const settingsDialog = createSettingsDialog({
+  platform: window.studio.platform,
+  getState: async () => ({
+    theme: window.__theme.get(), glass: Boolean(document.body.dataset.glass), offline: Boolean((await window.studio.cdnStatus())?.offline),
+    roleLabel: meta.role ? roleOf(meta.role).label : "", images: await window.studio.imageGenStatus(), agents: await window.studio.usableAgents(),
+  }),
+  run: (action) => (action === "folder:projects-change" ? window.studio.projectsFolder("change").then((r) => { if (r?.error) toast(r.error, { err: true }); }) : window.__menuAction(action)),
+  setValue: async (key, value) => {
+    if (key === "theme") { window.__theme.set(value); syncTheme(); }
+    else if (key === "glass") { if (Boolean(document.body.dataset.glass) !== value) await window.studio.toggleGlass(); }
+    else if (key === "offline") { const on = Boolean((await window.studio.cdnStatus())?.offline); if (on !== value) await cdnActions.offline(); }
+  },
+});
 const roleDialog = createRoleDialog({
-  onChoose: async (role) => { const r = await window.studio.setRole(role); if (r?.error) return toast(r.error, { err: true }); meta.roleAsked = true; $("rolehint")?.remove(); applyRole(role); toast(`Set up for: ${roleOf(role).label}. Help → Your Role… changes it.`); maybeTour(); },
+  onChoose: async (role) => { const r = await window.studio.setRole(role); if (r?.error) return toast(r.error, { err: true }); meta.roleAsked = true; $("rolehint")?.remove(); applyRole(role); toast(`Set up for: ${roleOf(role).label}. Settings → Your role changes it.`); maybeTour(); },
   onSkip: async () => { await window.studio.setRole("other"); meta.roleAsked = true; $("rolehint")?.remove(); applyRole("other"); maybeTour(); }, // Skip = the simplest view
 });
 /** An existing user is asked once, without a dialog over the work: a strip on the dashboard. */
