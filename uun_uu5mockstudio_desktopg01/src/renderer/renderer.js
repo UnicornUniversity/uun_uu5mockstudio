@@ -268,11 +268,11 @@ async function onPlansChanged(list) {
     await pullEntry(e);
   }
 }
-/** A request for a revision of a plan from its card (e.g. add the sitemap): sent in Plan mode, the answer replaces the text of the same file. */
+/** A request for a revision of a plan from its card (e.g. add the sitemap): this one request is sent in Plan mode, the answer replaces the text of the same file.
+ *  The Agent / Plan switch of the chat stays as the user set it: the next message typed in the chat is not turned into a plan. */
 async function revisePlanFromCard(message, label) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   push({ kind: "user", text: label });
-  setPlanMode(true);
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
   setBusy(true); sentModel = $("model").value; planPending = true;
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
@@ -806,10 +806,10 @@ let sitePick = null;
  * Sitemap from a link (sitePicker.js): the pages picked from a web site, a uuBookKit book or a uuManagementKit document / portal become the
  * sitemap of the project as they are, or wait as an attachment for the agent, which proposes the sitemap from them in Plan mode.
  */
-function pickFromLink(url = "", card = false) {
+function pickFromLink(url = "", card = false, preloaded = null) {
   if (!project) return;
   openSitePicker({
-    toast, url, replaces: Boolean(projectSitemap),
+    toast, url, preloaded, replaces: Boolean(projectSitemap),
     onUse: async ({ sitemap }) => {
       if (!sitemap) return false;
       if (projectSitemap && !confirm("Replace the sitemap of the project with the picked pages? The current one is kept and can be restored.")) return false;
@@ -2219,7 +2219,7 @@ const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgen
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]
 let preparing = 0;
-const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
+const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true, card.tree), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 const toBlob = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
 /** Normalizes any image to a PNG (or JPEG when huge) of at most 2000 px plus a small thumbnail. */

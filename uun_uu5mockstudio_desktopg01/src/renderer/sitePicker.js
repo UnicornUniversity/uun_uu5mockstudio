@@ -14,7 +14,7 @@ const HINT = { bookkit: "the menu of the book", mkEcc: "the pages of the documen
 
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
-export function openSitePicker({ studio = window.studio, toast = () => {}, url = "", replaces = false, useLabel = replaces ? "Replace the sitemap" : "Use as the sitemap", agentLabel = replaces ? "Hand to the agent to extend the sitemap" : "Hand to the agent", onUse, onAgent } = {}) {
+export function openSitePicker({ studio = window.studio, toast = () => {}, url = "", replaces = false, useLabel = replaces ? "Replace the sitemap" : "Use as the sitemap", agentLabel = replaces ? "Hand to the agent to extend the sitemap" : "Hand to the agent", preloaded = null, onUse, onAgent } = {}) {
   let state = "idle", error = "", tree = null, kind = null, source = "";
   const checked = new Set(), collapsed = new Set(), loading = new Set();
 
@@ -27,6 +27,8 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
   const agentBtn = el("button", { type: "button", textContent: agentLabel, title: replaces ? "The picked pages are attached to your next message: the agent goes through them and proposes how to extend or change the sitemap of the project; nothing is replaced until you approve it" : "The picked pages are attached to your next message in Plan mode: the agent proposes the sitemap from them and you approve it", onclick: () => finish(onAgent, true) });
   const head = el("h2", { textContent: "Sitemap from a link" });
 
+  /** A structure that was read: every page the default ticks is ticked, a large tree starts folded. */
+  function show(t) { state = "ready"; tree = t; for (const id of defaultChecked(tree)) checked.add(id); for (const n of walk(tree)) if (n !== tree && n.children.length && countTree(tree) > 80) collapsed.add(n.id); }
   async function load({ login = false } = {}) {
     const doc = parseLink(input.value);
     if (!doc) { state = "error"; error = "Enter the address of a web site, of a uuBookKit book or of a uuManagementKit document (https://…)."; return paint(); }
@@ -34,7 +36,7 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
     if (login) { const l = await studio.docLogin(doc.url).catch((e) => ({ error: String(e?.message ?? e) })); if (!ov.isConnected) return; if (l?.error) { state = "error"; error = `The sign-in did not finish: ${l.error}`; return paint(); } error = ""; paint(); }
     const r = await studio.docStructure(doc.url).catch((e) => ({ error: String(e?.message ?? e) }));
     if (!ov.isConnected || source !== doc.url) return; // closed, or another address meanwhile
-    if (r?.ok && r.tree) { state = "ready"; tree = r.tree; for (const id of defaultChecked(tree)) checked.add(id); for (const n of walk(tree)) if (n !== tree && n.children.length && countTree(tree) > 80) collapsed.add(n.id); }
+    if (r?.ok && r.tree) show(r.tree);
     else if (["login", "territory", "npx"].includes(r?.error)) state = r.error;
     else { state = "error"; error = r?.error || "The structure could not be loaded."; }
     paint();
@@ -126,6 +128,9 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
   ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } if (e.key === "Enter" && e.target === input) { e.preventDefault(); load(); } });
   document.body.append(ov);
   paint();
-  if (parseLink(url)) load(); else input.focus();
+  const doc = parseLink(url);
+  // `preloaded`: the structure of this address that the card of a pasted link has already read; it is shown at once, not read again (Reload reads it anew)
+  if (doc && preloaded) { kind = doc.kind; source = doc.url; show(structuredClone(preloaded)); paint(); }
+  else if (doc) load(); else input.focus();
   return { close };
 }

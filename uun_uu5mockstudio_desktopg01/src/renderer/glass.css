@@ -99,7 +99,7 @@ body[data-glass] #chat #send{background:var(--glass-accent)!important;border:1px
 body[data-glass] #chat header #projbtn{background:transparent!important;border-color:transparent!important;box-shadow:none!important;border-radius:12px!important}
 body[data-glass] #chat header #projbtn:hover{background:var(--glass-hover)!important}
 /* an active toggle (inspector, component picker, the inspector switch above a screen) stays blue: a white capsule would hide its white icon */
-body[data-glass] :is(#bar,#chat #form,#selbar) button.on:not(.viewtog):not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7){background:var(--glass-accent)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
+body[data-glass] :is(#bar,#chat #form,#selbar) button.on:not(.viewtog):not(.mm-item):not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7){background:var(--glass-accent)!important;border-color:rgba(255,255,255,.5)!important;color:#fff!important}
 /* open tabs on the toolbar */
 body[data-glass] #bar .tab{border-radius:999px}
 body[data-glass] #bar .tab.on{background:var(--glass-thick);border-color:var(--glass-edge);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}

@@ -39,17 +39,17 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
 
   /** The link is for the sitemap: the structure behind it is read (nothing is saved) and waits on the card as the pages for the agent. */
   async function loadPick(card) {
-    set(card.id, { use: "sitemap", pick: null, pickState: "loading", pickError: "" });
+    set(card.id, { use: "sitemap", pick: null, tree: null, pickState: "loading", pickError: "" });
     const r = await studio.docStructure(card.url).catch((e) => ({ error: String(e?.message ?? e) }));
     const cur = cards.find((c) => c.id === card.id);
     if (!cur || cur.use !== "sitemap" || cur.pick) return; // removed, switched back, or the pages were chosen in the picker meanwhile
     if (!r?.ok || !r.tree) return set(card.id, { pickState: "error", pickError: r?.error === "login" ? "Sign in to Plus4U to read the structure." : r?.error || "The structure could not be loaded." });
     const ids = defaultChecked(r.tree);
-    set(card.id, { pickState: "ready", pick: { url: card.url, kind: r.kind, title: r.tree.title, count: ids.length, outline: pickOutline(r.tree, ids) } });
+    set(card.id, { pickState: "ready", tree: r.tree, pick: { url: card.url, kind: r.kind, title: r.tree.title, count: ids.length, outline: pickOutline(r.tree, ids) } });
   }
   function setUse(card, use) {
     if ((card.use ?? "reference") === use) return;
-    if (use === "sitemap") loadPick(card); else set(card.id, { use: "reference", pick: null, pickState: "", pickError: "" });
+    if (use === "sitemap") loadPick(card); else set(card.id, { use: "reference", pick: null, tree: null, pickState: "", pickError: "" });
     onUse(use);
   }
 
