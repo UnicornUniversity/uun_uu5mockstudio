@@ -3,7 +3,7 @@
  * Custom items only send an action id to the renderer, which owns the dialogs and UI state; Edit/Window items are
  * standard roles (text editing shortcuts in the chat field depend on them).
  */
-export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, agents = null, send = () => {} }) {
+export function buildMenuTemplate({ platform = process.platform, appName = "uu5Mock Studio", projects = [], current = null, repoLinked = false, glass = false, offline = false, isDev = false, agents = null, screenHasVariants = false, send = () => {} }) {
   // Everything that is set up once (role, look, AI providers, integrations, offline cache) lives in Settings…; the menus hold actions.
   // Which AI providers are shown there is decided in the renderer (settingsModel.js) from the same `agents`.
   const mac = platform === "darwin";
@@ -78,7 +78,9 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
     ],
   };
 
-  // Screen: actions on the selected screen (the same ones as in its ⋯ and right-click menu).
+  // Screen: actions on the selected screen (the same ones as in its ⋯ and right-click menu). Undo / Redo of a screen change are the
+  // standard ones of Edit (outside a text field they undo the last change of the screen), so they are not repeated here; "Use This
+  // Variant…" is there only while the selected screen is a variant or has variants (`screenHasVariants`, sent by the renderer).
   const screen = {
     label: "Screen",
     submenu: [
@@ -88,11 +90,9 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Add Note", "screen:note", { accelerator: "Alt+CmdOrCtrl+N", enabled: has }),
       item("Description…", "screen:desc", { enabled: has }),
       item("Variants…", "screen:variants", { enabled: has }),
-      item("Use This Variant…", "screen:keepvariant", { enabled: has }),
+      ...(has && screenHasVariants ? [item("Use This Variant…", "screen:keepvariant")] : []),
       item("Show Component Tree…", "screen:structure", { enabled: has }),
       item("Save as Template…", "screen:template", { enabled: has }),
-      item("Undo Screen Change", "screen:undo", { accelerator: "Alt+CmdOrCtrl+Z", enabled: has }),
-      item("Redo Screen Change", "screen:redo", { accelerator: "Alt+Shift+CmdOrCtrl+Z", enabled: has }),
       item("Add Rule…", "screen:rule", { enabled: has }),
       item("Mention in Chat", "screen:mention", { enabled: has }),
       sep,

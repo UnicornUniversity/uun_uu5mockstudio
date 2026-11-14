@@ -4,7 +4,7 @@ The inspector changes a screen **without code**. Every change is written straigh
 
 ## Turning it on
 
-Click the inspector button (a crosshair in a frame) in the top bar or on the bar over a selected screen, or press **I**. While it is on, the cursor over a screen is a crosshair (over buttons and links too), the component under the pointer is outlined in blue and the panel on the right waits for a click. **Esc** or the cross of the panel turns it off. Scrolling works as usual (the wheel scrolls the screen, **⌥** moves the canvas).
+Click the Edit button (a frame with a pencil) in the tool rail on the left edge of the canvas, under the Select arrow, or on the bar over a selected screen, or press **I**. While it is on, the cursor over a screen is a crosshair (over buttons and links too), the component under the pointer is outlined in blue and the panel on the right waits for a click. **Esc** or the cross of the panel turns it off. Scrolling works as usual (the wheel scrolls the screen, **⌥** moves the canvas).
 
 ## Picking a component
 

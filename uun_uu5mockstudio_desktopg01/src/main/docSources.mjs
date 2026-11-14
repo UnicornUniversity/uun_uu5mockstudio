@@ -32,6 +32,8 @@ export const KINDS = {
     readTools: ["toolUuManagementkitEccPanelGetContent", "toolUuManagementkitEccPanelListSections", "toolUuManagementkitEccSectionGet", "toolUuManagementkitEccDocumentGetMetadata", "toolUuManagementkitEccSectionListVersions", "toolUuManagementkitEccSectionGetVersion",
       "toolUuManagementkitEbcGetMetadata", "toolUuManagementkitEbcCollectionList", "toolUuManagementkitEbcFileList", "toolUuManagementkitEbcFileGetMetadata", "toolUuManagementkitEbcFileLoad"],
     fileTool: "toolUuManagementkitEbcFileLoad",
+    // writing screens and the sitemap onto pages of the document: called only by the app (on the user's command), never given to the agent
+    writeTools: ["toolUuManagementkitEccDocumentCreatePage", "toolUuManagementkitEccPanelCreateSection", "toolUuManagementkitEccSectionSetContent"],
     structureTool: "toolUuManagementkitEccDocumentGetMetadata", // the pages of the document
     sectionTool: "toolUuManagementkitEccSectionGet", // the load tool cuts a section at 20 000 characters (truncated: true): this one gives all of it
   },

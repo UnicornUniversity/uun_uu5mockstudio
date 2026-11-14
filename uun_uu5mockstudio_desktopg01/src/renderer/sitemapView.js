@@ -283,7 +283,7 @@ export function renderSitemap(sm, opts) {
     if (n > 1) bar.append(mini('<path d="M6 15l6-6 6 6"/>', "Previous match (Shift + Enter)", () => go(query, hitAt - 1)), mini('<path d="M6 9l6 6 6-6"/>', "Next match (Enter)", () => go(query, hitAt + 1)));
     if (q) bar.append(mini('<path d="M6 6l12 12M18 6L6 18"/>', "Clear the search (Esc)", () => go("", 0)));
     bar.onclick = (e) => { if (!e.target.closest("button")) inp.focus(); }; // a click on the lupa opens the field
-    root.searchBar = bar; // the card puts it on its toolbar (Fold all, Unfold all, Export); without a toolbar it floats over the map
+    root.searchBar = bar; // the card puts it on its toolbar (Fold all, Unfold all, Share); without a toolbar it floats over the map
     mapwrap.append(bar);
     if (opts.searchFocus) requestAnimationFrame(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); });
     if (opts.searchScroll && curId) requestAnimationFrame(() => [...scroll.querySelectorAll(".sm-node.cur")][0]?.scrollIntoView({ block: "center", inline: "center" }));

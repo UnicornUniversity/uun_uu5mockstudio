@@ -317,7 +317,24 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     return login(doc.kind);
   }
 
-  return { fetchDoc, structure, status, login, loginFor, close };
+  /**
+   * One tool of a kind for the app's own features (writing a screen onto a page of a document): only the read and write tools of KINDS.
+   * { data } or { error: "login" | "territory" | "npx" | message }; never opens a browser (the caller offers the sign-in).
+   */
+  async function tool(kind, name, args = {}, { timeout = LOAD_TIMEOUT, also = [] } = {}) {
+    const k = KINDS[kind];
+    if (!k || ![...k.readTools, ...(k.writeTools ?? []), ...also].includes(name)) return { error: `The tool ${name} is not allowed.` };
+    try {
+      const st = await status(kind);
+      if (st.error) return { error: st.error };
+      if (!st.signedIn) return { error: "login" };
+      const res = await call(kind, name, args, timeout);
+      if (res?.isError) { const msg = textOf(res) || `${name} failed.`; return { error: isAuthError(msg) ? "login" : msg }; }
+      return { data: resultData(res) };
+    } catch (e) { return { error: e.code ?? (isAuthError(e.message) ? "login" : String(e.message ?? e)) }; }
+  }
+
+  return { fetchDoc, structure, status, login, loginFor, tool, close };
 }
 
 /** The hidden folder (in the projects folder, never listed) where documents pasted on the dashboard are read: no project is open there yet. */

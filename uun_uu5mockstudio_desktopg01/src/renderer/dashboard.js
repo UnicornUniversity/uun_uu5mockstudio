@@ -66,7 +66,7 @@ export function projectNameFromTitle(title, taken = []) {
  * The first view of the app: write what to design (a project is made for it and the chat goes on there) or open a project from the recent ones.
  * `api` = window.studio (projectThumb, projectsFolder); the callbacks do the work in the renderer.
  */
-export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onFolder, onDelete, onTemplates, onLevel, onScope }) {
+export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onNewFromDoc, onFolder, onDelete, onTemplates, onLevel, onScope }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
   let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null, scope = "single";
   try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; if (localStorage.getItem(SCOPE_KEY) === "site") scope = "site"; } catch { /* default */ }
@@ -144,6 +144,25 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   for (const b of root.querySelectorAll("#dash-views button")) b.onclick = () => setView(b.dataset.view);
   search.addEventListener("input", paint);
   $("dash-newbtn").onclick = onNew;
+  // New Project has a caret while signed in to Plus4U: a project from a Plus4U document
+  const newMenu = Object.assign(document.createElement("div"), { id: "dash-newmenu", hidden: true });
+  newMenu.setAttribute("role", "menu"); document.body.append(newMenu);
+  for (const [label, run] of [["New project", () => onNew()], ["New project from Plus4U…", () => onNewFromDoc?.()]]) {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: label });
+    b.setAttribute("role", "menuitem"); b.onclick = (e) => { e.stopPropagation(); newMenu.hidden = true; run(); };
+    newMenu.append(b);
+  }
+  $("dash-newmore").onclick = (e) => {
+    e.stopPropagation();
+    if (!newMenu.hidden) { newMenu.hidden = true; return; }
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true })); // one dropdown at a time
+    newMenu.hidden = false;
+    const r = $("dash-new").getBoundingClientRect();
+    newMenu.style.top = `${r.bottom + 6}px`; newMenu.style.left = `${Math.max(8, r.right - newMenu.offsetWidth)}px`;
+  };
+  document.addEventListener("click", (e) => { if (!newMenu.hidden && !newMenu.contains(e.target)) newMenu.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !newMenu.hidden) { newMenu.hidden = true; e.stopPropagation(); } }, true);
+  function setPlus4u(on) { $("dash-newmore").hidden = !on; $("dash-new").classList.toggle("split", Boolean(on)); if (!on) newMenu.hidden = true; }
   $("dash-reveal").onclick = () => onFolder("open");
   $("dash-change").onclick = () => onFolder("change");
   /** The second row of Web and Document: one page or the whole site. A whole site is planned first (the sitemap), whatever the Agent / Plan switch says. */
@@ -201,6 +220,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   setPlan(false); refreshSend(); setView(view);
 
   return {
+    setPlus4u,
     show(list, { plan: p } = {}) { projects = list ?? []; root.hidden = false; loadTemplates(); if (typeof p === "boolean") setPlan(p); search.value = ""; showFolder(); setSection(section); },
     hide() { root.hidden = true; seq++; },
     reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },

@@ -4,14 +4,14 @@ What is learned while designing does not stay in the chat. It is kept as plain f
 
 ## Business rules
 
-**Project → Business Rules… (⌥⌘R)** or the book icon in the top bar (it shows the number of rules).
+**Project → Business Rules… (⌥⌘R)** or **Project ▾ → Business rules…** in the top bar (it shows the number of rules).
 
 - Rules are bullets in `BUSINESS_RULES.md`: `- R-012 text` under `## General` for a rule of the whole project, and `- R-012 (screen: name) text` under `## Screen: name` for a rule of one screen.
 - The dialog shows them rendered. **Click a rule to edit it in place**, use the cross to delete it, or type a new rule at the bottom, choose the section (General or a screen) and press Enter. The **‹ › button** switches to the Markdown code and back.
 - **Sections roll up**: click the heading (General, Screen: …) to hide its rules; the number of hidden rules is shown, and the choice is remembered.
 - **This project (N)** and **All projects (N)** switch between the two files and show how many rules each holds.
 - **Claude records rules itself**, without asking: the rules you state, and the rules the screen it builds implements (who may do what, conditions of a change of state, validations and required data, what is shown or hidden by role or state, calculations and thresholds). A rule Claude worked out or chose itself ends with **(assumed)**, so you can confirm or correct it. Purely visual details and controls that exist only for the demo are not recorded. After recording, Claude says in one line which rules it added.
-- The **project description** is shown in a line above the canvas only when there is one; add it with the ⓘ button in the top bar or **Project → Project Description…** (⌥⌘D).
+- The **project description** is shown in a line above the canvas only when there is one; add it with **Project ▾ → Description…** in the top bar or **Project → Project Description…** (⌥⌘D).
 - **Deleting a screen removes the rules of that screen** (and its description). A copy is kept in `.studio/removed-screen-memory.md`.
 
 ### Rules for all projects

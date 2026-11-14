@@ -918,24 +918,24 @@ body.catalog-dragging{-webkit-user-select:none;user-select:none}
 /* the Share menu of the selected screen: what (format tiles), then what to do (actions) */
 #selbar button.labeled .lbl{line-height:1;font-size:13px;margin-left:3px}
 #selmenu.fmt{min-width:0;width:max-content;padding:10px}
-#selmenu .fmt-tiles{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
-#selmenu .fmt-tiles .fmt-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:72px;padding:6px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:center;font-size:12.5px;line-height:1.2}
-#selmenu .fmt-tiles .fmt-tile .ico{width:22px;height:22px;color:var(--mute)}
-#selmenu .fmt-tiles .fmt-tile:hover{background:var(--bg)}
-#selmenu .fmt-tiles .fmt-tile.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
-#selmenu .fmt-tiles .fmt-tile.on .ico{color:var(--acc)}
-#selmenu .fmt-hint{margin:8px 2px 2px;color:var(--mute);font-size:12px;max-width:386px}
-#selmenu.fmt hr{margin:8px 0}
-#selmenu .fmt-acts{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
-#selmenu .fmt-acts button{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);padding:7px 6px;border-radius:8px;white-space:nowrap}
-#selmenu .fmt-acts button .ico{width:15px;height:15px}
-#selmenu .fmt-acts button:hover{background:var(--bg);border-color:var(--mute)}
-#selmenu .fmt-acts button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-#selmenu .fmt-acts button.primary:hover{filter:brightness(1.08);background:var(--acc)}
-#selmenu .fmt-acts button.dragrow{color:inherit;cursor:grab}
-#selmenu .fmt-acts button.dragrow .grip{color:var(--mute)}
-#selmenu .fmt-acts button.dragrow[data-state="preparing"]{opacity:.45;cursor:progress}
-#selmenu .fmt-acts button.dragrow[data-state="preparing"]::after{content:none}
+:is(#selmenu,.fmt-panel) .fmt-tiles{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
+:is(#selmenu,.fmt-panel) .fmt-tiles .fmt-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:72px;padding:6px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:center;font-size:12.5px;line-height:1.2}
+:is(#selmenu,.fmt-panel) .fmt-tiles .fmt-tile .ico{width:22px;height:22px;color:var(--mute)}
+:is(#selmenu,.fmt-panel) .fmt-tiles .fmt-tile:hover{background:var(--bg)}
+:is(#selmenu,.fmt-panel) .fmt-tiles .fmt-tile.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
+:is(#selmenu,.fmt-panel) .fmt-tiles .fmt-tile.on .ico{color:var(--acc)}
+:is(#selmenu,.fmt-panel) .fmt-hint{margin:8px 2px 2px;color:var(--mute);font-size:12px;max-width:386px}
+#selmenu.fmt hr,.fmt-panel hr{margin:8px 0}
+:is(#selmenu,.fmt-panel) .fmt-acts{display:grid;grid-template-columns:repeat(4,92px);gap:6px}
+:is(#selmenu,.fmt-panel) .fmt-acts button{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);padding:7px 6px;border-radius:8px;white-space:nowrap}
+:is(#selmenu,.fmt-panel) .fmt-acts button .ico{width:15px;height:15px}
+:is(#selmenu,.fmt-panel) .fmt-acts button:hover{background:var(--bg);border-color:var(--mute)}
+:is(#selmenu,.fmt-panel) .fmt-acts button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+:is(#selmenu,.fmt-panel) .fmt-acts button.primary:hover{filter:brightness(1.08);background:var(--acc)}
+:is(#selmenu,.fmt-panel) .fmt-acts button.dragrow{color:inherit;cursor:grab}
+:is(#selmenu,.fmt-panel) .fmt-acts button.dragrow .grip{color:var(--mute)}
+:is(#selmenu,.fmt-panel) .fmt-acts button.dragrow[data-state="preparing"]{opacity:.45;cursor:progress}
+:is(#selmenu,.fmt-panel) .fmt-acts button.dragrow[data-state="preparing"]::after{content:none}
 /* Material Design Icons in the icon picker and the panel; a dashed frame: newer than MDI 4, a document may not show it */
 .picon-mdi{font-size:24px;line-height:1;display:inline-block}.picon-mdi::before{display:inline-block}
 .pcode .picon-mdi{font-size:20px;flex:none}
@@ -1296,8 +1296,7 @@ body[data-glass] :is(#plansmenu,#mapmenu){background:var(--panel)!important;back
 /* the "Advanced" switch is a setting, not a view: when on it is a soft tint, the filled accent is for the view that is shown (Sitemap, Plans) and the Edit mode */
 #bar .viewtog.on{background:color-mix(in srgb,var(--acc) 14%,transparent)!important;color:var(--acc)!important;border-color:transparent!important}
 /* the toolbar in three groups: views (Sitemap, Plans) | zoom | tools; a thin divider and a little air between them */
-#bar #zoompill,#bar #descbtn{position:relative;margin-left:8px}
-#bar #zoompill::before,#bar #descbtn::before{content:"";position:absolute;left:-6px;top:20%;bottom:20%;width:1px;background:var(--line);pointer-events:none}
+
 #bar .ctl>button.icon,#bar #zpct{min-height:32px}
 #bar .ctl button.icon[disabled]{opacity:.5}
 #bar :is(#plansbtn,#mapbtn).on .zcar{opacity:.9;stroke:#fff}
@@ -1319,7 +1318,7 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 .sm-node.drop-inside{outline:2px solid var(--acc);outline-offset:1px;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
 .sm-node.drop-before{box-shadow:0 -3px 0 0 var(--acc)}.sm-node.drop-after{box-shadow:0 3px 0 0 var(--acc)}
 /* the view is the work area itself, not a card on it: no frame, no title bar of the sitemap (the toolbar says what is shown), no row of chips */
-#docview{background:var(--panel)}
+#docview{background:var(--canvas);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:24px 24px} /* the sitemap and the plans lie where the canvas lies: the same surface */
 .plancard.pc-inview{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
 .pc-inview .pc-mapbox{border:0;padding:0;background:transparent}
 .pc-inview .pc-treehead{padding-top:10px}
@@ -1422,3 +1421,231 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 .sm-node.ap:not(#a){border-color:color-mix(in srgb,var(--acc) 55%,var(--line));background:color-mix(in srgb,var(--acc) 8%,var(--panel))}
 .sm-node.apdim:not(#a){opacity:.4}.sm-node.apdim:not(#a):hover{opacity:1}
 .sm-apcount{font-size:12px;color:var(--mute);white-space:nowrap;padding:0 4px}
+
+/* Plus4U account button and its menu */
+.acctbtn{border-radius:999px!important;overflow:hidden;border:0!important;background:none!important;box-shadow:none!important}
+.acctbtn:hover{opacity:.85}
+.acctbtn img{width:26px;height:26px;border-radius:50%;object-fit:cover;display:block}
+.acctbtn .acct-ini,#acctmenu .acct-ini{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--fg);color:var(--panel);font-size:11px;font-weight:600}
+.acctbtn.busy{opacity:.6;cursor:progress}
+.acctbtn .ico{width:22px;height:22px;stroke-width:1.4;color:var(--mute)}
+.dash-tools .acctbtn .ico{width:26px;height:26px;stroke-width:1.3}
+.acctbtn:hover .ico{color:var(--fg)}
+.dash-tools .acctbtn{padding:0;width:38px;height:38px;flex:none;justify-content:center}
+.dash-tools .acctbtn img,.dash-tools .acctbtn .acct-ini{width:30px;height:30px}
+#bar .acctbtn{width:32px;height:32px;padding:2px 0;display:inline-grid;place-items:center}
+#acctmenu{position:fixed;z-index:60;min-width:240px;display:flex;flex-direction:column;gap:1px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35);-webkit-app-region:no-drag}
+#acctmenu[hidden]{display:none}
+#acctmenu .acct-head{display:flex;align-items:center;gap:10px;padding:8px}
+#acctmenu .acct-head img,#acctmenu .acct-head .acct-ini{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none}
+#acctmenu .acct-head div{display:flex;flex-direction:column;min-width:0}
+#acctmenu .acct-head b{font-size:13px;font-weight:600}
+#acctmenu .acct-head .mute{font-size:12px;color:var(--mute)}
+#acctmenu .pm-sep{display:block;height:1px;margin:4px 0;background:var(--line)}
+#acctmenu button{text-align:left;padding:7px 10px;border:0;border-radius:7px;background:none}
+#acctmenu button:hover{background:var(--bg)}
+
+/* Plus4U: the choice of a page of the linked document */
+.p4u-dlg{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:45}
+.p4u-dlg .card{width:min(460px,92vw);max-height:80vh;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.p4u-dlg h2{margin:0;font-size:15px}
+.p4u-pages{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;border:1px solid var(--line);border-radius:10px;padding:6px}
+.p4u-pages label{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer}
+.p4u-pages label:hover{background:var(--bg)}
+.p4u-pages small{margin-left:auto;color:var(--mute);font-size:11.5px;white-space:nowrap}
+.p4u-pages .p4u-newname{flex:1;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg);font:inherit}
+.p4u-dlg .mute{margin:0;font-size:12.5px;color:var(--mute)}
+.p4u-foot{display:flex;justify-content:flex-end;gap:8px}
+.p4u-foot .primary{background:var(--acc);border-color:var(--acc);color:#fff}
+
+/* Plus4U link in the project toolbar: one chip (document, status dot, menu); Upload / Download live in its menu */
+#p4ubar{display:inline-flex;align-items:center;-webkit-app-region:no-drag}
+#p4ubar[hidden]{display:none}
+#p4ubar .p4u-chip{position:relative;display:inline-flex;align-items:center;gap:6px;max-width:190px;min-height:32px;padding:0 8px 0 10px;border-radius:999px}
+#p4ubar .p4u-chip .ico{color:var(--acc);flex:none;width:16px;height:16px}
+#p4ubar .p4u-chip.busy .ico{animation:p4uspin .9s linear infinite}
+#p4ubar .p4u-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#p4ubar .p4u-chip .zcar{width:10px;height:6px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;opacity:.6}
+#p4ubar .p4u-ib{width:32px;height:32px;padding:0;display:inline-grid;place-items:center;border-radius:999px}
+#p4ubar .p4u-ib .ico{width:18px;height:18px;color:var(--mute)}
+#p4ubar .p4u-ib:hover .ico{color:var(--fg)}
+.p4u-dot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex:none}
+.p4u-dot-remote .p4u-dot,.p4u-dot-download .p4u-dot{background:#e0a020}
+@keyframes p4uspin{to{transform:rotate(360deg)}}
+#p4umenu .p4u-sync{display:flex;align-items:center;gap:10px}
+#p4umenu .p4u-sync .ico{width:18px;height:18px;flex:none;color:var(--mute)}
+#p4umenu .p4u-sync.p4u-dot-upload .ico,#p4umenu .p4u-sync.p4u-dot-download .ico{color:var(--fg)}
+#p4umenu .p4u-sync[disabled]{opacity:.6;cursor:progress}
+#p4umenu .p4u-st{display:flex;flex-direction:column;min-width:0;flex:1}
+#p4umenu .p4u-st .mute{font-size:12px;color:var(--mute)}
+#p4umenu{position:fixed;z-index:60;min-width:260px;max-width:360px;display:flex;flex-direction:column;gap:1px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#p4umenu[hidden]{display:none}
+#p4umenu .p4u-mhead{display:flex;align-items:center;gap:10px;padding:8px}
+#p4umenu .p4u-mhead .ico{width:22px;height:22px;color:var(--acc);flex:none}
+#p4umenu .p4u-mhead div{display:flex;flex-direction:column;min-width:0}
+#p4umenu .p4u-mhead b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p4umenu .p4u-mhead .mute{font-size:12px;color:var(--mute)}
+#p4umenu .pm-sep{display:block;height:1px;margin:4px 0;background:var(--line)}
+#p4umenu button{text-align:left;padding:7px 10px;border:0;border-radius:7px;background:none}
+#p4umenu button:hover{background:var(--bg)}
+
+/* Share menu: Publish as a split button (publish again | choose another page or document) and where it goes */
+:is(#selmenu,.fmt-panel) .fmt-split{display:flex;min-width:0}
+:is(#selmenu,.fmt-panel) .fmt-split>button:first-child{flex:1;min-width:0}
+:is(#selmenu,.fmt-panel) .fmt-split:has(.fmt-caret)>button:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+:is(#selmenu,.fmt-panel) .fmt-split .fmt-caret{width:24px;flex:none;padding:0;display:grid;place-items:center;border-top-left-radius:0;border-bottom-left-radius:0;border-left:0}
+:is(#selmenu,.fmt-panel) .fmt-split .fmt-caret .zcar{width:10px;height:6px;fill:none;stroke:currentColor;stroke-width:1.6}
+:is(#selmenu,.fmt-panel) .fmt-pubto{margin:6px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p4u-dlg .p4u-lab{font-size:12px;color:var(--mute);margin-top:4px}
+.p4u-dlg .p4u-doc{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+.p4u-dlg .p4u-other{display:flex;gap:6px}
+.p4u-dlg .p4u-other[hidden]{display:none}
+.p4u-dlg .p4u-other input{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+.p4u-dlg .p4u-status:empty{display:none}
+:is(#selmenu,.fmt-panel) .fmt-split>button:first-child .ico{flex:none;width:16px;height:16px}
+.p4u-dlg .p4u-pname{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+.p4u-dlg [hidden]{display:none}
+.dash-split{display:inline-flex}
+.dash-split.split #dash-newbtn{border-top-right-radius:0;border-bottom-right-radius:0}
+.dash-tools #dash-newmore{padding:7px 9px;border-top-left-radius:0;border-bottom-left-radius:0;border-left:1px solid color-mix(in srgb,var(--panel) 35%,transparent)}
+#dash-newmore[hidden]{display:none}
+#dash-newmore .zcar{width:10px;height:6px;fill:none;stroke:currentColor;stroke-width:1.6}
+#dash-newmenu{position:fixed;z-index:60;min-width:220px;display:flex;flex-direction:column;gap:1px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35);-webkit-app-region:no-drag}
+#dash-newmenu[hidden]{display:none}
+#dash-newmenu button{text-align:left;padding:7px 10px;border:0;border-radius:7px;background:none}
+#dash-newmenu button:hover{background:var(--bg)}
+.fmt-panel{position:fixed;z-index:60;width:max-content;padding:10px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.28);display:flex;flex-direction:column}
+.fmt-panel hr{border:0;border-top:1px solid var(--line);height:0}
+/* after the shared rules (same specificity): three tiles */
+:is(#selmenu,.fmt-panel) .smsh-tiles,:is(#selmenu,.fmt-panel) .smsh-acts{grid-template-columns:repeat(3,92px)}
+:is(#selmenu,.fmt-panel) .smsh-tiles~.fmt-hint{max-width:288px}
+/* the toolbar of a map: Web | Portals on the left; on the right the search, icon tools and the accented Share (like the bar of a screen) */
+.pc-maphead{gap:10px;padding-bottom:10px;margin-bottom:12px!important}
+.pc-maphead .sm-kindsw .pc-mini{height:30px;padding:0 12px;font-size:13px}
+.pc-tools{margin-left:auto;display:flex;align-items:center;gap:4px}
+.pc-ib{width:30px;height:30px;flex:none;display:grid;place-items:center;padding:0;border:0;border-radius:999px;background:transparent;color:var(--mute);cursor:pointer}
+.pc-ib:hover{background:var(--code);color:var(--fg)}
+.pc-ib[aria-pressed="true"]{color:var(--acc)}
+.pc-ib .ico{width:17px;height:17px}
+.pc-share{display:inline-flex;align-items:center;gap:6px;height:30px;margin-left:6px;padding:0 13px 0 11px;border:0;border-radius:999px;background:var(--acc);color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.pc-share:hover{filter:brightness(1.08)}
+.pc-share .ico{width:16px;height:16px}
+.pc-tools .sm-searchbar.intool{margin-right:2px}
+/* the row under the toolbar (note, Revise, Real links): same height as the toolbar controls */
+.pc-sitemap .sm-review{gap:8px}
+.pc-sitemap .sm-review .sm-wish{height:30px;padding:0 10px}
+.pc-sitemap .sm-review .pc-mini{height:30px;padding:0 12px;font-size:13px}
+.pc-tools .sm-searchbar.intool:not(:focus-within):not(.on){background:transparent;height:30px}
+.pc-tools .sm-searchbar.intool:not(:focus-within):not(.on):hover{background:var(--code);border-color:transparent}
+/* ---------- the toolbar in groups (view · project · Plus4U and account) and the tools on the canvas ---------- */
+#bar .ctl{gap:10px}
+.tbgroup{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.tbgroup[hidden]{display:none}
+#bar .tbgroup :is(button,#mapbtn,#plansbtn){display:inline-flex;align-items:center;gap:6px;height:30px;min-height:30px;padding:0 11px;border:0!important;border-radius:999px!important;background:transparent!important;box-shadow:none!important;color:var(--fg)}
+#bar .tbgroup button:hover{background:var(--bg)!important}
+#bar .tbgroup button .ico{width:15px;height:15px}
+#bar .tbgroup button .zcar{width:9px;height:6px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+#bar .tbgroup :is(#canvasbtn,#mapbtn,#plansbtn).on{background:color-mix(in srgb,var(--acc) 14%,transparent)!important;color:var(--acc)!important}
+#bar .tbgroup :is(#mapbtn,#plansbtn).on :is(.ico,.zcar){stroke:currentColor}
+#bar .tbgroup button.icon{width:30px;padding:0;justify-content:center}
+#bar .tbgroup #projinfo.open{background:var(--bg)!important}
+body[data-glass] #bar .tbgroup{background:var(--glass-thin);border-color:var(--glass-edge)}
+#projinfow{position:relative;display:inline-flex}
+#projinfomenu{position:absolute;top:calc(100% + 8px);left:0;z-index:50;min-width:220px;display:flex;flex-direction:column;gap:1px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#projinfomenu[hidden]{display:none}
+#bar #projinfomenu button{display:flex;justify-content:space-between;align-items:center;gap:16px;height:auto;min-height:0;padding:7px 10px!important;border-radius:7px!important;text-align:left;font:inherit}
+#projinfomenu small{color:var(--mute);font-size:12px}
+#projinfomenu .pi-sep{height:1px;background:var(--line);margin:4px 2px}
+#bar #projinfomenu .pi-adv::after{content:"";width:28px;height:16px;border-radius:8px;background:var(--line);box-shadow:inset 0 0 0 2px var(--line);flex:none;transition:background .15s}
+#bar #projinfomenu .pi-adv{position:relative}
+#bar #projinfomenu .pi-adv::before{content:"";position:absolute;right:24px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:#fff;transition:right .15s;z-index:1}
+#bar #projinfomenu .pi-adv.on::after{background:var(--acc);box-shadow:none}
+#bar #projinfomenu .pi-adv.on::before{right:12px}
+#bar #projinfomenu .pi-adv.on{color:var(--fg)!important;background:transparent!important}
+body.simple #projinfomenu .pi-rules{display:none}
+#acctgrp #p4ubar:not([hidden]){display:inline-flex}
+#acctgrp #p4ubar .p4u-chip{border:0;background:transparent}
+#bar #acctgrp .acctbtn{width:30px;height:30px;padding:0}
+#bar #acctgrp .acctbtn img,#bar #acctgrp .acctbtn .acct-ini{width:26px;height:26px}
+#cmtbtn{position:relative}
+
+/* the tools of the canvas: a floating rail on its left edge, the zoom in its bottom right corner */
+#toolrail{position:absolute;left:12px;top:50%;transform:translateY(-50%);z-index:11;display:flex;flex-direction:column;gap:2px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+#toolrail:has(#inspect[hidden]),#canvas:has(#docview:not([hidden])) #toolrail,body[data-noproject] #toolrail{display:none}
+#toolrail button{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--mute);box-shadow:none}
+#toolrail button:hover{background:var(--bg);color:var(--fg)}
+#toolrail button.on,#toolrail #flowbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
+#toolrail button[hidden]{display:none}
+#toolrail .ico{width:18px;height:18px}
+#toolrail #inspect .elbl{display:none!important}
+#toolrail #railsel .ico{fill:currentColor;stroke:none;width:16px;height:16px}
+#zoomcorner{position:absolute;right:12px;bottom:12px;z-index:13}
+body[data-noproject] #zoomcorner{display:none}
+#zoomcorner #zoompill{border:1px solid var(--line);border-radius:999px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+#zoomcorner #zpct{border:0;background:transparent;height:30px}
+#zoomcorner #zmenu{top:auto;bottom:calc(100% + 6px);left:auto;right:0}
+body[data-glass] :is(#toolrail,#zoomcorner #zoompill){background:var(--glass-thin);border-color:var(--glass-edge);backdrop-filter:blur(14px)}
+#bar #cmtbtn .ico{width:17px;height:17px}
+#acctgrp:has(#p4ubar[hidden]){border-color:transparent;background:none!important;padding:0}
+#bar .tbgroup #cmtbtn{width:30px;padding:0;justify-content:center}
+#bar .tbgroup button .ico{flex:none}
+#projinfomenu{left:auto;right:0}
+#bar .tbgroup #acctbtn{width:30px;padding:0;justify-content:center}
+#bar .tbgroup #acctbtn .ico{width:21px;height:21px}
+body.docview-on #bar .tbgroup #cmtbtn{display:none}
+body.docview-on #tabs>*{display:none} /* the tabs of the screens belong to the canvas, not to the sitemap or a plan */
+/* the top bar is part of the work surface (like pen.dev): the colour of the canvas, no line under it; the groups float on it */
+#bar{background:var(--canvas);border-bottom-color:transparent}
+#seledit .ico{width:17px;height:17px}
+/* ---------- the right panels (Edit, the page of the sitemap) as floating cards on the work surface, like pen.dev: sections with a line between them, grey filled fields ---------- */
+#work{background:var(--canvas)}
+:is(#inspector,#smside){margin:8px 8px 8px 0;border:1px solid var(--line)!important;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.08);padding:0!important;display:flex;flex-direction:column;overflow:auto;box-sizing:border-box}
+:is(#inspector,#smside)[hidden]{display:none}
+:is(#inspector,#smside)>.insp-head{position:sticky;top:0;z-index:1;background:var(--panel);margin:0!important;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+:is(#inspector,#smside) .insp-head h3{font-size:14px;font-weight:600}
+:is(#inspector,#smside)>:not(.insp-head){margin-left:16px;margin-right:16px}
+#smside-body{padding:12px 0 16px}
+#insp-hint{font-size:12.5px;line-height:1.5;margin-top:12px!important;margin-bottom:12px!important}
+#insp-comp{padding-bottom:16px}
+#insp-comp>#insp-crumbs{margin-top:12px}
+#inspector h4{font-size:15px;margin:8px 0 2px}
+#inspector h5{font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--fg);margin:16px -16px 10px;padding:14px 16px 0;border-top:1px solid var(--line)}
+.prow{grid-template-columns:96px 1fr 18px;gap:8px;margin-bottom:8px}
+.prow .pname{color:var(--mute)}
+:is(#inspector,#smside) :is(input[type=text],input[type=number],select,textarea){background:var(--bg);border:1px solid transparent;border-radius:8px;padding:6px 8px;color:var(--fg);box-shadow:none}
+:is(#inspector,#smside) :is(input[type=text],input[type=number],select,textarea):hover{border-color:var(--line)}
+:is(#inspector,#smside) :is(input[type=text],input[type=number],select,textarea):focus{border-color:var(--acc);outline:none;background:var(--panel)}
+#inspector #insp-comp>button{background:var(--bg);border:1px solid transparent;border-radius:8px;padding:8px 10px;font-weight:500}
+#inspector #insp-comp>button:hover{border-color:var(--line)}
+#inspector #insp-comp>#insp-use{background:var(--acc);color:#fff;margin-top:16px}
+#inspector #insp-comp>#insp-delete{background:none;color:#e5484d}
+#inspector #insp-comp>#insp-delete:hover{background:rgba(229,72,77,.1);border-color:transparent}
+/* ---------- one light work surface (like pen.dev): the canvas, the top bar, the sitemap and the space around the panels share one light grey;
+   the docked chat and the right panels are white cards floating on it ---------- */
+:root[data-theme="light"]{--canvas:#f4f5f7;--dot:#d9dce2}
+body{background:var(--canvas)}
+body:not([data-chat="float"]):not([data-fs]) #chat{margin:8px 0 8px 8px;border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.06);overflow:hidden;box-sizing:border-box}
+body:not([data-chat="float"]):not([data-fs]) #chat header{border-bottom-color:var(--line)}
+:is(#inspector,#smside){box-shadow:0 6px 24px rgba(0,0,0,.06)}
+#toolrail,#zoomcorner #zoompill,.tbgroup{box-shadow:0 2px 10px rgba(0,0,0,.05)}
+/* ---------- the sitemap (and a plan) in the full view: one calm header on the work surface, no lines across it ---------- */
+.pc-inview .pc-title{height:auto;padding:16px 24px 4px;border-bottom:0!important;background:transparent}
+.pc-inview .pc-name{font-size:16px}
+.pc-inview .pc-body,.pc-inview .pc-view{padding-left:24px;padding-right:24px}
+.sitemapcard.pc-inview .pc-maphead{border-bottom:0;padding-top:6px;padding-bottom:0;margin-bottom:10px!important}
+.pc-maphead .sm-kindsw{padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.pc-maphead .sm-kindsw .pc-mini{height:28px!important;border:0!important;border-radius:999px!important;margin:0!important;background:transparent;color:var(--fg)}
+.pc-maphead .sm-kindsw .pc-mini.on{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
+.pc-sitemap .sm-review .sm-wish{border-radius:999px;padding:0 14px;background:var(--panel)}
+.pc-sitemap .sm-review .pc-mini{border-radius:999px}
+.pc-sitemap .sm-review .pc-mini:not(.accent){background:var(--panel)}
+/* the tabs of the screens: one capsule like the groups on the right (a quiet strip that scrolls sideways when there are many), the screen in focus tinted */
+#bar #tabs{flex:0 1 auto;min-width:0;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel);box-shadow:0 2px 10px rgba(0,0,0,.05)}
+#bar #tabs:empty,body.docview-on #bar #tabs{display:none}
+#bar .ctl{margin-left:auto}
+#bar #tabs .tab{height:30px;padding:0 12px;border:0;border-radius:999px;color:var(--mute);background:transparent}
+#bar #tabs .tab:hover{background:var(--bg);color:var(--fg)}
+#bar #tabs .tab.on{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);border:0}
+/* the tool rail lies over screens too: icons in the text colour (not the muted grey), so they read on any background */
+#toolrail button{color:color-mix(in srgb,var(--fg) 78%,transparent)}
+#bar #tabs{display:none!important} /* the screens are on the canvas: no tab strip of them in the top bar */

@@ -47,6 +47,9 @@ import { kindLabel } from "./docLinks.js";
 import { openSitePicker } from "./sitePicker.js";
 import { structureContext } from "./siteStructure.js";
 import { addDialogClose, escapeTarget } from "./dialogChrome.js";
+import { createAccountButton } from "./accountButton.js";
+import { createPlus4uSync } from "./plus4uSync.js";
+import { createPlus4uBar, ICONS } from "./plus4uBar.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -436,6 +439,8 @@ async function answerPlan(e) {
 const syncEmptyForCards = () => $("empty")?.classList.toggle("has-cards", planCards.visibleCount() > 0);
 /** The sitemap of the project (sitemap.json) as the card shows it: { sitemap, hasPrev } or null. */
 let projectSitemap = null;
+let p4uOn = false; // signed in to Plus4U with a usable token: only then the Plus4U features show
+let plus4uBar = null; // the Plus4U link in the toolbar (created further down; loadProject may run before)
 function setProjectSitemap(r) { projectSitemap = r?.sitemap ? r : null; planCards.setSitemap(projectSitemap); syncEmptyForCards(); updateMapBtn(); plansMenu?.render?.(); sitemapMenu?.render?.(); }
 /** Whether this project gets the sitemap offered: it has one, or it was started as a whole web site or portal (sitemap.js). */
 const mapOffered = () => Boolean(project) && sitemapOffered({ hasSitemap: Boolean(projectSitemap), scope: projectScope, level: projectLevel });
@@ -752,7 +757,7 @@ const canvas = createCanvas({
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
-  onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); },
+  onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); syncMenuScreenState(); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
   onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
   getExtraRects: () => planCards?.rects() ?? [],
@@ -771,7 +776,7 @@ function canvasInset() {
 planCards = createPlanCards({
   root: $("canvas"), world: $("world"), canvas,
   api: { read: (slug) => window.studio.plansRead(slug), write: (slug, text) => window.studio.plansWrite(slug, text) },
-  ctx: { chatPlan: (slug) => entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.state !== "superseded") ?? null, answersChanged: (e) => { paint(e); persist(); }, answersTyped: () => persist(), sendAnswers: (e) => answerPlan(e), saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), exportSitemap: (kind, sm, collapsed) => exportSitemapAs(kind, sm, collapsed), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); syncZoomLabel(); }, zoomChanged: () => syncZoomLabel(), getInset: () => canvasInset() },
+  ctx: { chatPlan: (slug) => entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.state !== "superseded") ?? null, answersChanged: (e) => { paint(e); persist(); }, answersTyped: () => persist(), sendAnswers: (e) => answerPlan(e), saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), shareSitemap: (anchor, sm, collapsed, o) => openSitemapShare(anchor, sm, collapsed, o), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); syncZoomLabel(); syncViewSw(); }, zoomChanged: () => syncZoomLabel(), getInset: () => canvasInset() },
 });
 // the Plans menu of the toolbar: the sitemap and the plans of the project, to show, hide or make
 let plansCache = [];
@@ -870,6 +875,56 @@ const notesKey = (key) => `uu5studio.mapnotes:${project}:${key}`;
 function loadMapNotes(key) { try { const l = JSON.parse(localStorage.getItem(notesKey(key)) ?? "[]"); return Array.isArray(l) ? l.filter((t) => typeof t === "string") : []; } catch { return []; } }
 function saveMapNotes(key, list) { try { if (list.length) localStorage.setItem(notesKey(key), JSON.stringify(list)); else localStorage.removeItem(notesKey(key)); } catch { /* not kept */ } }
 /** The sitemap as a picture to share: "png" and "svg" are saved (dialog), "copy" puts the PNG on the clipboard. */
+// The Share panel of the sitemap, like the Share menu of a screen: WHAT goes out (Image, SVG, uu5String), then WHAT TO DO with it (Copy, Save…,
+// and Publish for the uu5String of the sitemap of the project while signed in to Plus4U). The chosen format is remembered.
+const SM_FORMATS = () => [ // a function: OUT_FORMATS and fmtIcon are defined further down
+  { id: "png", label: "Image", hint: "The map as a picture, as it is shown (folded branches stay folded).", icon: OUT_FORMATS[0].icon, copy: "copy", save: "png" },
+  { id: "svg", label: "SVG", hint: "The map as a vector picture: sharp at any size, for a presentation or a print.", icon: fmtIcon('<path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/>'), copy: "svgcopy", save: "svg" },
+  { id: "uu5", label: "uu5String", hint: "A Uu5TreeBricks.Tree to paste into a document (uuBookKit, uuManagementKit).", icon: OUT_FORMATS[2].icon, copy: "uu5copy", save: "uu5file" },
+];
+const SM_KEY = "uu5studio.sitemapShareFormat";
+function openSitemapShare(anchor, sm, collapsed, { project = false } = {}) {
+  const old = document.querySelector(".sm-share"); old?.remove();
+  if (old?.dataset.for === "1" && old.anchor === anchor) return; // a second click closes it
+  let fmt = (() => { try { return SM_FORMATS().some((f) => f.id === localStorage.getItem(SM_KEY)) ? localStorage.getItem(SM_KEY) : "png"; } catch { return "png"; } })();
+  const m = Object.assign(document.createElement("div"), { className: "fmt fmt-panel sm-share" });
+  m.dataset.for = "1"; m.anchor = anchor; m.setAttribute("role", "dialog"); m.setAttribute("aria-label", "Share the sitemap");
+  const close = () => { m.remove(); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", escKey, true); };
+  const away = (e) => { if (!m.contains(e.target) && e.target !== anchor) close(); }, escKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const btn = (cls, html, title, fn) => { const b = Object.assign(document.createElement("button"), { type: "button", className: cls, title }); b.innerHTML = html; b.onclick = (ev) => { ev.stopPropagation(); fn(); }; return b; };
+  const render = () => {
+    const formats = SM_FORMATS(), f = formats.find((x) => x.id === fmt) ?? formats[0];
+    const tiles = Object.assign(document.createElement("div"), { className: "fmt-tiles smsh-tiles", role: "radiogroup", ariaLabel: "What to share" });
+    tiles.append(...formats.map((x) => { const t = btn(`fmt-tile${x.id === f.id ? " on" : ""}`, `${x.icon}<span>${esc(x.label)}</span>`, x.hint, () => { fmt = x.id; try { localStorage.setItem(SM_KEY, x.id); } catch { /* not remembered */ } render(); }); t.role = "radio"; t.ariaChecked = String(x.id === f.id); return t; }));
+    const hint = Object.assign(document.createElement("p"), { className: "fmt-hint", textContent: f.hint });
+    const acts = Object.assign(document.createElement("div"), { className: "fmt-acts smsh-acts" });
+    acts.append(...OUT_ACTS.map(([k, label, icon]) => btn(k === "copy" ? "primary" : "", `${icon}<span>${esc(label)}</span>`, `${label.replace("…", "")}: ${f.label}`, () => { close(); exportSitemapAs(f[k], sm, collapsed); })));
+    let pubTo = null;
+    if (f.id === "uu5" && project && p4uOn) { // Publish: like the uu5String of a screen, one click to where it went last, the caret for another page or document
+      const content = () => sitemapUu5String(sm, { collapsed }) || null;
+      const split = Object.assign(document.createElement("div"), { className: "fmt-split" });
+      const pub = btn("", `${ICONS.doc}<span>Publish…</span>`, "Publish the sitemap onto a page of a Plus4U document", () => { close(); plus4uSync.publishSitemap({ content: content() }); });
+      split.append(pub); acts.append(split);
+      pubTo = Object.assign(document.createElement("p"), { className: "fmt-hint fmt-pubto", hidden: true });
+      plus4uSync.sitemapTarget().then((t) => {
+        if (!t || !split.isConnected) return;
+        pub.querySelector("span").textContent = "Publish";
+        pub.title = `Publish again to “${t.pageName || "the page"}” of “${t.documentName || "the document"}” (overwrites what was published there)`;
+        pub.onclick = (ev) => { ev.stopPropagation(); close(); plus4uSync.publishSitemap({ content: content(), quick: true }); };
+        const more = btn("fmt-caret", '<svg class="zcar" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>', "Choose another page or document…", () => { close(); plus4uSync.publishSitemap({ content: content() }); });
+        more.setAttribute("aria-label", "Choose another page or document");
+        split.append(more);
+        pubTo.textContent = `Publish → “${t.pageName || "page"}” · ${t.documentName || "document"}`; pubTo.hidden = false;
+      });
+    }
+    m.replaceChildren(tiles, hint, document.createElement("hr"), acts, ...(pubTo ? [pubTo] : []));
+  };
+  render(); document.body.append(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.left = `${Math.max(6, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 6))}px`; m.style.top = `${r.bottom + 6}px`;
+  document.addEventListener("pointerdown", away, true); document.addEventListener("keydown", escKey, true);
+  m.querySelector(".fmt-tile.on")?.focus();
+}
 async function exportSitemapAs(kind, sm, collapsed) {
   if (kind === "uu5copy" || kind === "uu5file") { // the map as a uu5string with Uu5TreeBricks.Tree
     const text = sitemapUu5String(sm, { collapsed });
@@ -881,6 +936,7 @@ async function exportSitemapAs(kind, sm, collapsed) {
   const { svg, width, height } = sitemapSvg(sm, { isScreen: (f) => Boolean(canvas.get(f)), collapsed }); // as it is shown: the folded branches stay folded
   if (!svg) return toast("There is no sitemap to export.", { err: true });
   const base = `${project || "project"}-sitemap`;
+  if (kind === "svgcopy") { try { await navigator.clipboard.writeText(svg); toast("The sitemap is on the clipboard as SVG."); } catch { toast("The clipboard is not available.", { err: true }); } return; }
   if (kind === "svg") { const r = await window.studio.exportData({ name: base, ext: "svg", text: svg }); if (r?.error) toast(r.error, { err: true }); else if (r?.path) toast(`Saved ${r.path.split("/").pop()}.`); return; }
   const img = new Image(); img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   try { await img.decode(); } catch { return toast("The picture could not be made.", { err: true }); }
@@ -921,6 +977,8 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   if (fsFile && changed.includes(fsFile)) { fsFreeze?.cover(); fsView?.reload(); }
   if (fsFile && !screens.includes(fsFile)) closeFullscreen();
   if (fresh.length) canvas.focus(fresh[fresh.length - 1]);
+  syncMenuScreenState(); // a variant may have appeared or gone
+  p4uLocalSoon(); // the project may now differ from what was uploaded
 });
 // while a map is the view (instead of the canvas), the zoom of the toolbar and ⌘ + / − / 0 zoom the map
 function mapZoom() { return planCards?.mapZoom?.() ?? null; }
@@ -975,12 +1033,13 @@ let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick
 function setInspect(v, { chat = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
   inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v); canvas.setEditing(v && !chatPick);
-  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick);
+  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick); $("railsel").classList.toggle("on", !(v && !chatPick)); $("seledit").classList.toggle("on", v && !chatPick);
   // the side panel keeps its tab: the Edit mode does not switch the chat to the Components catalogue (the user opens it to drag a component in)
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
 }
 $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
+$("railsel").onclick = () => { if (inspector.on && !chatPick) setInspect(false); }; // the tool rail of the canvas: Select leaves the Edit mode
 const inspectedFile = () => propsPanel.file ?? activeMarked?.file ?? canvas.selected() ?? null; // the screen the user works with (undo falls back to the last change in the project)
 $("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
 $("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
@@ -1418,7 +1477,7 @@ const REVEAL_LABEL = { darwin: "Show in Finder", win32: "Show in Explorer" }[win
 // the business rules: a dialog from the toolbar icon; the icon shows how many rules there are
 rules = createRulesPanel({
   api: window.studio, getScreens: () => canvas.files(),
-  onCount: (n) => { const b = $("rulesbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("rulesbtn").title = n ? `Business rules of this project (${n})` : "Business rules of this project"; },
+  onCount: (n) => { const b = $("rulesbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("pi-rulescount").textContent = n ? String(n) : ""; $("rulesbtn").title = n ? `Business rules of this project (${n})` : "Business rules of this project"; },
 });
 // brand guidelines: the manual is stored, the agent distills it into DESIGN_GUIDE.md (an ordinary chat request)
 const brand = createBrandDialog({
@@ -1441,6 +1500,23 @@ async function checkBrand(file) {
 }
 const openRules = (screen) => project && rules.open({ screen: typeof screen === "string" ? screen : undefined });
 $("rulesbtn").onclick = openRules;
+// the toolbar, in groups: the view (Canvas | Sitemap | Plans), the project (its menu: description, rules, the Advanced view; comments), Plus4U and the account
+function syncViewSw() { const canvasOn = !planCards.viewKey(); document.body.classList.toggle("docview-on", !canvasOn); /* comments belong to the screens: their button shows only on the canvas */ $("canvasbtn").classList.toggle("on", canvasOn); $("canvasbtn").setAttribute("aria-pressed", String(canvasOn)); }
+$("canvasbtn").onclick = () => { planCards.closeView(); syncViewSw(); };
+syncViewSw();
+{
+  const menu = $("projinfomenu"), btn = $("projinfo");
+  const setOpen = (on) => { menu.hidden = !on; btn.setAttribute("aria-expanded", String(on)); btn.classList.toggle("open", on); };
+  btn.onclick = (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); setOpen(willOpen); };
+  menu.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.classList.contains("viewtog")) return; // the Advanced view switches in place (its own handler); the menu stays open to show the new state
+    setOpen(false);
+    if (b.dataset.pi === "desc") openDesc(null); else if (b.dataset.pi === "rules") openRules();
+  });
+  document.addEventListener("click", (e) => { if (!menu.hidden && !e.target.closest("#projinfow")) setOpen(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
+}
 // comments on the screens and their components: a dialog from the toolbar icon (the badge counts the open ones), "Comment on this" in the inspector
 const comments = createCommentsPanel({
   api: window.studio, getScreens: () => canvas.files(), getSelected: () => canvas.selected(), toast,
@@ -1449,6 +1525,13 @@ const comments = createCommentsPanel({
   onShow: (file) => canvas.focus(file),
 });
 /** "Use this variant": asks, then the variant replaces the original and the rest is removed; on the original: the original stays and its variants are removed (all of it goes to the trash). */
+/** Tells the main process whether the selected screen is a variant or has variants: the Screen menu shows "Use This Variant…" only then. */
+let menuHasVariants = null;
+function syncMenuScreenState() {
+  const f = canvas?.selected(), files = canvas?.files() ?? [];
+  const v = Boolean(f && (variantInfo(f, files) || groupVariants(files).some((g) => g.base === f)));
+  if (v !== menuHasVariants) { menuHasVariants = v; window.studio.menuScreenState?.({ hasVariants: v }).catch(() => {}); }
+}
 async function keepVariant(file) {
   const name = (f) => f.replace(/\.html$/, ""), files = canvas.files();
   const v = variantInfo(file, files);
@@ -1493,7 +1576,7 @@ $("cmtbtn").onclick = () => project && comments.open({ screen: canvas.selected()
 desc = createDescPanel({
   api: window.studio, getScreens: () => canvas.files(),
   onScreens: (map) => canvas.setDescriptions(map),
-  onProject: (text) => { $("descstrip").hidden = !text; $("descbtn").classList.toggle("on", Boolean(text)); $("ds-text").textContent = text ?? ""; $("ds-main").title = text ? `${text}\n\nClick to edit the description` : "Click to add a project description"; },
+  onProject: (text) => { $("pi-descstate").textContent = text ? "" : "not written yet"; $("descstrip").hidden = !text; $("descbtn").classList.toggle("on", Boolean(text)); $("ds-text").textContent = text ?? ""; $("ds-main").title = text ? `${text}\n\nClick to edit the description` : "Click to add a project description"; },
 });
 const openDesc = (focus) => project && desc.open({ focus });
 $("ds-main").onclick = () => openDesc(null);
@@ -1693,6 +1776,7 @@ $("selbar").onclick = (e) => {
   ctx.hidden = true; delete ctx.dataset.from;
   if (b.dataset.act) {
     $("selmenu").hidden = true; updateSelbar();
+    if (b.dataset.act === "edit-mode") { $("inspect").click(); return; } // the Edit mode, also on the tool rail of the canvas
     if (b.dataset.act === "more") { if (ctxOpen) return; screenAction("more", file); ctx.dataset.from = "bar"; b.classList.add("on"); return; }
     return screenAction(b.dataset.act, file);
   }
@@ -1717,7 +1801,30 @@ $("selbar").onclick = (e) => {
       a.onclick = () => { close(); screenAction(f[k], file); };
       return a;
     }), dragEntry(f.id));
-    m.replaceChildren(tiles, hint, document.createElement("hr"), acts);
+    // uu5String: Publish puts the screen onto a page of a Plus4U document. Once it was published, the main part publishes again to the same
+    // page in one click and the caret chooses another page or document; the line below says where it goes.
+    let pubTo = null;
+    if (f.id === "uu5" && p4uOn) {
+      const split = Object.assign(document.createElement("div"), { className: "fmt-split" });
+      const pub = Object.assign(document.createElement("button"), { title: `Publish ${file.replace(/\.html$/, "")} onto a page of a Plus4U document` });
+      pub.innerHTML = `${ICONS.doc}<span>Publish…</span>`;
+      pub.onclick = (ev) => { ev.stopPropagation(); close(); plus4uSync.publishScreen(file); };
+      split.append(pub); acts.append(split);
+      pubTo = Object.assign(document.createElement("p"), { className: "fmt-hint fmt-pubto", hidden: true });
+      const shownFormat = f.id;
+      plus4uSync.targetFor(file).then((t) => {
+        if (!t || m.hidden || outFormat !== shownFormat || !split.isConnected) return;
+        pub.querySelector("span").textContent = "Publish";
+        pub.title = `Publish again to “${t.pageName || "the page"}” of “${t.documentName || "the document"}” (overwrites what was published there)`;
+        pub.onclick = (ev) => { ev.stopPropagation(); close(); plus4uSync.publishScreen(file, { quick: true }); };
+        const more = Object.assign(document.createElement("button"), { className: "fmt-caret", title: "Choose another page or document…", innerHTML: '<svg class="zcar" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>' });
+        more.setAttribute("aria-label", "Choose another page or document");
+        more.onclick = (ev) => { ev.stopPropagation(); close(); plus4uSync.publishScreen(file); };
+        split.append(more);
+        pubTo.textContent = `Publish → “${t.pageName || "page"}” · ${t.documentName || "document"}`; pubTo.hidden = false;
+      });
+    }
+    m.replaceChildren(tiles, hint, document.createElement("hr"), acts, ...(pubTo ? [pubTo] : []));
     if (!LAZY_DRAG.has(f.id)) prepareDrag(f.id); // the cheap files are ready when the user takes it; a picture or a ZIP only when the pointer reaches Drag (opening the menu must not take a snapshot)
   };
   render();
@@ -1861,6 +1968,7 @@ function loadProject(info) {
   window.studio.plansList().then((list) => { if (!list.error && project === info.project) onPlansChanged(list); });
   window.studio.sitemapRead().then((r) => { if (project === info.project) setProjectSitemap(r?.error ? null : r); });
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
+  if (project) plus4uBar?.refresh({ remote: true }); else plus4uBar?.clear();
   $("projbtn").textContent = project ? `${project} ▾` : "No project ▾"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
   updateNoProject();
   loading = false;
@@ -1937,6 +2045,7 @@ const dashboard = createDashboard({
   api: window.studio, docs: dashDocs, toast,
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
   onNew: () => newProjectFlow(),
+  onNewFromDoc: () => newProjectFromDocFlow(),
   onDelete: async (name) => {
     const ok = await askConfirm({ title: `Delete the project “${name}”?`, detail: "The project folder (screens and chat history) is moved to the trash, so you can restore it.", ok: "Delete project" });
     if (ok) await changeProject(() => window.studio.deleteProject(name));
@@ -1993,12 +2102,13 @@ async function renderProjectMenu() {
     b.dataset.open = p.name; m.append(b);
   }
   m.append(document.createElement("hr"));
-  const items = [["new", "＋ New project…"]];
+  const items = [["new", "＋ New project…"], ...(p4uOn ? [["new-doc", "New project from a Plus4U document…"]] : [])];
   if (project) items.push(["rename", `Rename “${project}”…`], ["delete", `Delete “${project}”…`], ["folder", "Reveal project folder"], ["close", "Close project"]);
   if (project) {
     items.push(["desc-open", "Project description…"], ["rules-open", "Business rules…"]);
     if (repo && !repo.error) items.push(["repo-unlink", `Unlink repository ${repo.name}`]);
     else items.push(["repo-link", repo?.error ? "Link another git repository…" : "Link git repository…"]);
+    if (p4uOn) items.push(...await plus4uSync.menuItems());
   }
   items.push(["projects-open", "Open projects folder"], ["projects-change", "Change projects folder…"]);
   for (const [act, label] of items) {
@@ -2008,6 +2118,24 @@ async function renderProjectMenu() {
 }
 /** Only one dropdown is open at a time: a button that opens one (it stops its click, so the "click outside" closers do not run) first closes every other dropdown the way a click outside would. */
 function dismissMenus() { document.body.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+// The Plus4U account (dashboard header and project toolbar): sign in, the photo of the person, sign out
+const plus4uSync = createPlus4uSync({
+  toast: (msg, o) => toast(msg, o), askText, askConfirm, flushSaves, reopen: () => changeProject(() => window.studio.openProject(project)),
+  currentScreen: () => canvas.selected() ?? canvas.files()[0] ?? null,
+  screenUu5: (file) => uu5StringOf([{ file }]),
+  sitemapUu5: () => (projectSitemap?.sitemap ? sitemapUu5String(projectSitemap.sitemap) || null : null),
+  onChange: () => plus4uBar?.refresh({ remote: true }),
+  onBusy: (kind) => plus4uBar?.setBusy(kind),
+});
+// The Plus4U link in the toolbar: the document chip and Upload / Download with their dots (local changes, a newer version in Plus4U)
+plus4uBar = createPlus4uBar({ root: $("p4ubar"), sync: plus4uSync, dismissMenus, toast: (msg, o) => toast(msg, o) });
+let p4uTimer = null;
+/** Local changes are looked at a moment after the screens change; Plus4U itself every 5 minutes while a project is open. */
+const p4uLocalSoon = () => { clearTimeout(p4uTimer); p4uTimer = setTimeout(() => { if (project) plus4uBar.refresh(); }, 1500); };
+setInterval(() => { if (project && !document.hidden) plus4uBar.refresh({ remote: true }); }, 5 * 60 * 1000);
+if (project) plus4uBar.refresh({ remote: true }); // a project opened before the bar existed
+window.studio.onPlus4uChanged?.(() => { if (project) plus4uBar.refresh({ remote: true }); }); // signed in or out: the lock and the remote dot may change
+const account = createAccountButton({ buttons: [$("dash-acct"), $("acctbtn")], toast: (msg, o) => toast(msg, o), dismissMenus, onStatus: (st) => { p4uOn = Boolean(st?.signedIn); plus4uBar.setEnabled(p4uOn); dashboard.setPlus4u(p4uOn); } });
 $("projbtn").onclick = async (e) => {
   if (dock.collapsed()) return; // on a minimized bar the click restores the chat instead (handled by the header)
   e.stopPropagation(); const m = $("projmenu");
@@ -2018,6 +2146,14 @@ $("projbtn").onclick = async (e) => {
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; m.style.top = r.bottom + 6 + "px";
 };
 async function newProjectFlow() { const name = await askText({ title: "New project", ok: "Create" }); if (name) await changeProject(() => window.studio.createProject(name)); }
+/** A new project from an existing Plus4U document: the project uploaded to it (downloaded and linked), or an empty one linked to it. */
+async function newProjectFromDocFlow() {
+  const pick = await plus4uSync.pickDocumentProject();
+  if (!pick) return;
+  toast(pick.projectId ? "Downloading the project from Plus4U…" : "Creating the project…");
+  const r = await changeProject(() => window.studio.plus4uCreateFromDocument(pick));
+  if (r && !r.error) toast(pick.projectId ? `The project “${project}” was downloaded from Plus4U.` : `The project “${project}” is linked to the document.`);
+}
 async function renameProjectFlow() {
   if (!project) return;
   const name = await askText({ title: "Rename project", value: project, ok: "Rename" });
@@ -2035,6 +2171,7 @@ $("projmenu").onclick = async (e) => {
   if (b.dataset.open) { if (b.dataset.open !== project) await changeProject(() => window.studio.openProject(b.dataset.open)); return; }
   const act = b.dataset.act;
   if (act === "new") await newProjectFlow();
+  else if (act === "new-doc") await newProjectFromDocFlow();
   else if (act === "rename") await renameProjectFlow();
   else if (act === "delete") await deleteProjectFlow();
   else if (act === "close") await closeProjectFlow();
@@ -2043,6 +2180,7 @@ $("projmenu").onclick = async (e) => {
   else if (act === "rules-open") openRules();
   else if (act === "repo-link") await linkRepoFlow();
   else if (act === "repo-unlink") await unlinkRepoFlow();
+  else if (act?.startsWith("p4u-")) await plus4uSync.run(act);
   else if (act === "projects-open" || act === "projects-change") { const r = await window.studio.projectsFolder(act.slice(9)); if (r?.error) toast(r.error, { err: true }); }
 };
 addEventListener("click", (e) => { if (!e.target.closest("#projmenu")) $("projmenu").hidden = true; });
@@ -2096,8 +2234,6 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
       case "screen:structure": return withScreen((f) => structureDialog.open(f));
       case "screen:template": return withScreen((f) => saveAsTemplate(f));
       case "edit:undo": case "edit:redo": return editStep(action === "edit:undo" ? "undo" : "redo");
-      case "screen:undo": return stepScreen(inspectedFile(), "undo");
-      case "screen:redo": return stepScreen(inspectedFile(), "redo");
       case "screen:rule": return withScreen((f) => openRules(f));
       case "screen:mention": return withScreen((f) => (marked.length ? useMarked() : insertMention(f.replace(/\.html$/, ""))));
       case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));

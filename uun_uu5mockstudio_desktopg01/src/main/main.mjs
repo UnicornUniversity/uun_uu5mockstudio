@@ -34,11 +34,16 @@ import { createThumbs } from "./thumbs.mjs";
 import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVELS, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
 import { zipSync } from "fflate";
 import { captureWithFallback } from "./screenshot.mjs";
-import { createProjects, readState, updateState, writeState } from "./projects.mjs";
+import { createProjects, readState, updateState, writeState, sanitizeName } from "./projects.mjs";
 import * as chats from "./chats.mjs";
 import { saveAttachments, saveAssets } from "./attachments.mjs";
 import { GUIDE_TEMPLATE, GUIDE_FILE, readGuide, writeGuide, saveSources, listSources, removeSource, brandCss, injectBrand, distillPrompt, checkScreen, fixPrompt, parseTokens, importManual, sourceDir, sourceKind } from "./brand.mjs";
 import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
+import { createPlus4uAuth } from "./plus4uAuth.mjs";
+import { createEbcClient } from "./ebcClient.mjs";
+import { parseArtifactUrl, readLink, linkProject, LINK_FILE } from "./mkArtifact.mjs";
+import { upload as uploadToArtifact, download as downloadFromArtifact, syncState, uploadedProjects, createFromArtifact } from "./mkSync.mjs";
+import { listPages as listDocPages, publish as publishToPage, publishTargets, pageUrl } from "./mkEcc.mjs";
 import { listSitemapUrls } from "./webImages.mjs";
 import { sessionFetch } from "./sessionFetch.mjs";
 import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, parseLink, snapshotName, KINDS } from "./docSources.mjs";
@@ -125,9 +130,10 @@ app.whenReady().then(async () => {
   function toggleGlass() { glass = !glass; saveApp({ glass }); projects.list().then(rebuildMenu); emit("glass:set", glassOn()); return glassOn(); }
   let usableAgents = null; // ids of the AI providers the user can use (claude, codex), once known: the menu shows only what applies
   let repoLinked = false; // does the open project have a linked repository? (enables the Git items of the Project menu)
+  let screenHasVariants = false; // is the selected screen a variant or the base of variants? (shows "Use This Variant…")
   function rebuildMenu(list) {
     const appMenu = Menu.buildFromTemplate(buildMenuTemplate({
-      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged, agents: usableAgents,
+      platform: process.platform, appName: "uu5Mock Studio", projects: list, current, repoLinked, glass, offline, isDev: !app.isPackaged, agents: usableAgents, screenHasVariants,
       send: (action) => {
         if (action === "project:reveal" && current) shell.openPath(dir());
         else if (action === "folder:projects-open") projectsFolder("open");
@@ -607,6 +613,86 @@ app.whenReady().then(async () => {
   // the pictures of documents are made in a session of their own (cookies kept between runs) in which the user can sign in to Plus4U (docs:previewLogin):
   // the data and pictures that need a signed-in user (business cards, files of the document) then load as in the browser. The token of the MCP proxy is not used for it.
   const PREVIEW_PARTITION = "persist:plus4u-preview";
+  // The Plus4U sign-in of the app (the account button in the header): its own OIDC token for the uuApps it calls (photo of the person, later the
+  // attachments of uuManagementKit). The sign-in page opens in the preview session, so a Plus4U sign-in made there is reused.
+  const plus4u = createPlus4uAuth({ file: path.join(app.getPath("userData"), "plus4u-token.bin"), safeStorage, BrowserWindow, session, partition: PREVIEW_PARTITION, parent: () => win, onChange: () => emit("plus4u:changed") });
+  ipcMain.handle("plus4u:status", guard(() => plus4u.status()));
+  ipcMain.handle("plus4u:login", guard(async () => { await plus4u.login(); return plus4u.status(); }));
+  ipcMain.handle("plus4u:logout", guard(() => plus4u.logout()));
+  ipcMain.handle("plus4u:photo", guard(() => plus4u.photo()));
+  // whether the app can call the uuApp of `url` ({ ok, audience } or { error, code: "login" }); the token itself stays in the main process
+  // debugging only (STUDIO_PLUS4U_DEBUG): a read (GET) uuCmd of the artifact at `url`, e.g. "ebc/collection/listFiles"
+  if (process.env.STUDIO_PLUS4U_DEBUG) ipcMain.handle("plus4u:debugGet", guard(async (_e, url, cmd, dtoIn) => {
+    const a = parseArtifactUrl(url); if (!a) throw new Error("Not an artifact address.");
+    const c = createEbcClient({ baseUri: a.baseUri, entity: a.entity, token: () => plus4u.tokenFor(a.baseUri) });
+    const m = /^ebc\/(.+)$/.exec(String(cmd)); if (m) return c.call(m[1], { dtoIn: { oid: a.oid, ...(dtoIn ?? {}) } });
+    const res = await fetch(`${a.baseUri}/${cmd}?${new URLSearchParams(Object.entries({ oid: a.oid, ...(dtoIn ?? {}) }).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]))}`, { headers: { authorization: `Bearer ${await plus4u.tokenFor(a.baseUri)}`, accept: "application/json" } });
+    return { status: res.status, body: (await res.text()).slice(0, 6000) };
+  }));
+  // The project linked to an artifact of uuManagementKit (.studio/plus4u.json) and the sync of its files with the artifact's attachments (EBC)
+  const ebcFor = (link) => createEbcClient({ baseUri: link.baseUri, entity: link.entity, token: () => plus4u.tokenFor(link.baseUri, { interactive: true }) });
+  const linkInfo = (l) => (l ? { url: l.url, name: l.name, entity: l.entity, linkedAt: l.linkedAt, syncedAt: Object.values(l.attachments ?? {}).map((a) => a.syncedAt).sort().pop() ?? null } : null);
+  ipcMain.handle("plus4u:linkInfo", guard(async () => linkInfo(await readLink(dir()))));
+  ipcMain.handle("plus4u:link", guard(async (_e, url) => {
+    const a = parseArtifactUrl(url);
+    if (!a) throw new Error("This is not a link to a Plus4U artifact (it needs …/<entity>?oid=…, e.g. a document or keyTask of uuManagementKit).");
+    const artifact = await ebcFor(a).loadArtifact(a.oid);
+    if (!artifact?.uuEbcData?.uuBbAttachmentsCollectionOid) throw new Error(`“${artifact?.name ?? a.entity}” has no attachments, so the project cannot be kept there.`);
+    return linkInfo(await linkProject(dir(), a, { name: artifact.name ?? null }));
+  }));
+  // a new project from an existing document: what was uploaded to it (projects of uu5Mock Studio), then a new project filled from one of them
+  const artifactOf = (url) => { const a = parseArtifactUrl(String(url ?? "")); if (!a) throw new Error("This is not a link to a Plus4U artifact (it needs …/<entity>?oid=…, e.g. a document or keyTask of uuManagementKit)."); return a; };
+  ipcMain.handle("plus4u:docProjects", guard(async (_e, url) => { const a = artifactOf(url); return { url: a.url, entity: a.entity, ...(await uploadedProjects(ebcFor(a), a)) }; }));
+  ipcMain.handle("plus4u:createFromDocument", guard(async (_e, o) => {
+    const a = artifactOf(o?.url);
+    const client = ebcFor(a);
+    const doc = await client.loadArtifact(a.oid);
+    if (!doc?.uuEbcData?.uuBbAttachmentsCollectionOid) throw new Error(`“${doc?.name ?? a.entity}” has no attachments, so the project cannot be kept there.`);
+    const taken = new Set((await projects.list()).map((p) => p.name.toLowerCase()));
+    let base = String(o?.name ?? "").trim() || doc.name || "Plus4U project", name = base;
+    try { base = name = sanitizeName(base); } catch { base = name = "Plus4U project"; }
+    for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${base} ${i}`;
+    const created = await projects.create(name);
+    try { await createFromArtifact(projects.dirOf(created), client, a, { projectId: o?.projectId ? String(o.projectId) : null, name: doc.name ?? null }); }
+    catch (e) { await fs.promises.rm(projects.dirOf(created), { recursive: true, force: true }).catch(() => {}); throw e; } // a half-made project is not left behind
+    return openProject(created);
+  }));
+  // the state for the toolbar: local changes always; the remote check only with a kept token (`remote`), so it never opens a sign-in window
+  ipcMain.handle("plus4u:syncState", guard(async (_e, opts) => {
+    const l = await readLink(dir());
+    if (!l) return { linked: false };
+    const token = opts?.remote ? await plus4u.peekToken(l.baseUri) : null;
+    const client = token ? createEbcClient({ baseUri: l.baseUri, entity: l.entity, token: async () => token }) : null;
+    let st;
+    try { st = await syncState(dir(), client); } catch (e) { st = { ...(await syncState(dir())), remoteError: e.message }; }
+    return { ...st, info: linkInfo(l), needsLogin: Boolean(opts?.remote && !token) };
+  }));
+  ipcMain.handle("plus4u:unlink", guard(async () => { await fs.promises.rm(path.join(dir(), LINK_FILE), { force: true }); return null; }));
+  ipcMain.handle("plus4u:upload", guard(async (_e, opts) => { const l = await readLink(dir()); if (!l) throw new Error("The project is not linked to a Plus4U artifact."); return uploadToArtifact(dir(), ebcFor(l), { force: Boolean(opts?.force) }); }));
+  ipcMain.handle("plus4u:download", guard(async (_e, opts) => { const l = await readLink(dir()); if (!l) throw new Error("The project is not linked to a Plus4U artifact."); return downloadFromArtifact(dir(), ebcFor(l), { force: Boolean(opts?.force) }); }));
+  // a screen or the sitemap as a uu5string onto a page of the linked document (ECC, through the MCP tools of uuManagementKit)
+  const mkTool = (name, args) => docFetcher.tool("mkEcc", name, args);
+  const loginCode = (e) => ({ error: e.message, code: e.code });
+  const str = (v) => (v ? String(v) : undefined);
+  ipcMain.handle("plus4u:pages", async (_e, url) => { try { return await listDocPages(dir(), mkTool, str(url)); } catch (e) { return loginCode(e); } });
+  ipcMain.handle("plus4u:publishTargets", guard((_e, item) => publishTargets(dir(), { screen: str(item?.screen), sitemap: Boolean(item?.sitemap) })));
+  ipcMain.handle("plus4u:publish", async (_e, o) => { try { return await publishToPage(dir(), mkTool, { screen: str(o?.screen), sitemap: Boolean(o?.sitemap), content: String(o?.content ?? ""), documentUrl: str(o?.documentUrl), documentName: str(o?.documentName), pageOid: str(o?.pageOid), newPageName: str(o?.newPageName), quick: Boolean(o?.quick) }); } catch (e) { return loginCode(e); } });
+  ipcMain.handle("plus4u:docsLogin", guard(async (_e, url) => { const u = str(url) ?? (await readLink(dir()))?.url; if (!u) throw new Error("Choose a document first."); return docFetcher.loginFor(u); }));
+  ipcMain.handle("plus4u:openPage", guard(async (_e, documentUrl, pageOid) => { const p = parseArtifactUrl(String(documentUrl ?? "")); if (!p) throw new Error("Unknown document."); await shell.openExternal(pageUrl(p.url, String(pageOid))); return true; }));
+  ipcMain.handle("plus4u:openArtifact", guard(async () => { const l = await readLink(dir()); if (!l || !/^https:\/\//.test(l.url)) throw new Error("The project is not linked to a Plus4U artifact."); await shell.openExternal(l.url); return true; }));
+  // debugging only: a POST uuCmd of the artifact at `url` with `dtoIn` exactly as given (used with an empty dtoIn to learn what a command needs)
+  if (process.env.STUDIO_PLUS4U_DEBUG) ipcMain.handle("plus4u:debugPost", guard(async (_e, url, cmd, dtoIn) => {
+    const a = parseArtifactUrl(url); if (!a) throw new Error("Not an artifact address.");
+    const res = await fetch(`${a.baseUri}/${cmd}`, { method: "POST", headers: { authorization: `Bearer ${await plus4u.tokenFor(a.baseUri)}`, accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(dtoIn ?? {}) });
+    return { status: res.status, body: (await res.text()).slice(0, 6000) };
+  }));
+  // debugging only: a read tool of the uuManagementKit MCP server
+  if (process.env.STUDIO_PLUS4U_DEBUG) ipcMain.handle("plus4u:debugMcp", guard((_e, name, args) => (/(Get|List)/.test(String(name)) ? docFetcher.tool("mkEcc", String(name), args ?? {}) : { error: "read tools only" })));
+  // debugging only: moves a page of the linked document to the trash (soft delete; the main page cannot be trashed)
+  if (process.env.STUDIO_PLUS4U_DEBUG) ipcMain.handle("plus4u:debugTrashPage", guard(async (_e, pageOid) => { const l = await readLink(dir()); if (!l) throw new Error("Not linked."); return docFetcher.tool("mkEcc", "toolUuManagementkitEccDocumentTrashPage", { documentUrl: l.url, targetAwid: l.baseUri.split("/").pop(), pageOid: String(pageOid) }, { also: ["toolUuManagementkitEccDocumentTrashPage"] }); }));
+  // debugging only: moves an attachment of the linked artifact to the trash (file/trash)
+  if (process.env.STUDIO_PLUS4U_DEBUG) ipcMain.handle("plus4u:debugTrash", guard(async (_e, fileOid) => { const l = await readLink(dir()); if (!l) throw new Error("Not linked."); return ebcFor(l).trashFile(l.oid, String(fileOid)); }));
+  ipcMain.handle("plus4u:access", guard(async (_e, url, opts) => { await plus4u.tokenFor(String(url ?? ""), { interactive: Boolean(opts?.interactive) }); return { ok: true }; }));
   // Environments of a Page (see environments.mjs): the list, and whether the live Top can be used (a Plus4U sign-in in the preview session)
   ipcMain.handle("env:list", guard(() => ({ environments: [...ENVIRONMENTS, ...listFrames((scope) => frameBase(scope, current))] })));
   ipcMain.handle("frames:save", guard((_e, scope, frame) => { const base = frameBase(scope, current); if (!base) throw new Error("No project is open."); return saveFrame(base, scope, frame ?? {}); }));
@@ -993,6 +1079,7 @@ app.whenReady().then(async () => {
 
   const cdnStatus = async () => ({ offline, ...(await cdn.stats()) });
   ipcMain.handle("cdn:status", cdnStatus);
+  ipcMain.handle("menu:screenState", async (_e, s) => { const v = Boolean(s?.hasVariants); if (v !== screenHasVariants) { screenHasVariants = v; rebuildMenu(await projects.list()); } return true; });
   ipcMain.handle("cdn:offline", async (_e, v) => { offline = Boolean(v); saveApp({ offline }); projects.list().then(rebuildMenu); return cdnStatus(); });
   ipcMain.handle("cdn:clear", async () => { await cdn.clear(); return cdnStatus(); });
   ipcMain.handle("cdn:warmup", async () => {

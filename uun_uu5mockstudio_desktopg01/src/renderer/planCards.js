@@ -152,32 +152,38 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     c.collapsed ??= new Set(defaultCollapsed(sitemap));
     const exists = (f) => ctx.isScreen?.(f) ?? false, built = countBuilt(sitemap, exists), screens = countScreens(sitemap), kind = kindOf(sitemap);
     const mini = (label, title, fn) => { const b = el("button", { type: "button", className: "pc-mini", textContent: label, title }); b.onclick = fn; return b; };
-    const hide = mini(c.mapHidden ? "Show" : "Hide", c.mapHidden ? "Show the sitemap" : "Hide the sitemap", () => { c.mapHidden = !c.mapHidden; renderView(c); });
+    // the tools of the map are icons (a tooltip says what they do), like the bar of a screen; Share is the one labelled, accented button, as there
+    const svgI = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+    const ib = (icon, title, fn) => { const b = el("button", { type: "button", className: "pc-ib", title }); b.setAttribute("aria-label", title); b.innerHTML = svgI(icon); b.onclick = fn; return b; };
+    const I = {
+      fold: '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>', unfold: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+      hide: '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13 13 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><path d="M2 2l20 20"/>',
+      show: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+      full: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>', canvas: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
+      share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+    };
+    const hide = ib(c.mapHidden ? I.show : I.hide, c.mapHidden ? "Show the sitemap" : "Hide the sitemap", () => { c.mapHidden = !c.mapHidden; renderView(c); });
     hide.setAttribute("aria-expanded", String(!c.mapHidden));
-    // the map as a picture, to share it
-    const exportBtn = ctx.exportSitemap ? mini("Export", "The map to share: a picture or a uu5string (Uu5TreeBricks.Tree)", () => {
-      document.querySelector(".sm-ctx")?.remove();
-      const menu = el("div", { className: "sm-ctx", role: "menu" }), r = exportBtn.getBoundingClientRect();
-      const close = () => { menu.remove(); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc, true); };
-      const away = (e) => { if (!menu.contains(e.target) && e.target !== exportBtn) close(); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
-      for (const [label, kind] of [["Save as PNG…", "png"], ["Save as SVG…", "svg"], ["Copy the picture", "copy"], ["Copy as uu5string", "uu5copy"], ["Save as uu5string…", "uu5file"]]) {
-        const b = el("button", { type: "button", role: "menuitem", className: "sm-ci", textContent: label }); b.onclick = () => { close(); ctx.exportSitemap(kind, sitemap, c.collapsed); }; menu.append(b);
-      }
-      document.body.append(menu); menu.style.left = `${Math.max(6, Math.min(r.left, innerWidth - menu.offsetWidth - 6))}px`; menu.style.top = `${r.bottom + 4}px`;
-      document.addEventListener("pointerdown", away, true); document.addEventListener("keydown", esc, true); menu.querySelector("button")?.focus();
-    }) : null;
+    // Share, like a screen: a picture, SVG or a uu5string (and, for the sitemap of the project, publishing it onto a page of a Plus4U document)
+    let exportBtn = null;
+    if (ctx.shareSitemap) {
+      exportBtn = el("button", { type: "button", className: "pc-share", title: "Share the map: a picture, SVG or a uu5string (Uu5TreeBricks.Tree)" });
+      exportBtn.innerHTML = `${svgI(I.share)}<span>Share</span>`;
+      exportBtn.onclick = () => ctx.shareSitemap(exportBtn, sitemap, c.collapsed, { project: !io.slug });
+    }
     // the card fills the whole work area (the canvas is covered, not changed); it is moved out of the scaled canvas for that, and back
-    const expand = mini(c.expanded ? "Canvas" : "Full view", c.expanded ? "Back to the canvas (Esc)" : "The map instead of the canvas", () => setExpanded(c, !c.expanded));
+    const expand = ib(c.expanded ? I.canvas : I.full, c.expanded ? "Back to the canvas (Esc)" : "Full view: the map instead of the canvas", () => setExpanded(c, !c.expanded));
     expand.setAttribute("aria-pressed", String(Boolean(c.expanded)));
     // what the map is: a web site (pages and sections) or portals (documents of uuManagementKit: portals, sheets, sections)
     const kindSw = el("div", { className: "sm-kindsw", role: "radiogroup", "aria-label": "What the map is" }, ...[["web", "Web", "A map of a web site: pages and their sections"], ["portal", "Portals", "A map of portals (documents of uuManagementKit): portals, their sheets and the sections of a sheet"]].map(([k, label, title]) => {
       const b = el("button", { type: "button", role: "radio", className: `pc-mini${kind === k ? " on" : ""}`, textContent: label, title }); b.setAttribute("aria-checked", String(kind === k));
       b.onclick = () => { if (kind !== k) io.write(setKind(sitemap, k)); }; return b;
     }));
-    const head = el("div", { className: "pc-treehead" }, el("h4", { textContent: `${kind === "portal" ? "Portal map" : "Sitemap"} (${mapSummary(sitemap)})` }), kindSw, el("span", { className: "pc-progress", textContent: `${built} of ${screens} with a screen`, title: kind === "portal" ? "Portals and sheets that have a screen: designed. The others are only in the map." : "Pages that have a screen: designed. The others are only in the map." }),
-      c.mapHidden ? null : mini("Fold all", "Fold every branch below the first level", () => { c.collapsed = new Set(foldable(sitemap, 1)); renderView(c); }),
-      c.mapHidden ? null : mini("Unfold all", "Show every page", () => { c.collapsed = new Set(); renderView(c); }), exportBtn, c.expanded ? null : hide, c.expanded ? null : expand);
-    head.querySelector(":scope > .pc-mini")?.style.setProperty("margin-left", "auto");
+    const tools = el("span", { className: "pc-tools" },
+      c.mapHidden ? null : ib(I.fold, "Fold all: every branch below the first level", () => { c.collapsed = new Set(foldable(sitemap, 1)); renderView(c); }),
+      c.mapHidden ? null : ib(I.unfold, "Unfold all: show every page", () => { c.collapsed = new Set(); renderView(c); }),
+      c.expanded ? null : hide, c.expanded ? null : expand, exportBtn);
+    const head = el("div", { className: "pc-treehead pc-maphead" }, el("h4", { textContent: `${kind === "portal" ? "Portal map" : "Sitemap"} (${mapSummary(sitemap)})` }), kindSw, el("span", { className: "pc-progress", textContent: `${built} of ${screens} with a screen`, title: kind === "portal" ? "Portals and sheets that have a screen: designed. The others are only in the map." : "Pages that have a screen: designed. The others are only in the map." }), tools);
     const box = el("div", { className: "pc-sitemap" }, head);
     if (note || io.adopt) {
       const row = el("p", { className: "pc-note", textContent: note });
@@ -227,9 +233,9 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         ctx.createScreen?.({ slug: io.slug, node, file, where });
       },
     })));
-    // the search sits on the toolbar of the card, before Fold all
-    const bar = box.querySelector(".pc-mapbox > .sm")?.searchBar, first = head.querySelector(":scope > .pc-mini");
-    if (bar && first) { bar.classList.add("intool"); head.insertBefore(bar, first); first.style.removeProperty("margin-left"); bar.style.setProperty("margin-left", "auto"); }
+    // the search sits first among the tools of the card
+    const bar = box.querySelector(".pc-mapbox > .sm")?.searchBar;
+    if (bar) { bar.classList.add("intool"); tools.prepend(bar); }
     return box;
   }
 

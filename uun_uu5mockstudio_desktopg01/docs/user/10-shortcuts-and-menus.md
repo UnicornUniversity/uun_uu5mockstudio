@@ -15,7 +15,6 @@
 | ⇧⌘N | New chat |
 | ⇧⌘L | Floating / docked chat |
 | ⌘Z, ⇧⌘Z | Undo, redo: the typing in a text field, otherwise the last change of the screen |
-| ⌥⌘Z, ⇧⌥⌘Z | Undo, redo of a change of the screen (menu Screen) |
 | ⌘= , ⌘− | Zoom in, zoom out |
 | ⌘0 | Show all screens |
 | I | Turn the inspector on or off |
@@ -30,7 +29,7 @@
 
 - **File**: New Project…, Switch Project…, Close Project, **Export** (screen as image, as HTML, as uu5String, project as ZIP), **Share** (screen image, HTML file, uu5String, project ZIP), Quit.
 - **Project**: Rename Project…, Project Description…, Business Rules…, **Git Repository** (link, Switch Branch…, Open Repository Folder, Unlink Repository), **Projects Folder** (show, Change…), Delete Project….
-- **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, **Show Component Tree…**, Undo / Redo Screen Change, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. The same entries are in the context menu (right click) of a screen.
+- **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, Variants…, **Use This Variant…** (only when the screen is a variant or has variants), **Show Component Tree…**, Save as Template…, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. A change of the screen is undone with the standard **Edit → Undo / Redo** (⌘Z, ⇧⌘Z) outside a text field. The same entries are in the context menu (right click) of a screen.
 - **Chat**: New Chat, Chat History…, Floating / Docked Chat.
 - **Edit**: Undo, Redo (typing or the last change of the screen), Cut, Copy, Paste, Select All.
 - **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Edit Components, Show / Hide Screen Flow.

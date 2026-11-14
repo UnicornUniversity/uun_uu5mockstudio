@@ -200,3 +200,42 @@ body[data-glass] #docview .sm-node.t-section{background:color-mix(in srgb,var(--
 body[data-glass][data-chat="float"] #chat:not(.collapsed){
   background:color-mix(in srgb,var(--glass-regular) 62%,transparent)!important;
   -webkit-backdrop-filter:blur(18px) saturate(190%) brightness(1.02);backdrop-filter:blur(18px) saturate(190%) brightness(1.02)}
+
+/* the toolbar in groups: one glass capsule per group with plain buttons in it (not a capsule per button); the chosen view a soft accent tint */
+body[data-glass] #bar .tbgroup{box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #bar .tbgroup button:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7):not(#x8):not(#x9){background:transparent!important;border:0!important;box-shadow:none!important;color:var(--fg)!important}
+body[data-glass] #bar .tbgroup button.over{background:var(--glass-hover)!important}
+body[data-glass] #bar .tbgroup :is(#canvasbtn,#mapbtn,#plansbtn).on:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7):not(#x8):not(#x9){background:color-mix(in srgb,var(--acc) 18%,transparent)!important;color:var(--acc)!important}
+body[data-glass] #bar .tbgroup #projinfo.open:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7):not(#x8):not(#x9){background:var(--glass-hover)!important}
+/* the Project menu: a thick glass menu with plain rows */
+body[data-glass] #projinfomenu{background:var(--glass-thick,var(--panel));border:1px solid var(--glass-edge);border-radius:14px;-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
+body[data-glass] #bar #projinfomenu button:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5):not(#x6):not(#x7):not(#x8):not(#x9){background:transparent!important;border:0!important;box-shadow:none!important;border-radius:8px!important;color:var(--fg)!important}
+body[data-glass] #bar #projinfomenu button.over{background:var(--glass-hover)!important}
+body[data-glass] #projinfomenu .pi-sep{background:var(--glass-sep,var(--line))}
+/* the tools on the canvas: the rail and the zoom capsule are glass; the zoom menu opens over screens, so it is solid (text must not shine through) */
+body[data-glass] #toolrail{box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #toolrail button:hover{background:var(--glass-hover)}
+body[data-glass] #zoomcorner #zoompill{box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #zoomcorner #zpct:hover{background:var(--glass-hover)}
+body[data-glass] #zoomcorner #zmenu{background:var(--panel)!important;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* the Share panel of the sitemap: like the Share menu of a screen */
+body[data-glass] .fmt-panel{background:var(--glass-thick,var(--panel));border-color:var(--glass-edge);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
+body[data-glass] .fmt-panel .fmt-tiles .fmt-tile:hover{background:var(--glass-hover)}
+/* the right panels are floating cards (app.css): under the glass toolbar they start below it, with all their edges */
+body[data-glass] :is(#inspector,#smside){margin-top:calc(var(--glass-top,0px) + 8px)!important;border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);padding-top:0!important}
+body[data-glass] :is(#inspector,#smside)>.insp-head{background:transparent}
+body[data-glass]:not([data-chat="float"]):not([data-fs]) #chat{border-color:var(--glass-edge)}
+/* the tabs of the screens: one glass capsule (app.css), plain tabs in it */
+body[data-glass] #bar #tabs{background:var(--glass-thin);border-color:var(--glass-edge);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #bar #tabs .tab:not(#x1):not(#x2){border:0;box-shadow:none;background:transparent}
+body[data-glass] #bar #tabs .tab:hover:not(#x1):not(#x2){background:var(--glass-hover)}
+body[data-glass] #bar #tabs .tab.on:not(#x1):not(#x2){background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+/* the tool rail and the zoom capsule often lie over a screen (a photo, a dark block): thick glass, not thin, so the icons stay readable */
+body[data-glass] :is(#toolrail,#zoomcorner #zoompill){background:var(--glass-thick,var(--panel))!important;-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6)}
+/* the toolbar itself is no bar any more: its groups are glass capsules floating over the canvas (like pen.dev), so no band and no line under it */
+body[data-glass] #bar#bar{background:transparent!important;border-bottom:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+/* one surface around the floating cards: the window, the work area and the canvas show the same wash over the canvas colour (the canvas keeps only its dots) */
+body[data-glass]{background:var(--glass-wash),var(--canvas);background-attachment:fixed}
+body[data-glass] :is(#work,#canvas){background-color:transparent!important}
+/* the sitemap or a plan covers the screens: opaque, with the same wash pinned to the window, so it continues the surface around it */
+body[data-glass] #docview{background:radial-gradient(var(--dot) 1px,transparent 1px) 0 0/24px 24px,var(--glass-wash),var(--canvas)!important;background-attachment:local,fixed,fixed!important}

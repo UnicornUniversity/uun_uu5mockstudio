@@ -134,3 +134,14 @@ test("the setups moved into Settings are not in Help, View or the app menu any m
   }
   assert.deepEqual(find(buildMenuTemplate({ platform: "darwin" }), "Help").submenu.map((i) => i.label).filter(Boolean), ["Welcome Tour…", "Check for Updates…"]);
 });
+
+test("Screen has no own Undo / Redo (Edit does it) and offers Use This Variant only for a screen with variants", () => {
+  const screenOf = (o) => find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa", ...o }), "Screen").submenu.map((i) => i.label).filter(Boolean);
+  const plain = screenOf({});
+  for (const gone of ["Undo Screen Change", "Redo Screen Change", "Use This Variant…"]) assert.ok(!plain.includes(gone), gone);
+  assert.ok(plain.includes("Variants…"), "making variants stays");
+  assert.ok(screenOf({ screenHasVariants: true }).includes("Use This Variant…"));
+  assert.ok(!screenOf({ screenHasVariants: true, current: null }).includes("Use This Variant…"), "no project, no screen");
+  const edit = find(buildMenuTemplate({ platform: "darwin", projects, current: "Alfa" }), "Edit").submenu;
+  assert.equal(find(edit, "Undo").accelerator, "CmdOrCtrl+Z");
+});
