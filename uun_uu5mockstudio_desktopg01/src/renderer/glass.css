@@ -239,3 +239,6 @@ body[data-glass]{background:var(--glass-wash),var(--canvas);background-attachmen
 body[data-glass] :is(#work,#canvas){background-color:transparent!important}
 /* the sitemap or a plan covers the screens: opaque, with the same wash pinned to the window, so it continues the surface around it */
 body[data-glass] #docview{background:radial-gradient(var(--dot) 1px,transparent 1px) 0 0/24px 24px,var(--glass-wash),var(--canvas)!important;background-attachment:local,fixed,fixed!important}
+/* the dashboard: the sidebar a glass card like the docked chat, the pane shows the surface of the window */
+body[data-glass] #dash-side{border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
+body[data-glass] #dash-pane{background:transparent!important}

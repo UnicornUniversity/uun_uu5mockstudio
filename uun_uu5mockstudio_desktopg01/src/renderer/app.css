@@ -1649,3 +1649,11 @@ body:not([data-chat="float"]):not([data-fs]) #chat header{border-bottom-color:va
 /* the tool rail lies over screens too: icons in the text colour (not the muted grey), so they read on any background */
 #toolrail button{color:color-mix(in srgb,var(--fg) 78%,transparent)}
 #bar #tabs{display:none!important} /* the screens are on the canvas: no tab strip of them in the top bar */
+/* the dashboard like an open project: the light work surface, the sidebar a floating card (as the docked chat), the cards of the projects on the surface */
+#dash{background:var(--canvas)}
+#dash-side{margin:8px 0 8px 8px;background:var(--panel);border:1px solid var(--line)!important;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.06);box-sizing:border-box}
+#dash-pane{background:transparent}
+/* the window buttons (macOS, trafficLightPosition 18/22: centre ~29 px from the top, the last one ends at ~70 px) and the cards that start 8 px in:
+   the first row of the docked chat and of the dashboard sidebar is centred on the buttons, its content starts one gap after them (like pen.dev) */
+[data-platform="darwin"] #dash-brand{height:42px;padding-left:76px}
+body[data-platform="darwin"]:not([data-chat="float"]):not([data-fs]) #chat header{min-height:42px;padding-top:4px;padding-bottom:4px;padding-left:76px;box-sizing:border-box}
