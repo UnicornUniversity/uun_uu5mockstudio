@@ -1967,7 +1967,7 @@ function loadProject(info) {
   window.studio.sitemapRead().then((r) => { if (project === info.project) setProjectSitemap(r?.error ? null : r); });
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
   if (project) plus4uBar?.refresh({ remote: true }); else plus4uBar?.clear();
-  $("projbtn").textContent = project ? `${project} ▾` : "No project ▾"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
+  $("projname").textContent = project || "No project"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";
   updateNoProject();
   loading = false;
 }
@@ -2101,14 +2101,6 @@ async function renderProjectMenu() {
   }
   m.append(document.createElement("hr"));
   const items = [["new", "＋ New project…"], ...(p4uOn ? [["new-doc", "New project from a Plus4U document…"]] : [])];
-  if (project) items.push(["rename", `Rename “${project}”…`], ["delete", `Delete “${project}”…`], ["folder", "Reveal project folder"], ["close", "Close project"]);
-  if (project) {
-    items.push(["desc-open", "Project description…"], ["rules-open", "Business rules…"]);
-    if (repo && !repo.error) items.push(["repo-unlink", `Unlink repository ${repo.name}`]);
-    else items.push(["repo-link", repo?.error ? "Link another git repository…" : "Link git repository…"]);
-    if (p4uOn) items.push(...await plus4uSync.menuItems());
-  }
-  items.push(["projects-open", "Open projects folder"], ["projects-change", "Change projects folder…"]);
   for (const [act, label] of items) {
     const b = Object.assign(document.createElement("button"), { textContent: label });
     b.dataset.act = act; m.append(b);
@@ -2135,7 +2127,6 @@ if (project) plus4uBar.refresh({ remote: true }); // a project opened before the
 window.studio.onPlus4uChanged?.(() => { if (project) plus4uBar.refresh({ remote: true }); }); // signed in or out: the lock and the remote dot may change
 const account = createAccountButton({ buttons: [$("dash-acct"), $("acctbtn")], toast: (msg, o) => toast(msg, o), dismissMenus, onStatus: (st) => { p4uOn = Boolean(st?.signedIn); plus4uBar.setEnabled(p4uOn); dashboard.setPlus4u(p4uOn); } });
 $("projbtn").onclick = async (e) => {
-  if (dock.collapsed()) return; // on a minimized bar the click restores the chat instead (handled by the header)
   e.stopPropagation(); const m = $("projmenu");
   const wasOpen = !m.hidden; dismissMenus();
   if (wasOpen) return;

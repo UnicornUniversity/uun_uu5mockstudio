@@ -1657,3 +1657,9 @@ body:not([data-chat="float"]):not([data-fs]) #chat header{border-bottom-color:va
    the first row of the docked chat and of the dashboard sidebar is centred on the buttons, its content starts one gap after them (like pen.dev) */
 [data-platform="darwin"] #dash-brand{height:42px;padding-left:76px}
 body[data-platform="darwin"]:not([data-chat="float"]):not([data-fs]) #chat header{min-height:42px;padding-top:4px;padding-bottom:4px;padding-left:76px;box-sizing:border-box}
+
+/* the project switcher: a group in the toolbar before the views, so it stays when the chat is minimized */
+#projpick #projbtn{flex:none;margin:0;max-width:240px;min-width:0;font-weight:600}
+#projpick #projname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#chat header .tools{margin-left:auto}
+body[data-noproject] #projpick{display:none}
