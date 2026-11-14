@@ -214,7 +214,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         c.sel = c.sels.at(-1) ?? null; renderView(c);
       },
       onBulk: (sm) => io.write(sm),
-      onChange: (sm, path) => { c.sel = path; c.sels = [path]; io.write(sm); },
+      onChange: (sm, path, o) => { if (!o?.keepSelection) { c.sel = path; c.sels = [path]; } io.write(sm); },
       onCreateMany: (items) => {
         let cur = sitemap; const out = [];
         for (const it of items) { const file = it.node.file ?? fileFor(cur, it.node); if (!it.node.file) cur = updateNode(cur, it.path, { file }); out.push({ node: it.node, file, where: it.where }); }

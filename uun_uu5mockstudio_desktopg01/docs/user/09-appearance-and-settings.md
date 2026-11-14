@@ -16,7 +16,7 @@ The theme, Glass effect and Offline mode are changed right in the window. The ot
 
 ## Theme and Glass Effect
 
-The theme is chosen in **Settings → Appearance** (the dashboard also has a ◐ button). It offers **Automatic** (follows the system), **Light** and **Dark**. On macOS **Glass Effect** gives the app a translucent, blurred look in light and dark; it is optional and can be switched off at any time. With it on, the whole app uses the same glass materials: the sidebars (chat, dashboard navigation) are a soft tint over a light colour wash, the toolbar, description strip, inspector and selection bar are frosted glass floating over the canvas, and menus, dialogs, toasts, dashboard cards and buttons are glass capsules and cards. With **Reduce transparency** on in the macOS accessibility settings the effect switches itself off.
+The theme is chosen in **Settings → Appearance**. It offers **Automatic** (follows the system), **Light** and **Dark**. On macOS **Glass Effect** gives the app a translucent, blurred look in light and dark; it is optional and can be switched off at any time. With it on, the whole app uses the same glass materials: the sidebars (chat, dashboard navigation) are a soft tint over a light colour wash, the toolbar, description strip, inspector and selection bar are frosted glass floating over the canvas, and menus, dialogs, toasts, dashboard cards and buttons are glass capsules and cards. With **Reduce transparency** on in the macOS accessibility settings the effect switches itself off.
 
 ## Your role
 

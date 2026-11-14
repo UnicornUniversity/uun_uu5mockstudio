@@ -133,7 +133,7 @@ export function renderSitemap(sm, opts) {
     if (n.type === "external" || (n.type === "group" && !n.file)) return null;
     const on = Boolean(n.approved), b = el("span", { className: `sm-ap${on ? " on" : ""}`, role: "button", tabIndex: 0, textContent: "✓", title: on ? "Approved: the agent keeps it as it is. Click to take it back" : "Mark as reviewed and approved" });
     b.setAttribute("aria-label", on ? `${n.title} is approved. Take the approval back` : `Approve ${n.title}`); b.setAttribute("aria-pressed", String(on));
-    const flip = (e) => { e.stopPropagation(); e.preventDefault(); onChange?.(updateNode(sm, path, { approved: !on }), path); };
+    const flip = (e) => { e.stopPropagation(); e.preventDefault(); onChange?.(updateNode(sm, path, { approved: !on }), path, { keepSelection: true }); }; // only the mark: the page is not selected (no panel opens)
     b.onclick = flip; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") flip(e); }; b.onpointerdown = (e) => e.stopPropagation(); b.ondblclick = (e) => e.stopPropagation();
     return b;
   };

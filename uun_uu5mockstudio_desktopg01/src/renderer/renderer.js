@@ -1850,13 +1850,11 @@ const cdnActions = {
 refreshCdn();
 
 // ---------- theme ----------
-const THEME_ICON = { auto: "◐", light: "☀", dark: "☾" }, THEME_NAME = { auto: "automatic", light: "light", dark: "dark" };
+// the appearance is chosen in Settings → Appearance (no switch of its own on the dashboard)
 function syncTheme() {
   const pref = window.__theme.get();
-  for (const id of ["dash-theme"]) { $(id).textContent = THEME_ICON[pref]; $(id).title = `Appearance: ${THEME_NAME[pref]} (click to switch)`; }
   window.studio.setTheme(pref === "auto" ? "system" : pref);
 }
-for (const id of ["dash-theme"]) $(id).onclick = () => { window.__theme.next(); syncTheme(); };
 syncTheme();
 
 // ---------- docked / floating chat panel ----------

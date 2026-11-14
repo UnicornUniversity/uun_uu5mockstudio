@@ -39,7 +39,7 @@ export function createPlansMenu({ button, menu, state, actions, show = "plans" }
     else parts.push(...makeMap(s, "This project has no sitemap yet. Make one:"));
     menu.replaceChildren(...parts); return;
     }
-    if (s.viewing && actions.closeView) parts.push(el("button", { type: "button", className: "pm-act", role: "menuitem", textContent: "← Back to the canvas", title: "Esc", onclick: run(actions.closeView) }));
+    // back to the canvas: the Canvas button next to it (and Esc)
     if (!s.plans.length) parts.push(el("div", { className: "pm-empty", textContent: "No plans yet. Switch the message field to Plan and describe what to plan." }));
     for (const p of [...s.plans].sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0))) parts.push(row(p.slug, p.title, ago(p.mtime), false, STATUS[p.status] ?? p.status));
     // a project that is not a web site or portal has no Sitemap button: the map is made from here, and the button comes with it
