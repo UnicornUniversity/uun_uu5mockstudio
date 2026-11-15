@@ -173,8 +173,8 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
       return n;
     }, { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity });
     for (const r of extra) { b.x1 = Math.min(b.x1, r.x); b.y1 = Math.min(b.y1, r.y); b.x2 = Math.max(b.x2, r.x + r.w); b.y2 = Math.max(b.y2, r.y + r.h); } // things that are not screens (the plans)
-    // inset: the parts of the canvas hidden under a floating toolbar (Glass Effect, top) or a floating chat (left or right); a number means the top only
-    const ins = getInset?.() ?? 0, top = typeof ins === "number" ? ins : ins.top ?? 0, left = typeof ins === "number" ? 0 : ins.left ?? 0, right = typeof ins === "number" ? 0 : ins.right ?? 0;
+    // inset: the parts of the canvas hidden under a floating chat (left or right); the floating toolbar at the top is ignored, so the picture is centred on the whole height of the canvas
+    const ins = getInset?.() ?? 0, top = 0, left = typeof ins === "number" ? 0 : ins.left ?? 0, right = typeof ins === "number" ? 0 : ins.right ?? 0;
     const r = root.getBoundingClientRect(), pad = 48, aw = r.width - left - right, ah = r.height - top;
     const z = Math.min(1, Math.max(MIN_Z, Math.min((aw - 2 * pad) / (b.x2 - b.x1), (ah - 2 * pad) / (b.y2 - b.y1))));
     cam = { z, x: left + (aw - (b.x2 - b.x1) * z) / 2 - b.x1 * z, y: top + (ah - (b.y2 - b.y1) * z) / 2 - b.y1 * z };
