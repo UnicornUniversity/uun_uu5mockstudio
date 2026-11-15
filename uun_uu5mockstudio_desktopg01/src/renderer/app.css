@@ -1318,7 +1318,7 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 .sm-node.drop-inside{outline:2px solid var(--acc);outline-offset:1px;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
 .sm-node.drop-before{box-shadow:0 -3px 0 0 var(--acc)}.sm-node.drop-after{box-shadow:0 3px 0 0 var(--acc)}
 /* the view is the work area itself, not a card on it: no frame, no title bar of the sitemap (the toolbar says what is shown), no row of chips */
-#docview{background:var(--canvas);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:24px 24px} /* the sitemap and the plans lie where the canvas lies: the same surface */
+#docview{background:var(--canvas)} /* the sitemap and the plans lie where the canvas lies: the same surface */
 .plancard.pc-inview{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
 .pc-inview .pc-mapbox{border:0;padding:0;background:transparent}
 .pc-inview .pc-treehead{padding-top:10px}
@@ -1663,3 +1663,14 @@ body[data-platform="darwin"]:not([data-chat="float"]):not([data-fs]) #chat heade
 #projpick #projname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #chat header .tools{margin-left:auto}
 body[data-noproject] #projpick{display:none}
+
+/* the full view of the sitemap and the plans: no dots (the canvas keeps them), no title and no icon; the count is a quiet line, Share sits in the top bar, the tools of the tree with the comment row */
+.sitemapcard.pc-inview .pc-title .pc-name{display:none}
+.sitemapcard.pc-inview .pc-title .pc-status{background:transparent;padding:0;font-size:12px}
+#bar .pc-share{margin-left:8px;-webkit-app-region:no-drag}
+.pc-treetools{display:flex;align-items:center;gap:6px;flex:none;margin-left:4px}
+.pc-seg{display:inline-flex;align-items:center;gap:0;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.pc-seg .pc-ib{width:28px;height:26px}
+.pc-seg .pc-ib .ico{width:18px;height:18px}
+.pc-treetools .sm-searchbar.intool{height:30px}
+.pc-treetools .sm-searchbar.intool:not(:focus-within):not(.on){background:var(--panel);border:1px solid var(--line);width:34px;justify-content:center}
