@@ -538,7 +538,7 @@ function setBusy(b) {
     tickWork(); workTimer = setInterval(tickWork, 1000);
   }
   const empty = $("empty"); empty.classList.toggle("working", b);
-  $("empty-text").textContent = b ? "Claude is preparing a screen…" : EMPTY_TEXT;
+  $("empty-text").textContent = b ? "Preparing a screen…" : EMPTY_TEXT;
 }
 /** The answers of Plan mode that were hidden while they were written are shown as they are (when they did not become a plan). */
 function clearPlanning() { for (const e of entries) if (e.planning) { e.planning = false; paint(e); } }
@@ -2498,7 +2498,7 @@ const fmtWhen = (ts) => {
 const chatCount = (n) => `${n} ${n === 1 ? "message" : "messages"}`;
 async function switchToChat(id) {
   if (id === chatId) return;
-  if (busy && !(await askConfirm({ title: "Switch conversation?", detail: "Claude is working right now. Switching stops the running task.", ok: "Switch", danger: false }))) return;
+  if (busy && !(await askConfirm({ title: "Switch conversation?", detail: "The agent is working right now. Switching stops the running task.", ok: "Switch", danger: false }))) return;
   await flushSaves(); showChat(await window.studio.switchChat(id));
 }
 async function renderHistMenu() {

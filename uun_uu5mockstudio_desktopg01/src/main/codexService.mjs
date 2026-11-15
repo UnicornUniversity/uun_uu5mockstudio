@@ -3,7 +3,7 @@ import { agentInstructions } from "./claudeService.mjs";
 import { findCodex, codexShell } from "./codexEnv.mjs";
 import { ensureCodexPlugins } from "./codexPlugins.mjs";
 import { codexEvents } from "./providers/events.mjs";
-import { requiredFiles, skillsPrompt, readsSkill, writesScreen, reworkPrompt } from "./codexSkills.mjs";
+import { requiredFiles, skillsPrompt, readsSkill, writesScreen, reworkPrompt, optsOutOfUu5, NO_UU5_NOTE } from "./codexSkills.mjs";
 
 /** What Codex is told on top of the common instructions: it has no preview tools and no Claude Code skills of its own. */
 export const CODEX_NOTE = [
@@ -86,7 +86,8 @@ export class CodexService {
     await (pluginsDone ??= ensureCodexPlugins({ bin }).catch(() => null));
     const { instructions, docs, templateMeta } = await agentInstructions(this, { plan, economy });
     this.docSetup = docs; // the MCP servers of the Plus4U documents for both runs
-    const files = requiredFiles({ bricks: templateMeta?.level === "page", shell: !["web", "page"].includes(templateMeta?.level) }), skills = skillsPrompt(files);
+    if (optsOutOfUu5(prompt)) this.noUu5 = true; // the exception holds for the rest of the conversation (the session is resumed)
+    const files = this.noUu5 ? [] : requiredFiles({ bricks: templateMeta?.level === "page", shell: !["web", "page"].includes(templateMeta?.level) }), skills = this.noUu5 ? NO_UU5_NOTE : skillsPrompt(files);
     let run = await this._run(bin, `${instructions}\n${CODEX_NOTE}${skills ? `\n${skills}` : ""}\n\n--- The request of the user ---\n${prompt}`, { model, plan, economy });
     // Codex only "may" use a skill: when it wrote a screen without having read them, it is sent back once.
     if (!this.stopped && run.finished && !plan && files.length && run.wrote && !run.read) {
@@ -101,7 +102,7 @@ export class CodexService {
     else this.onEvent({ type: "app_error", message: `Codex ended without an answer.${run.stderr.trim() ? ` ${run.stderr.trim().split("\n").slice(-3).join(" ")}` : ""}` });
   }
 
-  setSession(id) { this.sessionId = id || undefined; }
-  reset() { this.sessionId = undefined; }
+  setSession(id) { if ((id || undefined) !== this.sessionId) this.noUu5 = false; this.sessionId = id || undefined; }
+  reset() { this.sessionId = undefined; this.noUu5 = false; }
   stop() { this.stopped = true; this.child?.kill(); }
 }

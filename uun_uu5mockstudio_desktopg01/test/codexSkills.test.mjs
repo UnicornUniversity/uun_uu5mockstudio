@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmp } from "./helpers.mjs";
-import { pluginRoot, requiredFiles, skillsPrompt, readsSkill, writesScreen, reworkPrompt } from "../src/main/codexSkills.mjs";
+import { pluginRoot, requiredFiles, skillsPrompt, readsSkill, writesScreen, reworkPrompt, optsOutOfUu5, NO_UU5_NOTE } from "../src/main/codexSkills.mjs";
 import { sumUsage } from "../src/main/codexService.mjs";
 
 async function install() {
@@ -63,4 +63,10 @@ test("usage of the first and the second run are added up", () => {
   const a = { in: 10, out: 2, cacheRead: 5, cacheWrite: 0, models: { m: { in: 10, out: 2 } }, perRequest: true }, b = { in: 1, out: 1, cacheRead: 1, cacheWrite: 0, models: { m: { in: 1, out: 1 } }, perRequest: true };
   assert.deepEqual(sumUsage(a, b), { in: 11, out: 3, cacheRead: 6, cacheWrite: 0, models: { m: { in: 11, out: 3 } }, perRequest: true });
   assert.equal(sumUsage(null, b), b);
+});
+
+test("the user's exception from uu5 and uuGDS is recognised", () => {
+  for (const s of ["ano, bez uu5 a uuGDS", "Nepoužívej uu5 komponenty", "without uuGDS please", "don't use uu5", "redesign, no uu5"]) assert.equal(optsOutOfUu5(s), true, s);
+  for (const s of ["Udělej redesign homepage", "Použij uu5 komponenty a uuGDS", ""]) assert.equal(optsOutOfUu5(s), false, s);
+  assert.match(NO_UU5_NOTE, /never rework/);
 });

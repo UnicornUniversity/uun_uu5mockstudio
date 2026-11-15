@@ -1675,7 +1675,6 @@ body[data-noproject] #projpick{display:none}
 /* the full view of the sitemap and the plans: no dots (the canvas keeps them), no title and no icon; the count is a quiet line, Share sits in the top bar, the tools of the tree with the comment row */
 .sitemapcard.pc-inview .pc-title .pc-name{display:none}
 .sitemapcard.pc-inview .pc-title .pc-status{background:transparent;padding:0;font-size:12px}
-#bar .pc-share{margin-left:8px;-webkit-app-region:no-drag}
 .pc-treetools{display:flex;align-items:center;gap:6px;flex:none;margin-left:4px}
 .pc-seg{display:inline-flex;align-items:center;gap:0;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
 .pc-seg .pc-ib{width:28px;height:26px}

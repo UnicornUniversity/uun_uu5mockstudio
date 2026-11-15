@@ -181,9 +181,8 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     }));
     const foldBtn = c.mapHidden ? null : ib(I.fold, "Fold the tree: only the first level stays open", () => { c.collapsed = new Set(foldable(sitemap, 1)); renderView(c); });
     const unfoldBtn = c.mapHidden ? null : ib(I.unfold, "Unfold the tree: show every branch", () => { c.collapsed = new Set(); renderView(c); });
-    // in the full view the tools of the tree (search, fold, unfold) sit with the comment row below the toolbar, Share in the top bar; on the canvas card they stay in the card header
-    if (c.expanded) document.querySelectorAll("#bar .pc-share").forEach((x) => x.remove());
-    if (c.expanded && exportBtn) { exportBtn.classList.add("inbar"); document.querySelector("#bar .ctl")?.append(exportBtn); }
+    // in the full view the tools of the tree (search, fold, unfold) and Share (the last one on the right) sit with the comment row below the toolbar, so the profile stays the first button from the right in the top bar; on the canvas card they stay in the card header
+    document.querySelectorAll("#bar .pc-share").forEach((x) => x.remove());
     const tools = el("span", { className: "pc-tools" },
       c.expanded ? null : foldBtn, c.expanded ? null : unfoldBtn,
       c.expanded ? null : hide, c.expanded ? null : expand, c.expanded ? null : exportBtn);
@@ -241,8 +240,8 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const bar = box.querySelector(".pc-mapbox > .sm")?.searchBar;
     const row = c.expanded ? box.querySelector(".sm-review") : null; // the row of the comment on the whole map
     if (bar) bar.classList.add("intool");
-    if (row) row.append(el("span", { className: "pc-treetools" }, ...(bar ? [bar] : []), ...(foldBtn ? [el("span", { className: "pc-seg" }, foldBtn, unfoldBtn)] : [])));
-    else { if (bar) tools.prepend(bar); if (c.expanded) tools.append(...[foldBtn, unfoldBtn].filter(Boolean)); }
+    if (row) row.append(el("span", { className: "pc-treetools" }, ...(bar ? [bar] : []), ...(foldBtn ? [el("span", { className: "pc-seg" }, foldBtn, unfoldBtn)] : []), ...(exportBtn ? [exportBtn] : [])));
+    else { if (bar) tools.prepend(bar); if (c.expanded) tools.append(...[foldBtn, unfoldBtn, exportBtn].filter(Boolean)); }
     return box;
   }
 

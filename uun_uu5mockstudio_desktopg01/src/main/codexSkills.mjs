@@ -46,6 +46,18 @@ export function skillsPrompt(files) {
   ].join("\n");
 }
 
+/** Has the user said that this work must NOT use uu5 components / uuGDS ("bez uu5 a uuGDS", "without uu5", "nepoužívej uuGDS", "don't use uu5")?
+ *  Then the mandatory skills and the rework do not apply: the user's explicit exception wins over the project rules. */
+export function optsOutOfUu5(text) {
+  const t = String(text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const target = "(?:uu5|uu ?gds|uu5g05|uu5 komponent\\w*|uu5 component\\w*)";
+  return new RegExp(`\\b(?:bez|without|no|nepouzivej|nepouzivat|nepouzivejte|nechci|nechceme|nepotrebuji|ignoruj|ignore|skip|avoid|(?:do not|don'?t|dont) use|not use|ne ?pouzij)\\b[^.\\n]{0,40}?\\b${target}`).test(t)
+    || new RegExp(`\\b${target}\\b[^.\\n]{0,25}?\\b(?:nepouzivej|nepouzivat|nechci|ne|not|nepotrebuji)\\b`).test(t);
+}
+
+/** The note that takes the place of the mandatory skills when the user opted out of uu5 and uuGDS. */
+export const NO_UU5_NOTE = "EXCEPTION OF THE USER: the user explicitly asked NOT to use uu5 components and uuGDS for this work. This overrides the mandatory skills and the project rules about uu5/uuGDS, in this request and in every later one of this conversation, including your final check: build the screen as plain HTML/CSS as asked, do not read the uu5 skills for the sake of it, and never rework the screen into uu5 components or uuGDS values. Keep the content, the sections and the business rules.";
+
 /** Did this shell command read a skill or a rule file? */
 export const readsSkill = (command) => /SKILL\.md|uu5-mockup-(coding|design)\.mdc|\/rules\/[\w-]+\.mdc/.test(String(command ?? ""));
 
