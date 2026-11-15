@@ -851,3 +851,34 @@ test("an element inside .map says which list it repeats and what tells its items
   const filtered = aliased(`const ROWS = [{ name: "a" }];`, `<div>{ROWS.filter(Boolean).map(({ name }) => <span key={name}>{name}</span>)}</div>`);
   assert.deepEqual(describeElement(filtered, parseElements(filtered).find((e) => e.name === "span").ordinal).loop, { list: "ROWS.filter(Boolean)", count: null, items: null });
 });
+
+test("an icon written as ICON.edit says what it resolves to and how many places use it; replacing it here leaves the constant alone", () => {
+  const src = `<!doctype html><html><body><div id="uu5"></div>
+<script type="text/babel">
+  import { Utils } from "uu5g05";
+  import Uu5Elements from "uu5g05-elements";
+  const ICON = { edit: "uugds-pencil" };
+  function Page() {
+    const colorScheme = "positive";
+    return (
+      <div>
+        <Uu5Elements.Tile actionList={[{ icon: ICON.edit, children: "Edit" }]} headerColorScheme={colorScheme} />
+        <Uu5Elements.Button icon={ICON.edit} />
+      </div>
+    );
+  }
+  Utils.Dom.render(<Page />, document.getElementById("uu5"));
+</script></body></html>`;
+  const item = describeItem(src, 1, "actionList", 0).attrs.find((a) => a.name === "icon");
+  assert.equal(item.resolved.via, "ICON.edit");
+  assert.equal(item.resolved.langs[0].value, "uugds-pencil");
+  assert.equal(item.uses, 2);
+  const button = describeElement(src, 2).attrs.find((a) => a.name === "icon");
+  assert.equal(button.uses, 2);
+  const out = setItemProp(src, 1, "actionList", 0, "icon", { type: "string", value: "uugds-plus" });
+  assert.match(out, /actionList=\{\[\{ icon: "uugds-plus", children: "Edit" \}\]\}/);
+  assert.match(out, /const ICON = \{ edit: "uugds-pencil" \}/, "the constant is not touched");
+  assert.equal(describeElement(out, 2).attrs.find((a) => a.name === "icon").uses, 1);
+  // a variable that is a local literal resolves too
+  assert.equal(describeElement(src, 1).attrs.find((a) => a.name === "headerColorScheme").resolved.langs[0].value, "positive");
+});

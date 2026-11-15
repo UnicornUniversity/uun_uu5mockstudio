@@ -450,10 +450,20 @@ export function tagHtml(html) {
 
 const publicAttrs = (e) => e.attrs.filter((a) => !a.spread && a.name !== SRC_ATTR).map(({ name, type, value, code, bare, json, ref, branches, valueRef, mapRef, items, resolved }) => ({ name, type, value, code, bare, json, ...(items ? { listed: true, count: items.length } : {}), ...(resolved ? { resolved: publicText(resolved) } : {}), ...(valueRef ? { valueRef: { path: valueRef.path, via: valueRef.via, targets: valueRef.targets.map(({ lang, type: t, value: v }) => ({ lang, type: t, value: v })) } } : {}), ...(mapRef ? { mapRef: { list: mapRef.list, path: mapRef.path, items: mapRef.items.map(({ index, type: t, value: v }) => ({ index, type: t, value: v })) } } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}), ...(ref ? { ref: { name: ref.name, code: ref.code, json: ref.json } } : {}) }));
 
+/** How many times the file writes `ICON.edit`-like reference `via`: what changing the constant (instead of this one place) would touch. */
+function withUses(html, attrs) {
+  return attrs.map((a) => {
+    const via = a.resolved?.via;
+    if (!via || !/^[\w$]+(\.[\w$]+)*$/.test(via)) return a;
+    const n = (html.match(new RegExp(`(?<![\\w$.])${via.replace(/\./g, "\\.")}(?![\\w$])`, "g")) ?? []).length;
+    return n ? { ...a, uses: n } : a;
+  });
+}
+
 export function describeElement(html, ordinal) {
   const e = parseElements(html)[ordinal];
   if (!e) return null;
-  return { ordinal: e.ordinal, name: e.name, uu5: e.uu5, selfClosing: e.selfClosing, attrs: publicAttrs(e), spread: e.attrs.some((a) => a.spread), snippet: e.snippet, ...(e.loop ? { loop: e.loop } : {}) };
+  return { ordinal: e.ordinal, name: e.name, uu5: e.uu5, selfClosing: e.selfClosing, attrs: withUses(html, publicAttrs(e)), spread: e.attrs.some((a) => a.spread), snippet: e.snippet, ...(e.loop ? { loop: e.loop } : {}) };
 }
 
 export function elementNames(html, ordinals) {
@@ -573,7 +583,7 @@ function itemOf(html, ordinal, prop, index, count) {
 export function describeItem(html, ordinal, prop, index, count) {
   const { e, item } = itemOf(html, ordinal, prop, index, count);
   const attrs = item.props.filter((p) => !p.spread).map(({ name, type, value, code, json, branches, resolved }) => ({ name, type, value, code, json, ...(resolved ? { resolved: publicText(resolved) } : {}), ...(branches ? { branches: branches.map(({ label, type: t, value: v, editable }) => ({ label, type: t, value: v, editable })) } : {}) }));
-  return { ordinal: e.ordinal, name: null, uu5: true, selfClosing: true, attrs, spread: item.props.some((p) => p.spread), snippet: item.text, item: { prop, index }, ...(e.loop ? { loop: e.loop } : {}) };
+  return { ordinal: e.ordinal, name: null, uu5: true, selfClosing: true, attrs: withUses(html, attrs), spread: item.props.some((p) => p.spread), snippet: item.text, item: { prop, index }, ...(e.loop ? { loop: e.loop } : {}) };
 }
 
 const keySource = (name) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name));

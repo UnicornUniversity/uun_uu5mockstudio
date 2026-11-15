@@ -8,6 +8,8 @@ const SKIP_ADD = new Set(["children", "elementRef", "elementAttrs", "uu5Tag"]);
 const CODE_TYPE = /func|object|array|node|element|ref|\[\]|shape/i;
 // props whose values come from uuGds palettes, even when the component has no reference page
 const WELL_KNOWN = { colorScheme: { type: "colorScheme" }, borderRadius: { type: "borderRadius" } };
+/** headerColorScheme, iconColorScheme, footerBorderRadius ... are the same kind of value as colorScheme / borderRadius. */
+const wellKnown = (name) => WELL_KNOWN[name] ?? (/.[a-z]ColorScheme$/.test(name) ? WELL_KNOWN.colorScheme : /.[a-z]BorderRadius$/.test(name) ? WELL_KNOWN.borderRadius : undefined);
 // enums that a component documents only as "oneOf" (no values), such as Uu5Forms.SubmitButton: the values are the same everywhere
 const WELL_KNOWN_ENUMS = { significance: ["common", "highlighted", "distinct", "subdued"] };
 // list props whose items come from a fixed set even when the component has no reference page (Uu5.Utils.NestingLevel.valueList, plus the modal level of ContentContainer)
@@ -33,7 +35,7 @@ export function kindOf(prop, attr, palettes = {}, name = "") {
   }
   if (attr?.type === "code") return { kind: "code" };
   let type = prop?.type ?? "";
-  if (!prop?.enum && WELL_KNOWN[name] && !/^(bool|number|object|func|array)/i.test(type)) type = WELL_KNOWN[name].type; // documented as "oneOf" / "string" without the values
+  if (!prop?.enum && wellKnown(name) && !/^(bool|number|object|func|array)/i.test(type)) type = wellKnown(name).type; // documented as "oneOf" / "string" without the values
   if (!prop?.enum && WELL_KNOWN_ENUMS[name] && !/^(bool|number|object|func|array)/i.test(type)) return { kind: "select", options: WELL_KNOWN_ENUMS[name] };
   if (type === "colorScheme" && palettes.colorScheme) return { kind: "select", options: palettes.colorScheme };
   if (type === "borderRadius" && palettes.borderRadius) return { kind: "select", options: palettes.borderRadius };
@@ -221,16 +223,49 @@ export function createPropsPanel({ api, getScreens = () => [], onUse, onComment,
     return el("div", { className: "pcode plinked", title }, field, edit);
   }
 
+  /**
+   * An icon that is written as a reference (`icon: ICON.edit`, `icon={EDIT_ICON}`, a variable): the icon itself with the usual catalog control. A change
+   * replaces the reference in this place only, so the other places keep their icon. The chip with the name of the reference switches to changing the
+   * constant itself (every place that uses it) when the file has the icon written out as one literal.
+   */
+  const everywhere = new Set();
+  function referenceIconControl(name, attr, now) {
+    const via = attr.resolved?.via ?? attr.ref?.name ?? attr.code, lit = attr.resolved?.langs?.length === 1 ? attr.resolved.langs[0] : null;
+    const key = `${ordinals.join(",")}|${sub() ? `${sub().prop}[${sub().index}]` : ""}|${name}`, all = Boolean(lit) && everywhere.has(key);
+    const scope = sub() ? { item: { prop: sub().prop, index: sub().index }, name } : { attr: name };
+    const uses = attr.uses ? `${attr.uses} place${attr.uses === 1 ? "" : "s"}` : "other places";
+    const write = async (v) => {
+      if (!v || v === now) return;
+      if (!all) { await setProp(name, { type: "string", value: v }); return; }
+      $("insp-err").textContent = "";
+      const r = await api.setText(pick.file, ordinals, scope, 0, v);
+      if (r?.error) { $("insp-err").textContent = r.error; return render(); }
+      await load();
+    };
+    const { row } = iconField({
+      value: now, glyphs: Boolean(pick.assets?.gdsBase), title: all ? `Choose an icon (written into ${via}, ${uses})` : `Choose an icon (replaces ${via} here, the other places keep theirs)`,
+      onText: write, onPick: () => api.pickIcon({ current: now, text: pick.text, base: pick.assets?.gdsBase ?? null, mode: isStateIconProp(name) ? "state" : "icon" }),
+    });
+    row.classList.add("plinked");
+    const chip = el(lit ? "button" : "span", { className: "tf-via" + (lit ? " tf-chip" : "") + (all ? " on" : ""), textContent: all ? `${via} · changes ${uses}` : via,
+      title: lit ? (all ? `Changing the icon now changes ${via}, ${uses}. Click to change only this place again.` : `Refers to ${via} (${uses}). Click to change the constant itself instead of this place.`) : `Refers to ${via}` });
+    if (lit) { chip.type = "button"; chip.onclick = () => { if (all) everywhere.delete(key); else everywhere.add(key); render(); }; }
+    return el("div", { className: "tf" }, row, chip);
+  }
+
   function control(name, attr) {
-    const prop = docProp(name) ?? WELL_KNOWN[name] ?? null, { kind, options, value: multiValue } = kindOf(prop, attr, palettes(), name);
+    const prop = docProp(name) ?? wellKnown(name) ?? null, { kind, options, value: multiValue } = kindOf(prop, attr, palettes(), name);
     const runtime = runtimeOf(name);
     if (kind === "multi") return multiControl(name, options, multiValue);
     if (attr?.mapRef && attr.type === "code" && runtime != null && typeof runtime !== "object") return mapControl(name, attr, prop, runtime);
-    if (attr?.resolved && attr.type === "code") return textControl(name, attr, runtime);
+    // a prop that takes its value from a constant or a variable: the value it has now, in the control of its type; a change replaces the reference here
     if (attr?.type === "code") {
-      const base = kindOf(prop, { ...attr, type: "string" }, palettes());
-      if (base.kind === "select" || base.kind === "bool") return computedControl(name, attr, base, runtime);
+      const now = runtime ?? attr.resolved?.langs?.[0]?.value;
+      const base = kindOf(prop, { ...attr, type: "string" }, palettes(), name);
+      if (base.kind === "select" || base.kind === "bool") return computedControl(name, attr, base, now);
+      if (isIconProp(name, prop) && api.pickIcon && typeof now === "string" && now) return referenceIconControl(name, attr, now);
     }
+    if (attr?.resolved && attr.type === "code") return textControl(name, attr, runtime);
     let input;
     if (kind === "select") {
       input = el("select");
@@ -365,7 +400,7 @@ export function createPropsPanel({ api, getScreens = () => [], onUse, onComment,
       const row = el("div", { className: "prow" }, label, control(a.name, a), rm);
       if (doc?.default) row.title = `Default: ${doc.default}`;
       props.append(row);
-      if (a.branches?.length > 1) props.append(branchBlock(a.name, a, docProp(a.name) ?? WELL_KNOWN[a.name] ?? null));
+      if (a.branches?.length > 1) props.append(branchBlock(a.name, a, docProp(a.name) ?? wellKnown(a.name) ?? null));
     }
     if (!attrs.length) props.append(el("p", { className: "mute", textContent: "No props are set here." }));
     if (info.element.spread) props.append(el("p", { className: "mute", textContent: "More props are passed through {...spread}." }));
@@ -397,7 +432,7 @@ export function createPropsPanel({ api, getScreens = () => [], onUse, onComment,
 
   return {
     async show(p) {
-      pick = { ...p, chainOrdinals: p.chain }; level = 0; useSub = Boolean(p.sub); ordinals = p.chain; info = null;
+      pick = { ...p, chainOrdinals: p.chain }; everywhere.clear(); level = 0; useSub = Boolean(p.sub); ordinals = p.chain; info = null;
       const names = () => { pick.fullNames = info.chain.map((c) => c.name).filter(Boolean); render(); };
       if (await load()) names();
       else if (p.sub) { // the list is built in code (not written out in the JSX): show the component itself

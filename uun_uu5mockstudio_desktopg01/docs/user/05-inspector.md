@@ -4,7 +4,7 @@ The inspector changes a screen **without code**. Every change is written straigh
 
 ## Turning it on
 
-Click the Edit button (a frame with a pencil) in the tool rail on the left edge of the canvas, under the Select arrow, or on the bar over a selected screen, or press **I**. While it is on, the cursor over a screen is a crosshair (over buttons and links too), the component under the pointer is outlined in blue and the panel on the right waits for a click. **Esc** or the cross of the panel turns it off. Scrolling works as usual (the wheel scrolls the screen, **⌥** moves the canvas).
+Click the Edit button (a frame with a pencil) on the bar over a selected screen, or press **I**. While it is on, the cursor over a screen is a crosshair (over buttons and links too), the component under the pointer is outlined in blue and the panel on the right waits for a click. **Esc** or the cross of the panel turns it off. Scrolling works as usual (the wheel scrolls the screen, **⌥** moves the canvas).
 
 ## Picking a component
 
@@ -26,13 +26,14 @@ The control follows the type of the prop:
 
 | Prop | Control |
 | --- | --- |
-| allowed values (colorScheme, significance, size …) | a drop-down; `colorScheme` and `borderRadius` use the palette of the screen |
+| allowed values (colorScheme, significance, size …) | a drop-down; `colorScheme` and `borderRadius` (and `headerColorScheme`, `footerBorderRadius` …) use the palette of the screen |
 | yes / no | a checkbox |
 | number, text | an input |
 | a list of known strings (`nestingLevelList`) | a multi choice |
 | icon | the **icon picker** (uuGDS, uuBml and Material Design Icons catalogs, uuBml states); in Material Design a dashed frame marks icons newer than MDI 4, which a document may not show, and **shown in documents** hides them |
 | a text that is an LSI (`{ cs, en }`, `t("Ano", "Yes")`, `<T lsi>`, a constant, `useLsi`) | the texts with a **switch of the languages**, edited where they are written |
 | a prop that points to a variable | the value of the variable, which you can edit |
+| a prop that points to a constant or a computed variable (`icon: ICON.edit`, `headerColorScheme={colorScheme}`) | the value it has now in the control of its type (the icon picker, the drop-down); a change **replaces the reference in this place only**, the other places keep theirs. For an icon the chip with the name of the reference (`ICON.edit`) switches to changing the constant itself, and says how many places use it |
 | a prop taken from the item of a list (`icon={m.icon}` in `MODULES.map((m) => …)`) | the value of the clicked copy with the usual control (the icon picker for an icon); a change is written into **that item** of the list |
 | objects, arrays, functions | **{…}** opens the code in a window |
 

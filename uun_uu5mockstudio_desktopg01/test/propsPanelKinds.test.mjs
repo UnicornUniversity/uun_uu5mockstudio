@@ -22,3 +22,11 @@ test("colorScheme and significance are choices even when the component documents
   assert.equal(kindOf({ type: "oneOf" }, { type: "string", value: "common" }, palettes, "significance").kind, "select");
   assert.equal(kindOf({ type: "bool" }, { type: "boolean", value: true }, palettes, "colorScheme").kind, "bool", "a documented type of another kind wins");
 });
+
+test("headerColorScheme and other *ColorScheme / *BorderRadius props are choices like colorScheme", async () => {
+  const { kindOf } = await import("../src/renderer/propsPanel.js");
+  const palettes = { colorScheme: ["primary", "positive"], borderRadius: ["none", "moderate"] };
+  assert.deepEqual(kindOf(null, { type: "string", value: "positive" }, palettes, "headerColorScheme"), { kind: "select", options: ["primary", "positive"] });
+  assert.deepEqual(kindOf({ type: "oneOf" }, { type: "string", value: "none" }, palettes, "footerBorderRadius"), { kind: "select", options: ["none", "moderate"] });
+  assert.equal(kindOf(null, { type: "string", value: "x" }, palettes, "colorSchemeList").kind, "text", "only a name that ends with it");
+});

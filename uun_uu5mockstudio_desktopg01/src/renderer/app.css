@@ -581,6 +581,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 .tf-langs{display:flex;gap:2px}.tf-langs button{padding:0 8px;font:11px ui-monospace,Menlo,monospace;border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:6px;min-height:20px}
 .tf-langs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
 .tf-via{font:10.5px ui-monospace,Menlo,monospace;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf-chip{align-self:flex-start;max-width:100%;padding:1px 8px;border:1px solid var(--line);background:var(--panel);border-radius:999px;cursor:pointer}.tf-chip:hover{border-color:var(--acc)}.tf-chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
 
 /* a list of actions in the inspector: a button with the number of actions instead of the code */
 .plist{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:5px 10px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg)}.plist:hover{border-color:var(--acc)}
@@ -1571,7 +1572,14 @@ body.simple #projinfomenu .pi-rules{display:none}
 
 /* the tools of the canvas: a floating rail on its left edge, the zoom in its bottom right corner */
 #toolrail{position:absolute;left:12px;top:50%;transform:translateY(-50%);z-index:11;display:flex;flex-direction:column;gap:2px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.12)}
-#toolrail:has(#inspect[hidden]),#canvas:has(#docview:not([hidden])) #toolrail,body[data-noproject] #toolrail{display:none}
+/* The floating rail of the canvas is gone: Select is the default state (Esc), Edit is on the bar over a screen (I) and the arrows between screens are in the zoom pill.
+   Its buttons stay in the page, hidden: the code that sets the Edit mode keeps their state. */
+#toolrail{display:none}
+#zoomcorner #flowbtn{width:30px;height:30px;margin-left:2px;padding:0;display:grid;place-items:center;border:0;border-radius:999px;background:transparent;color:var(--mute);box-shadow:none}
+#zoomcorner #flowbtn:hover{background:var(--bg);color:var(--fg)}
+#zoomcorner #flowbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
+#zoomcorner #flowbtn[hidden]{display:none}
+#zoomcorner #flowbtn .ico{width:18px;height:18px}
 #toolrail button{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--mute);box-shadow:none}
 #toolrail button:hover{background:var(--bg);color:var(--fg)}
 #toolrail button.on,#toolrail #flowbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
