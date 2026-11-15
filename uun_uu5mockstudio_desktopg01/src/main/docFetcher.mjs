@@ -257,13 +257,13 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
    * the navigation of the web site (`opts.readLinks(url)` → { title, links, sitemapUrls }). Nothing is saved. { ok, kind, label, url, title, tree }
    * (the tree of siteStructure.js) or { error: "login" | "territory" | "npx" | message, kind? }, as fetchDoc.
    */
-  async function structure(url, { allowLogin = false, readLinks } = {}) {
+  async function structure(url, { allowLogin = false, readLinks, translations = "fold" } = {}) {
     const doc = parseLink(url);
     if (!doc) return { error: "This is not a link to a web page." };
     if (doc.kind === "web") {
       if (!readLinks) return { error: "Web pages cannot be opened here.", kind: "web" };
       try {
-        const tree = webToTree(await readLinks(doc.url), doc);
+        const tree = webToTree(await readLinks(doc.url), doc, { translations });
         return { ok: true, kind: "web", label: "Web site", url: doc.url, title: tree.title, tree };
       } catch (e) { return { error: String(e?.message ?? e) || "The page could not be loaded.", kind: "web" }; }
     }

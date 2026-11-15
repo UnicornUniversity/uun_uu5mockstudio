@@ -44,7 +44,7 @@ import { createEbcClient } from "./ebcClient.mjs";
 import { parseArtifactUrl, readLink, linkProject, LINK_FILE } from "./mkArtifact.mjs";
 import { upload as uploadToArtifact, download as downloadFromArtifact, syncState, uploadedProjects, createFromArtifact } from "./mkSync.mjs";
 import { listPages as listDocPages, publish as publishToPage, publishTargets, pageUrl } from "./mkEcc.mjs";
-import { listSitemapUrls } from "./webImages.mjs";
+import { listSitemap } from "./webImages.mjs";
 import { sessionFetch } from "./sessionFetch.mjs";
 import { readTerritory, writeTerritory, presetsFor, customValues, parseAichatUrl, parseDocUrl, parseLink, snapshotName, KINDS } from "./docSources.mjs";
 import { setupUpdater } from "./updater.mjs";
@@ -950,14 +950,16 @@ app.whenReady().then(async () => {
       mine.forEach((r, i) => { r.depth = rank[i]; });
     }
     // an <a> without an address counts only inside a menu: there it is a heading that unfolds the items below it
-    return { title: document.title || "", links: rows.filter((r) => r.a.hasAttribute("href") || r.box).map((r) => ({ href: r.a.hasAttribute("href") ? r.a.href : "", text: r.text, area: r.area, depth: r.depth })) };
+    // the language versions the page names in its head, and the language of the page itself
+    const pageAlts = [...document.querySelectorAll('link[rel~="alternate"][hreflang]')].map((l) => ({ lang: l.getAttribute("hreflang"), href: l.href })).slice(0, 60);
+    return { title: document.title || "", pageLang: document.documentElement.lang || "", pageAlts, links: rows.filter((r) => r.a.hasAttribute("href") || r.box).map((r) => ({ href: r.a.hasAttribute("href") ? r.a.href : "", text: r.text, area: r.area, depth: r.depth })) };
   })()`;
   const readWebLinks = async (url) => {
-    const [page, sitemapUrls] = await Promise.all([
+    const [page, sitemap] = await Promise.all([
       openWebPage(url, async (w, status) => { const r = await w.webContents.executeJavaScript(LINKS_OF_PAGE); if (status() >= 400 && !r.links.length) throw new Error(`The page answered with the error ${status()}.`); return r; }),
-      listSitemapUrls(url).catch(() => []),
+      listSitemap(url).catch(() => ({ urls: [], alternates: [] })),
     ]);
-    return { ...page, sitemapUrls };
+    return { ...page, sitemapUrls: sitemap.urls, sitemapAlternates: sitemap.alternates };
   };
   const openWebPage = async (url, read) => {
     const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { backgroundThrottling: false, partition: PREVIEW_PARTITION } });
@@ -1002,7 +1004,7 @@ app.whenReady().then(async () => {
   fs.promises.rm(path.join(root, STAGING), { recursive: true, force: true }).catch(() => {}); // what an earlier run left behind
   ipcMain.handle("docs:fetchSource", guard((_e, url, opts) => { const home = docHome(); return docFetcher.fetchDoc(home.dir, String(url ?? ""), { allowLogin: Boolean(opts?.login), capture: (rel) => captureSource(home.name, rel), readPage: readWebPage }); }));
   // the structure of the pages behind a link (the menu of a book, the pages and links of a document or portal, the navigation of a web site): nothing is saved
-  ipcMain.handle("docs:structure", guard((_e, url, opts) => docFetcher.structure(String(url ?? ""), { allowLogin: Boolean(opts?.login), readLinks: readWebLinks })));
+  ipcMain.handle("docs:structure", guard((_e, url, opts) => docFetcher.structure(String(url ?? ""), { allowLogin: Boolean(opts?.login), translations: opts?.translations === "pages" ? "pages" : "fold", readLinks: readWebLinks })));
   ipcMain.handle("docs:adopt", guard(() => { if (!current) throw new Error("No project is open."); return adoptStaging(root, current); }));
   // the picture of a document, large, for the preview of its card (only a picture made by fetchSource, in .studio/sources)
   ipcMain.handle("docs:shot", guard(async (_e, file) => {

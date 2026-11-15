@@ -235,12 +235,68 @@ export function titleOfUrl(url) {
   } catch { return "Page"; }
 }
 
-/** The addresses of a sitemap.xml (`<loc>`), and whether it is an index of other sitemaps. */
+/**
+ * The addresses of a sitemap.xml (`<loc>`), whether it is an index of other sitemaps, and the language versions it lists:
+ * `alternates` = [{ url, alts: { en: "https://…", cs: "https://…/cs/" } }] from `<xhtml:link rel="alternate" hreflang="…" href="…"/>` (only when there are some).
+ */
 export function sitemapLocs(xml) {
   const src = String(xml ?? "");
-  const urls = [...src.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, "&"));
-  return { index: /<sitemapindex[\s>]/i.test(src), urls };
+  const loc = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/i;
+  const urls = [...src.matchAll(new RegExp(loc.source, "gi"))].map((m) => m[1].replace(/&amp;/g, "&"));
+  const alternates = [];
+  for (const m of src.matchAll(/<url[\s>][\s\S]*?<\/url>/gi)) {
+    const own = loc.exec(m[0]); if (!own) continue;
+    const alts = {};
+    for (const t of m[0].matchAll(/<xhtml:link\b[^>]*>/gi)) {
+      const get = (n) => new RegExp(`\\b${n}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(t[0]);
+      const rel = get("rel"), lang = get("hreflang"), href = get("href");
+      if (!lang || !href || (rel && !/alternate/i.test(rel[1] ?? rel[2]))) continue;
+      alts[(lang[1] ?? lang[2]).toLowerCase()] = (href[1] ?? href[2]).replace(/&amp;/g, "&");
+    }
+    if (Object.keys(alts).length) alternates.push({ url: own[1].replace(/&amp;/g, "&"), alts });
+  }
+  return { index: /<sitemapindex[\s>]/i.test(src), urls, ...(alternates.length ? { alternates } : {}) };
 }
+
+// ---------------------------------------------------------------- language versions of a site
+/**
+ * What the site says about its language versions (`hreflang` in the sitemap.xml and in the head of the page): { default, list, skip, translations, prefixes } or null
+ * when it has none. `alternates` = [{ url, alts: { lang: href } }] (the sitemap), `pageAlts` = [{ lang, href }] (the head of `pageUrl`), `pageLang` = <html lang>.
+ * The language to work in is the one of the page that was read; else the x-default, else English, else the first one. `skip` = the addresses of the other
+ * languages, `translations` = default address -> { lang: address }, `prefixes` = { lang: "/cs" } when the other languages sit under a path prefix.
+ */
+export function languageModel({ alternates = [], pageAlts = [], pageUrl = "", pageLang = "" } = {}) {
+  const entries = alternates.map((a) => a.alts).filter(Boolean);
+  const head = Object.fromEntries(pageAlts.filter((a) => a?.lang && a.href).map((a) => [String(a.lang).toLowerCase(), a.href]));
+  if (Object.keys(head).length) entries.push(head);
+  const list = [...new Set(entries.flatMap((e) => Object.keys(e)).filter((l) => l !== "x-default"))];
+  if (list.length < 2) return null;
+  const key = (u) => linkKey(u);
+  const pageKey = pageUrl ? key(pageUrl) : null;
+  let def = null;
+  if (pageKey) for (const e of entries) { const hit = Object.entries(e).find(([l, h]) => l !== "x-default" && key(h) === pageKey); if (hit) { def = hit[0]; break; } }
+  if (!def) for (const e of entries) { const x = e["x-default"]; const hit = x && Object.entries(e).find(([l, h]) => l !== "x-default" && key(h) === key(x)); if (hit) { def = hit[0]; break; } }
+  const pl = String(pageLang ?? "").toLowerCase();
+  if (!def) def = list.includes(pl) ? pl : list.find((l) => l === pl.split("-")[0]) ?? (list.includes("en") ? "en" : list[0]);
+  const skip = new Set(), translations = new Map(), votes = new Map();
+  const path = (u) => { try { return new URL(u).pathname; } catch { return ""; } };
+  for (const e of entries) {
+    const base = e[def]; if (!base) continue;
+    const tr = {};
+    for (const [l, h] of Object.entries(e)) {
+      if (l === def || l === "x-default") continue;
+      skip.add(key(h)); tr[l] = h;
+      const P = path(base), Q = path(h);
+      if (Q.length > P.length && Q.endsWith(P)) { const v = votes.get(l) ?? new Map(), pre = Q.slice(0, Q.length - P.length).replace(/\/+$/, ""); v.set(pre, (v.get(pre) ?? 0) + 1); votes.set(l, v); }
+    }
+    translations.set(key(base), tr);
+  }
+  const prefixes = {};
+  for (const [l, v] of votes) { const best = [...v].sort((a, b) => b[1] - a[1])[0]; if (best && best[0] && /^\/[\w-]+$/.test(best[0])) prefixes[l] = best[0]; }
+  return { default: def, list: [def, ...list.filter((l) => l !== def)], skip, translations, prefixes };
+}
+/** A path under the prefix of another language (`/cs/applications/`). */
+const underPrefix = (lm, pathname) => Object.values(lm.prefixes).some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 const AREA = { nav: 0, header: 0, content: 1, aside: 1, footer: 2 };
 /**
@@ -248,9 +304,12 @@ const AREA = { nav: 0, header: 0, content: 1, aside: 1, footer: 2 };
  * of the page (depth = the level of the link in its menu; an item of a menu without an address has an empty href), `sitemapUrls` = the addresses of its sitemap.xml. Only pages of the same host; the menu
  * first (nested as its lists are), then the links of the content, the footer, and the pages only the sitemap.xml knows, nested by the folders of their paths.
  */
-export function webToTree({ title = "", links = [], sitemapUrls = [] } = {}, doc, { maxSitemap = 300 } = {}) {
+export function webToTree({ title = "", links = [], sitemapUrls = [], sitemapAlternates = [], pageAlts = [], pageLang = "" } = {}, doc, { maxSitemap = 300, translations = "fold" } = {}) {
+  // a site with language versions: the tree is made of the language of the page that was read; the other languages are translations of its pages, not pages
+  const lm = languageModel({ alternates: sitemapAlternates, pageAlts, pageUrl: doc.url, pageLang }), fold = Boolean(lm) && translations !== "pages";
+  const isTranslation = (d) => fold && (lm.skip.has(linkKey(d.url)) || underPrefix(lm, new URL(d.url).pathname));
   const self = linkKey(doc.url), seen = new Set([self]);
-  const own = (href) => { const d = parseLink(href); return d && d.kind === "web" && d.host.toLowerCase() === doc.host.toLowerCase() && !NOT_A_PAGE.test(new URL(d.url).pathname) ? d : null; };
+  const own = (href) => { const d = parseLink(href); return d && d.kind === "web" && d.host.toLowerCase() === doc.host.toLowerCase() && !NOT_A_PAGE.test(new URL(d.url).pathname) && !isTranslation(d) ? d : null; };
   const sorted = links.map((l, i) => ({ ...l, i, d: l.href ? own(l.href) : null, rank: AREA[l.area] ?? 1 })).filter((l) => l.d || (!l.href && l.rank === 0 && clip(l.text))).sort((a, b) => a.rank - b.rank || a.i - b.i);
   // an item of a menu without an address is a heading that only unfolds the items below it: it takes the address of the item of the same name right below (the two are one page), else it stays a group
   const all = [];
@@ -294,7 +353,13 @@ export function webToTree({ title = "", links = [], sitemapUrls = [] } = {}, doc
     const n = node({ title: titleOfUrl(d.url), url: d.url, kind: "web", group: "sitemap", expandable: true });
     parent.children.push(n); byPath.set(path, n);
   }
-  return finish(root);
+  finish(root);
+  if (lm) {
+    let translated = 0;
+    if (fold) { const attach = (n) => { const tr = n.url && lm.translations.get(linkKey(n.url)); if (tr) { n.langs = tr; translated++; } n.children.forEach(attach); }; attach(root); }
+    root.languages = { default: lm.default, list: lm.list, prefixes: fold ? lm.prefixes : {}, translations: fold ? "fold" : "pages", translated };
+  }
+  return root;
 }
 
 // ---------------------------------------------------------------- the tree in the picker
@@ -356,12 +421,21 @@ export function pickToSitemap(tree, checked, { title = "" } = {}) {
   return normalizeSitemap({ ...(portal ? { kind: "portal" } : {}), root: walk(p, true) });
 }
 
+/** What the agent must know about a site with language versions: the pages below are in one language, their translations are not listed. */
+function languageNote(tree) {
+  const L = tree?.languages; if (!L) return "";
+  const others = L.list.filter((l) => l !== L.default);
+  if (L.translations === "pages") return `The site has language versions (${L.list.join(", ")}); the user picked the translations as pages of their own, so every page below is one page of the map.`;
+  const rule = Object.keys(L.prefixes).length ? ` A translation of a page has the same path under a prefix (${others.map((l) => `${l}: ${L.prefixes[l] ?? "?"}`).join(", ")}).` : "";
+  return `The site is multilingual: ${L.list.join(", ")}. The pages below are in ${L.default} and each stands for the same page in every language; their translations are NOT listed. Make ONE page per entry and keep the other languages as translations of it (LSI), never one page per language.${rule}`;
+}
+
 /** The picked pages as indented lines for the agent: the title and the address of each, the nodes kept only for the hierarchy marked. */
 export function pickOutline(tree, checked, { limit = 12000 } = {}) {
   const p = picked(tree, checked), lines = [];
   const walk = ({ n, on, kids }, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${on ? "" : " (not picked, only its place in the structure)"}${n.url ? ` — ${n.url}` : ""}`); kids.forEach((k) => walk(k, d + 1)); };
   if (p) walk(p, 0);
-  const out = lines.join("\n");
+  const out = [languageNote(tree), lines.join("\n")].filter(Boolean).join("\n");
   return out.length > limit ? `${out.slice(0, limit)}\n… (shortened)` : out;
 }
 

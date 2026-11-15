@@ -152,3 +152,57 @@ test("a document of uuManagementKit becomes a map of portals: its own pages are 
   assert.equal(bm.kind, undefined);
   assert.deepEqual(bm.root.children.map((c) => c.type), ["page"]);
 });
+
+// ---------------------------------------------------------------- language versions
+import { languageModel } from "../src/renderer/siteStructure.js";
+import { listSitemap } from "../src/main/webImages.mjs";
+const alt = (lang, href) => `<xhtml:link rel="alternate" hreflang="${lang}" href="${href}"/>`;
+const entry = (path) => `<url><loc>https://ex.test${path}</loc>${alt("en", `https://ex.test${path}`)}${alt("cs", `https://ex.test/cs${path}`)}${alt("de", `https://ex.test/de${path}`)}</url>`;
+const MULTI = `<urlset>${["/", "/apps/", "/apps/a/"].flatMap((p) => [entry(p), `<url><loc>https://ex.test/cs${p === "/" ? "/" : p}</loc>${alt("en", `https://ex.test${p}`)}${alt("cs", `https://ex.test/cs${p}`)}${alt("de", `https://ex.test/de${p}`)}</url>`]).join("")}</urlset>`;
+
+test("sitemapLocs reads the language versions (hreflang) of every url", () => {
+  const r = sitemapLocs(MULTI);
+  assert.equal(r.alternates.length, 6);
+  assert.deepEqual(r.alternates[0], { url: "https://ex.test/", alts: { en: "https://ex.test/", cs: "https://ex.test/cs/", de: "https://ex.test/de/" } });
+  assert.equal("alternates" in sitemapLocs("<urlset><url><loc>https://a.test/x</loc></url></urlset>"), false, "no key without language versions");
+});
+
+test("languageModel: the language of the page read is the default, the rest are translations under a prefix", () => {
+  const { alternates } = sitemapLocs(MULTI);
+  const m = languageModel({ alternates, pageUrl: "https://ex.test/" });
+  assert.equal(m.default, "en"); assert.deepEqual(m.list, ["en", "cs", "de"]);
+  assert.deepEqual(m.prefixes, { cs: "/cs", de: "/de" });
+  assert.deepEqual(m.translations.get("web:ex.test/apps"), { cs: "https://ex.test/cs/apps/", de: "https://ex.test/de/apps/" });
+  assert.equal(languageModel({ alternates, pageUrl: "https://ex.test/cs/" }).default, "cs", "a page in another language: that one is read");
+  assert.equal(languageModel({ alternates, pageUrl: "https://other.test/" }).default, "en", "unknown page: English");
+  assert.equal(languageModel({ alternates: [{ url: "x", alts: { en: "https://ex.test/" } }], pageUrl: "https://ex.test/" }), null, "one language is no language versions");
+  // the head of the page alone (no sitemap)
+  const head = languageModel({ pageAlts: [{ lang: "en", href: "https://ex.test/" }, { lang: "cs", href: "https://ex.test/cs/" }], pageUrl: "https://ex.test/" });
+  assert.equal(head.default, "en"); assert.deepEqual(head.prefixes, { cs: "/cs" });
+});
+
+test("webToTree shows a multilingual site once, in the language read; every language as pages on request", () => {
+  const { urls, alternates } = sitemapLocs(MULTI);
+  const links = [{ href: "https://ex.test/cs/", text: "Čeština", area: "nav", depth: 1 }, { href: "https://ex.test/apps/", text: "Apps", area: "nav", depth: 0 }];
+  const t = webToTree({ title: "Ex", links, sitemapUrls: urls, sitemapAlternates: alternates, pageLang: "en" }, { url: "https://ex.test/", host: "ex.test", kind: "web" });
+  const flat = (n) => [n, ...n.children.flatMap(flat)];
+  assert.deepEqual(flat(t).map((n) => n.url).filter(Boolean).sort(), ["https://ex.test/", "https://ex.test/apps/", "https://ex.test/apps/a/"].sort());
+  assert.equal(flat(t).some((n) => /\/(cs|de)\//.test(n.url ?? "")), false, "no translation and no language switcher in the tree");
+  assert.deepEqual(t.languages, { default: "en", list: ["en", "cs", "de"], prefixes: { cs: "/cs", de: "/de" }, translations: "fold", translated: 3 });
+  assert.equal(flat(t).find((n) => n.url === "https://ex.test/apps/").langs.cs, "https://ex.test/cs/apps/");
+  const all = webToTree({ title: "Ex", links, sitemapUrls: urls, sitemapAlternates: alternates, pageLang: "en" }, { url: "https://ex.test/", host: "ex.test", kind: "web" }, { translations: "pages" });
+  assert.ok(flat(all).some((n) => /\/cs\//.test(n.url ?? "")), "the translations are pages of their own");
+  assert.equal(all.languages.translations, "pages");
+  // the agent is told it is one page per entry
+  assert.match(pickOutline(t, flat(t).map((n) => n.id)), /multilingual: en, cs, de.*NOT listed.*ONE page per entry.*cs: \/cs/s);
+  // a site without language versions is as before
+  assert.equal(webToTree({ title: "E", links, sitemapUrls: ["https://ex.test/x"] }, { url: "https://ex.test/", host: "ex.test", kind: "web" }).languages, undefined);
+});
+
+test("listSitemap returns the language versions with the addresses, across an index", async () => {
+  const files = { "https://ex.test/sitemap.xml": "<sitemapindex><sitemap><loc>https://ex.test/s0.xml</loc></sitemap></sitemapindex>", "https://ex.test/s0.xml": MULTI };
+  const fetchImpl = async (url) => (files[url] ? new Response(files[url], { status: 200 }) : new Response("", { status: 404 }));
+  const r = await listSitemap("https://ex.test/", { fetchImpl, check: async (u) => new URL(u) });
+  assert.equal(r.urls.length, 6); assert.equal(r.alternates.length, 6);
+  assert.deepEqual(await listSitemap("https://none.test/", { fetchImpl, check: async (u) => new URL(u) }), { urls: [], alternates: [] });
+});

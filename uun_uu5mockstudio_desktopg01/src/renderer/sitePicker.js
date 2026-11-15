@@ -15,7 +15,7 @@ const HINT = { bookkit: "the menu of the book", mkEcc: "the pages of the documen
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
 
 export function openSitePicker({ studio = window.studio, toast = () => {}, url = "", replaces = false, useLabel = replaces ? "Replace the sitemap" : "Use as the sitemap", agentLabel = replaces ? "Hand to the agent to extend the sitemap" : "Hand to the agent", preloaded = null, onUse, onAgent } = {}) {
-  let state = "idle", error = "", tree = null, kind = null, source = "";
+  let state = "idle", error = "", tree = null, kind = null, source = "", translations = "fold"; // translations: "fold" = one page per page of the default language, "pages" = every language version a page of its own
   const checked = new Set(), collapsed = new Set(), loading = new Set();
 
   const close = () => ov.remove();
@@ -34,7 +34,7 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
     if (!doc) { state = "error"; error = "Enter the address of a web site, of a uuBookKit book or of a uuManagementKit document (https://…)."; return paint(); }
     state = "loading"; error = login ? "Waiting for the sign-in in the browser…" : ""; kind = doc.kind; source = doc.url; tree = null; checked.clear(); collapsed.clear(); paint();
     if (login) { const l = await studio.docLogin(doc.url).catch((e) => ({ error: String(e?.message ?? e) })); if (!ov.isConnected) return; if (l?.error) { state = "error"; error = `The sign-in did not finish: ${l.error}`; return paint(); } error = ""; paint(); }
-    const r = await studio.docStructure(doc.url).catch((e) => ({ error: String(e?.message ?? e) }));
+    const r = await studio.docStructure(doc.url, { translations }).catch((e) => ({ error: String(e?.message ?? e) }));
     if (!ov.isConnected || source !== doc.url) return; // closed, or another address meanwhile
     if (r?.ok && r.tree) show(r.tree);
     else if (["login", "territory", "npx"].includes(r?.error)) state = r.error;
@@ -47,7 +47,7 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
     if (loading.has(n.id)) return;
     if (countTree(tree) >= MAX_TREE) return toast("The structure is already very large: pick from what is shown.", { err: true });
     loading.add(n.id); paint();
-    const r = await studio.docStructure(n.url).catch((e) => ({ error: String(e?.message ?? e) }));
+    const r = await studio.docStructure(n.url, { translations }).catch((e) => ({ error: String(e?.message ?? e) }));
     loading.delete(n.id);
     if (!ov.isConnected || !tree || !findNode(tree, n.id)) return;
     if (r?.ok && r.tree) {
@@ -83,6 +83,14 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
   /** A site that shows its menu and pages only to a signed-in user: sign in in a window of the app, then the structure is read again with that access. */
   const access = () => el("button", { type: "button", textContent: "Load with my access…", title: "Opens the site in a window of the app: sign in there and close the window. The structure is then read again as you see the site (menus and pages that need your permissions).", onclick: async () => { const r = await studio.docWebLogin(source).catch((e) => ({ error: String(e?.message ?? e) })); if (r?.error) return toast(r.error, { err: true }); if (ov.isConnected) load(); } });
 
+  /** A site with language versions: its pages are shown once, in the language that was read; the translations are not pages (switchable). */
+  function languageRow(L) {
+    const pages = L.translations === "pages", others = L.list.filter((l) => l !== L.default);
+    return el("div", { className: "sp-langs" },
+      el("span", { textContent: pages ? `Languages: ${L.list.join(" · ")}. Every language version is a page of its own.` : `Languages: ${L.default} (shown) · ${others.join(" · ")}. Each page is here once; its translations are not listed${L.translated ? ` (${L.translated} pages have one)` : ""} and the agent gets them as translations of the page.` }),
+      el("button", { type: "button", textContent: pages ? "One page for all languages" : "Show every language as pages", title: pages ? "Lists only the pages of the language that was read; the other languages are their translations" : "Lists the language versions too, each as a page of its own", onclick: () => { translations = pages ? "fold" : "pages"; load(); } }));
+  }
+
   function paint() {
     const busy = state === "loading";
     loadBtn.disabled = busy; loadBtn.textContent = busy ? "Loading…" : tree ? "Reload" : "Load";
@@ -102,6 +110,7 @@ export function openSitePicker({ studio = window.studio, toast = () => {}, url =
         el("button", { type: "button", textContent: "Select none", onclick: () => { checked.clear(); paint(); } }),
         kind === "web" ? access() : null,
         el("span", { className: "mute", textContent: `Read: ${HINT[kind] ?? ""}. A tick takes the page with all below it; Alt+click only the page itself.` })),
+      tree.languages ? languageRow(tree.languages) : null,
       el("ul", { className: "sp-tree" }, row(tree, true)));
     }
     body.replaceChildren(...parts);

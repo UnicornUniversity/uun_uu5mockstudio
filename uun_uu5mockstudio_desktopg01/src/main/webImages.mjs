@@ -52,16 +52,19 @@ async function get(url, { fetchImpl = fetch, max, check = checkPublicUrl } = {})
  * The addresses of the sitemap.xml of the site of `pageUrl` (an index of sitemaps is followed one level, the first `maxFiles` of them); [] when the
  * site has none. Best effort: every file goes through the same checks as a download (public host, size, redirects).
  */
-export async function listSitemapUrls(pageUrl, { maxUrls = 500, maxFiles = 3, parse = sitemapLocs, ...opts } = {}) {
+export async function listSitemap(pageUrl, { maxUrls = 3000, maxFiles = 3, parse = sitemapLocs, ...opts } = {}) {
   const text = async (url) => (await get(url, { max: 5 * 1048576, ...opts })).buf.toString("utf8");
+  const cut = (r) => ({ urls: r.urls.slice(0, maxUrls), alternates: (r.alternates ?? []).slice(0, maxUrls) });
   try {
     const first = parse(await text(new URL("/sitemap.xml", pageUrl).href));
-    if (!first.index) return first.urls.slice(0, maxUrls);
-    const out = [];
-    for (const u of first.urls.slice(0, maxFiles)) { try { out.push(...parse(await text(u)).urls); } catch { /* this part stays out */ } if (out.length >= maxUrls) break; }
-    return out.slice(0, maxUrls);
-  } catch { return []; }
+    if (!first.index) return cut(first);
+    const out = { urls: [], alternates: [] };
+    for (const u of first.urls.slice(0, maxFiles)) { try { const r = parse(await text(u)); out.urls.push(...r.urls); out.alternates.push(...(r.alternates ?? [])); } catch { /* this part stays out */ } if (out.urls.length >= maxUrls) break; }
+    return cut(out);
+  } catch { return { urls: [], alternates: [] }; }
 }
+/** The addresses only (see listSitemap), at most `maxUrls`. */
+export async function listSitemapUrls(pageUrl, { maxUrls = 500, ...opts } = {}) { return (await listSitemap(pageUrl, { ...opts, maxUrls })).urls.slice(0, maxUrls); }
 
 const decode = (s) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'");
 const attr = (tag, name) => decode(new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(tag)?.slice(2).find((x) => x !== undefined) ?? "");

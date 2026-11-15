@@ -60,7 +60,7 @@ main{overflow:hidden}
 .tab.on{background:var(--panel);border-color:var(--line);color:var(--fg)}
 .ctl{display:flex;gap:4px;align-items:center}.ctl button,.ctl select{padding:4px 9px}.ctl button.on{background:var(--acc);border-color:var(--acc);color:#fff}
 #work{flex:1;display:flex;min-height:0}
-#canvas{position:relative;flex:1;overflow:hidden;background:var(--canvas);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
+#canvas{position:relative;flex:1;overflow:hidden;background:var(--canvas);background-image:radial-gradient(color-mix(in srgb,var(--dot) 40%,transparent) 1px,transparent 1px);background-size:40px 40px;touch-action:none} /* a quiet grid: the dots only hint at the surface, they do not compete with the screens */
 #canvas.panning{cursor:grabbing}
 #world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute);pointer-events:none}
@@ -1682,3 +1682,29 @@ body[data-noproject] #projpick{display:none}
 .pc-seg .pc-ib .ico{width:18px;height:18px}
 .pc-treetools .sm-searchbar.intool{height:30px}
 .pc-treetools .sm-searchbar.intool:not(:focus-within):not(.on){background:var(--panel);border:1px solid var(--line);width:34px;justify-content:center}
+
+/* the language versions of a site in the picker of a sitemap */
+.sp-langs{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:12px;color:var(--mute)}.sp-langs button{margin-left:auto;font-size:12px}
+
+/* the ways to make a sitemap in the Plans menu: one line each, with an icon, a title and what it does */
+:is(#plansmenu,#mapmenu) .pm-empty{line-height:1.4}
+:is(#plansmenu,#mapmenu) .pm-opt{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;text-align:left;box-shadow:none;cursor:pointer}
+:is(#plansmenu,#mapmenu) .pm-opt:hover:not(:disabled),:is(#plansmenu,#mapmenu) .pm-opt:focus-visible{background:var(--bg);outline:none}
+:is(#plansmenu,#mapmenu) .pm-opt:disabled{opacity:.5;cursor:default}
+:is(#plansmenu,#mapmenu) .pm-oico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:color-mix(in srgb,var(--acc) 12%,transparent);color:var(--acc)}
+:is(#plansmenu,#mapmenu) .pm-oico .ico{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+:is(#plansmenu,#mapmenu) .pm-otxt{display:flex;flex-direction:column;min-width:0}
+:is(#plansmenu,#mapmenu) .pm-otitle{font-size:13px;font-weight:500}
+:is(#plansmenu,#mapmenu) .pm-ohint{font-size:11.5px;color:var(--mute);line-height:1.3}
+/* the menu is a column with a maximum height: its lines keep their height (it scrolls), they never shrink into each other */
+:is(#plansmenu,#mapmenu)>*{flex:none}
+/* the menu sits inside .tbgroup, whose rule makes every button 30 px high and round: the lines of the sitemap ways need their own height */
+#bar .tbgroup :is(#plansmenu,#mapmenu) .pm-opt{display:flex;align-items:center;gap:10px;height:auto;min-height:48px;padding:8px 8px;border-radius:8px!important;white-space:normal;text-align:left}
+#bar .tbgroup :is(#plansmenu,#mapmenu) .pm-opt:hover:not(:disabled),#bar .tbgroup :is(#plansmenu,#mapmenu) .pm-opt:focus-visible{background:var(--bg)!important}
+/* the bar over a screen can be dragged up into the title bar of the window, which is a drag region of the window: the bar, its menu and the layer that
+   follows the pointer while it moves must not be part of it, or the bar cannot be grabbed there any more */
+#selbar,#selmenu,.sb-cover{-webkit-app-region:no-drag}
+/* In the glass layout the top bar is a layer over the whole width of the canvas (z-index 25): a bar dragged up under it was visible but every click hit the
+   transparent bar instead. The bar over a screen and its menu lie above it, so that they can be grabbed (and clicked) wherever they are put. */
+#selbar{z-index:26}
+#selmenu{z-index:27}
