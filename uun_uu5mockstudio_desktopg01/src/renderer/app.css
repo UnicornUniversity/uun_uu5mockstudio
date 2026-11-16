@@ -1746,3 +1746,4 @@ body[data-noproject] #projpick{display:none}
 .sm-acts .smside-anno{margin-left:0;border-color:var(--line)}
 /* the row of the map: the note on the whole map (content) on the left, the tools of the view on the right */
 .sm-review>.sm-mapnote{margin-right:auto}.sm-review>.pc-treetools{margin-left:auto}.sm-review>.sm-mapnote+.pc-treetools,.sm-review>.sm-mapnote~*:not(.pc-treetools)~.pc-treetools{margin-left:0}
+body.docview-on :is(#selbar,#selmenu){display:none!important} /* the bar of the selected screen belongs to the canvas: it is not over the sitemap or a plan */
