@@ -108,7 +108,8 @@ test("one copy of an element rendered by .map (Cmd / Ctrl + click) is named by i
 });
 
 test("Cmd / Ctrl + click picks one copy in the page script; on macOS Ctrl + click comes as a context menu", () => {
-  assert.match(INJECT, /annotate \? "pin" : e\.metaKey \|\| e\.ctrlKey \? "copy" : e\.shiftKey \? "add" : "one"/);
+  assert.match(INJECT, /annotate \? \(e\.metaKey \|\| e\.ctrlKey \? "pincopy" : "pin"\) : e\.metaKey \|\| e\.ctrlKey \? "copy" : e\.shiftKey \? "add" : "one"/);
+  assert.match(INJECT, /doPick\(hit, annotate \? "pincopy" : "copy"\)/); // macOS Ctrl + click in the Annotate mode: one copy too
   assert.match(INJECT, /addEventListener\("contextmenu", ctx, true\)/);
   assert.match(INJECT, /data-studio-inspect/);
 });

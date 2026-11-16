@@ -132,8 +132,8 @@ body[data-glass] #chat #prompt{background:var(--glass-thick)!important;border:1p
 body[data-glass] #chat .inputbox:not(#x){background:var(--glass-thick)!important;border:1px solid var(--glass-edge)!important;border-radius:20px;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
 body[data-glass] #chat .inputbox:not(#x):focus-within{border-color:color-mix(in srgb,var(--acc) 70%,#fff)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent),var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi)}
 body[data-glass] #chat .inputbox #prompt{background:transparent!important;border:0!important;border-radius:20px!important;box-shadow:none!important}
-body[data-glass] #chat .inputbox :is(#attach,#pickcomp,#libbtn,#annotate:not(.on)){background:none!important;border:0!important;box-shadow:none!important}
-body[data-glass] #chat .inputbox :is(#attach,#pickcomp,#libbtn,#annotate:not(.on)):hover{background:var(--glass-hover)!important}
+body[data-glass] #chat .inputbox :is(#attach,#libbtn,#annotate:not(.on)){background:none!important;border:0!important;box-shadow:none!important}
+body[data-glass] #chat .inputbox :is(#attach,#libbtn,#annotate:not(.on)):hover{background:var(--glass-hover)!important}
 body[data-glass] #chat .inputbox #send:not(#x){box-shadow:0 2px 6px rgba(59,108,240,.28),inset 0 1px 0 rgba(255,255,255,.4)!important}
 body[data-glass] #chat #form .row :is(#modebtn,#model,#ecobtn):not(#a):not(#b):not(#c):not(#d){background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
 body[data-glass] #chat #form .row #ecobtn:not(#a):not(#b):not(#c):not(#d){color:var(--mute)!important}

@@ -168,8 +168,6 @@ main{overflow:hidden}
 .chip{display:flex;align-items:center;gap:6px;max-width:100%;background:var(--bg);border:1px solid var(--acc);border-radius:8px;padding:3px 6px 3px 8px;font-size:12px}
 .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip button{border:0;background:none;padding:0 3px;color:var(--mute)}.chip button:hover{color:#ff7b7b}
 #pickhint{font-size:12px;color:var(--acc);padding:0 2px 4px}
-#pickcomp{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;flex:none}
-.inputbox #pickcomp{position:absolute;right:76px;bottom:8px;border-color:transparent;background:none;color:var(--mute)}.inputbox #pickcomp:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #pickcomp.on{background:var(--acc);border-color:var(--acc);color:#fff}
 #canvas.dragging webview{pointer-events:none}
 
 .ctl{position:relative}
@@ -235,8 +233,6 @@ a.mention{font-weight:600;text-decoration:underline;cursor:pointer;color:inherit
 .chip{display:flex;align-items:center;gap:6px;max-width:100%;background:var(--bg);border:1px solid var(--acc);border-radius:8px;padding:3px 6px 3px 8px;font-size:12px}
 .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip button{border:0;background:none;padding:0 3px;color:var(--mute)}.chip button:hover{color:#ff7b7b}
 #pickhint{font-size:12px;color:var(--acc);padding:0 2px 4px}
-#pickcomp{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;flex:none}
-.inputbox #pickcomp{position:absolute;right:76px;bottom:8px;border-color:transparent;background:none;color:var(--mute)}.inputbox #pickcomp:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #pickcomp.on{background:var(--acc);border-color:var(--acc);color:#fff}
 #canvas.dragging webview{pointer-events:none}
 
 .ctl{position:relative}
@@ -439,7 +435,7 @@ body:not([data-chat="float"]) #chat header .tools #chatmin{display:none}
 #form .row #model{flex:0 1 auto;min-width:70px}
 
 /* start screen while no project is open */
-body[data-noproject] #chat :is(#chathist,#newchat,#attach,#pickcomp,#annotate,#chatmode){opacity:.45;pointer-events:none}
+body[data-noproject] #chat :is(#chathist,#newchat,#attach,#annotate,#chatmode){opacity:.45;pointer-events:none}
 /* no project open: no chat panel at all (docked or floating); the start screen gets the whole window */
 body[data-noproject] #chat{display:none!important}
 body[data-platform="darwin"][data-noproject] #bar{padding-left:84px} /* traffic lights now sit over the toolbar */
@@ -691,7 +687,7 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 
 /* ---- composer like in Claude Desktop: one rounded box with the tools inside, a quiet row under it with the mode and the model */
 .inputbox textarea{padding:10px 14px 46px}
-.inputbox #pickcomp{left:8px;right:auto}.inputbox #attach{left:44px;right:auto}.inputbox #libbtn{left:80px;right:auto} /* inspector (pick), file, catalog of components */
+.inputbox #annotate{left:8px;right:auto}.inputbox #attach{left:44px;right:auto}.inputbox #libbtn{left:80px;right:auto} /* annotate, file, catalog of components */
 .inputbox #send,.inputbox #stop{position:absolute;right:8px;bottom:8px;width:32px;min-width:32px;height:32px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .inputbox #send[hidden],.inputbox #stop[hidden]{display:none}.inputbox #send .ico,.inputbox #stop .ico{width:17px;height:17px;stroke-width:2.2}
 .inputbox #send .lbl,.inputbox #stop .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -711,12 +707,12 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 #form .row #model:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
 #form .row #modebtn:focus-visible{outline:none;background:color-mix(in srgb,var(--acc) 10%,transparent)}
 /* the tools are a strip under the text, not on top of it: the field grows with the text (then scrolls), the strip stays below */
-.inputbox{display:grid;grid-template-columns:auto auto auto auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:4px;padding-bottom:8px}
+.inputbox{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:4px;padding-bottom:8px}
 .inputbox textarea{grid-column:1/-1;grid-row:1;padding:10px 14px 6px;field-sizing:content;min-height:3.4em;max-height:min(40vh,320px);overflow-y:auto;width:100%}
-.inputbox #pickcomp,.inputbox #annotate,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
-.inputbox #pickcomp{grid-column:1;margin-left:8px}.inputbox #annotate{grid-column:2}.inputbox #attach{grid-column:3}.inputbox #libbtn{grid-column:4}
+.inputbox #annotate,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
+.inputbox #annotate{grid-column:1;margin-left:8px}.inputbox #attach{grid-column:2}.inputbox #libbtn{grid-column:3}
 .inputbox #annotate{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;flex:none;border-color:transparent;background:none;color:var(--mute)}.inputbox #annotate:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #annotate.on{background:#e8590c;border-color:#e8590c;color:#fff}
-.inputbox #send,.inputbox #stop{position:static;grid-column:6;grid-row:2;margin-right:8px}
+.inputbox #send,.inputbox #stop{position:static;grid-column:5;grid-row:2;margin-right:8px}
 #structbox .row{align-items:center;gap:8px}#structbox #st-regen{background:var(--acc);border-color:var(--acc);color:#fff}#structbox #st-regen:disabled,#structbox #st-reset:disabled{opacity:.45}#st-hint{font-size:12px}
 #insp-struct{margin-top:8px;width:100%}
 #insp-uu5,#insp-comment{margin-top:8px;width:100%}
@@ -1744,3 +1740,6 @@ body[data-noproject] #projpick{display:none}
 .sm-mapnote{display:inline-flex;align-items:center;gap:4px}.sm-mapnote.on{border-color:#e8590c!important}.sm-mapnote .sm-pin{box-shadow:none}
 .msg.user ol.annos .anno-what{color:inherit;opacity:.8}
 .anpop-list{display:flex;flex-direction:column;gap:3px;max-height:140px;overflow-y:auto}.anpop-other{display:flex;align-items:flex-start;gap:6px;text-align:left;font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}.anpop-other:hover{border-color:#e8590c}.anpop-other .anpop-note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.anpop-x{flex:none;padding:0 4px;color:var(--mute);cursor:pointer;border-radius:4px}.anpop-x:hover{color:#ff7b7b;background:var(--panel)}.anpop-del{color:#ff7b7b}
+.anpop-note.linked{color:var(--mute);font-style:italic}.anpop-link{font-size:12px}
+.chip.anno.link .anno-note{font-weight:400;font-style:italic;color:var(--mute)}
+.msg ol.annos .anno-note.link{font-weight:400;font-style:italic;opacity:.8}

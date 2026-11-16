@@ -6,6 +6,8 @@ import { popoverSpot } from "./annotations.js";
  * (the note; "" when it was emptied; null when cancelled). Enter keeps it, Shift + Enter breaks the line, Esc or a click away cancels.
  * `others` = [{ ref, note }]: the notes the place already has, listed above the field (a click on one resolves to { edit: ref }, its × to { remove: ref });
  * the field then adds another one. A note being edited (`note` given) has Delete, which resolves to "".
+ * `link` (a new place): with nothing written, Enter (the button says "Link") resolves to { link: true }: the place is only linked in the text as [#n].
+ * An `other` with `linked: true` is a place linked in the text as [#n] (no note).
  */
 export function createAnnotatePopover() {
   let cur = null;
@@ -15,7 +17,7 @@ export function createAnnotatePopover() {
     document.removeEventListener("pointerdown", c.away, true); removeEventListener("resize", c.place); clearInterval(c.timer);
     c.el.remove(); c.resolve(value);
   }
-  function open({ anchor, note = "", title = "", others = [] }) {
+  function open({ anchor, note = "", title = "", others = [], link = false }) {
     close(null);
     return new Promise((resolve) => {
       const el = document.createElement("div");
@@ -28,19 +30,21 @@ export function createAnnotatePopover() {
         x.setAttribute("aria-label", `Remove note ${o.ref}`);
         x.onclick = (e) => { e.stopPropagation(); close({ remove: o.ref }); };
         x.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); close({ remove: o.ref }); } };
-        b.append(Object.assign(document.createElement("b"), { className: "anno-n", textContent: String(o.ref) }), Object.assign(document.createElement("span"), { className: "anpop-note", textContent: o.note }), x);
+        b.append(Object.assign(document.createElement("b"), { className: "anno-n", textContent: String(o.ref) }), Object.assign(document.createElement("span"), { className: `anpop-note${o.linked ? " linked" : ""}`, textContent: o.linked ? `[#${o.ref}] linked in your text` : o.note }), x);
         b.onclick = () => close({ edit: o.ref }); list.append(b);
       }
       const ta = Object.assign(document.createElement("textarea"), { rows: 3, value: note, placeholder: others.length ? "Another note on this place…" : "What should change here?", spellcheck: true });
       ta.setAttribute("aria-label", "Note");
-      const hint = Object.assign(document.createElement("div"), { className: "anpop-hint", textContent: "Enter to keep · Shift + Enter new line · Esc to cancel" });
+      const hint = Object.assign(document.createElement("div"), { className: "anpop-hint", textContent: link ? "Enter with nothing written links it in your text" : "Enter to keep · Shift + Enter new line · Esc to cancel" });
       const ok = Object.assign(document.createElement("button"), { type: "button", className: "primary", textContent: note ? "Save" : "Add" });
       const cancel = Object.assign(document.createElement("button"), { type: "button", textContent: "Cancel" });
       const del = note ? Object.assign(document.createElement("button"), { type: "button", className: "anpop-del", textContent: "Delete", title: "Remove this annotation" }) : null;
       if (del) del.onclick = () => close("");
       const acts = Object.assign(document.createElement("div"), { className: "anpop-acts" }); acts.append(hint, ...(del ? [del] : []), cancel, ok);
       el.append(head, ...(others.length ? [list] : []), ta, acts);
-      const keep = () => close(ta.value.trim());
+      const keep = () => { const v = ta.value.trim(); close(!v && link ? { link: true } : v); };
+      if (link) ta.oninput = () => { ok.textContent = ta.value.trim() ? "Add" : "Link"; };
+      if (link) { ok.textContent = "Link"; ok.title = "Nothing written: a link [#n] to it goes into your message at the cursor, to say e.g. “move [#1] under [#2]”"; }
       ok.onclick = keep; cancel.onclick = () => close(null);
       ta.onkeydown = (e) => {
         e.stopPropagation();

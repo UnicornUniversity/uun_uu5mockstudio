@@ -198,7 +198,7 @@ export const INJECT = `(async () => {
   // mode: "one" (a plain click), "add" (Shift: the component), "copy" (Cmd / Ctrl: only the copy that was clicked); \`additive\` of old callers = "add"
   const doPick = (hit, mode, quiet) => {
     if (mode === true) mode = "add"; else if (!mode) mode = "one";
-    const pin = mode === "pin"; if (pin) mode = "one";
+    const pin = mode === "pin" || mode === "pincopy"; if (mode === "pin") mode = "one"; else if (mode === "pincopy") mode = "copy"; // the Annotate mode: the component, or (Cmd / Ctrl) just the clicked copy
     const f = hit.T, sub = hit.sub, shown = sub ? sub.fiber : f, additive = mode !== "one";
     levels = []; lastSub = sub;
     for (let g = f, last = null; g && levels.length < 8; g = g.return) { const o = ordOf(g); if (o !== null && o !== last) { levels.push(outermost(g)); last = o; } }
@@ -233,11 +233,11 @@ export const INJECT = `(async () => {
     stop(e);
     if (afterDrag) return;
     if (MAC && e.ctrlKey && !e.metaKey) return; // on macOS Ctrl + click is a right click: it is picked in \`ctx\` below
-    const hit = resolve(e.target); if (hit) doPick(hit, annotate ? "pin" : e.metaKey || e.ctrlKey ? "copy" : e.shiftKey ? "add" : "one");
+    const hit = resolve(e.target); if (hit) doPick(hit, annotate ? (e.metaKey || e.ctrlKey ? "pincopy" : "pin") : e.metaKey || e.ctrlKey ? "copy" : e.shiftKey ? "add" : "one");
   };
   const MAC = /Mac/.test(navigator.platform || navigator.userAgent);
   // macOS sends Ctrl + click as a context menu (button 0, ctrlKey); the preload of the webview leaves it to the page while the inspector is on
-  const ctx = (e) => { if (!(e.ctrlKey && e.button === 0)) return; stop(e); if (afterDrag) return; const hit = resolve(e.target); if (hit) doPick(hit, "copy"); };
+  const ctx = (e) => { if (!(e.ctrlKey && e.button === 0)) return; stop(e); if (afterDrag) return; const hit = resolve(e.target); if (hit) doPick(hit, annotate ? "pincopy" : "copy"); };
   const swallow = (e) => { if (ed && ed.el.contains(e.target)) return; stop(e); }; // the text being edited gets its own mouse
   const events = ["mousedown", "mouseup", "submit", "pointerdown", "pointerup"];
   // editing the text of a component in place: a double click on a text makes it editable (plain text), Enter or leaving the field hands the change over,
