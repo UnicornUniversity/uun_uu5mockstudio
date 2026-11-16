@@ -45,10 +45,9 @@ export const typeShort = (kind, t) => (({ page: kind === "portal" ? "Portal" : "
 /** The types the map offers: a map of a web site has no sheets (unless it has one already). */
 export const typesFor = (sm) => (kindOf(sm) === "portal" || countType(sm, (t) => t === "sheet") ? NODE_TYPES : NODE_TYPES.filter((t) => t !== "sheet"));
 const MAX_NODES = 200, MAX_DEPTH = 8, FILE = /^[A-Za-z0-9][\w.-]*\.html$/;
-/** Several comments on one page are kept in the one `comment` field, apart by this mark. */
-export const CM_SEP = " ¦ ";
-export const splitComments = (c) => String(c ?? "").split(CM_SEP).map((t) => t.trim()).filter(Boolean);
-export const joinComments = (l) => l.map((t) => String(t).replace(/\s*¦\s*/g, " ").trim()).filter(Boolean).join(CM_SEP);
+/** Old review comments of a page (from before annotations) were kept in its one `comment` field, apart by this mark; they are only read to become annotations. */
+const CM_SEP = " ¦ ";
+const splitComments = (c) => String(c ?? "").split(CM_SEP).map((t) => t.trim()).filter(Boolean);
 const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 /** The address a page was taken from, when it is a link the app can read (http/https, at most 500 characters). */
 const sourceOf = (v) => { const d = typeof v === "string" && v.length <= 500 ? parseLink(v) : null; return d ? d.url : undefined; };
@@ -216,24 +215,35 @@ export function commentsOf(sm) {
   return out;
 }
 
-/** The comments grouped by their text: pages the user commented on together share one comment: [{ comment, wheres: [...] }]. */
-export function groupComments(sm) {
-  const by = new Map();
-  for (const c of commentsOf(sm)) { const g = by.get(c.comment) ?? { comment: c.comment, wheres: [] }; g.wheres.push(c.where); by.set(c.comment, g); }
-  return [...by.values()];
+/**
+ * Old review comments (`comment` of the nodes, from before annotations): they become annotations of the message being written and leave the map.
+ * Returns { sitemap (without them, or the same map when there were none), notes: [{ id, path, where, note }] } (one note per comment, a `¦` apart).
+ */
+export function takeComments(sm) {
+  const notes = [];
+  if (!sm?.root) return { sitemap: sm, notes };
+  const strip = (n, path, titles) => {
+    const t = [...titles, n.title];
+    for (const note of splitComments(n.comment)) notes.push({ id: n.id, path, where: t.join(" > "), type: n.type, note });
+    const { comment, ...rest } = n;
+    return { ...rest, children: n.children.map((c, i) => strip(c, [...path, i], t)) };
+  };
+  const root = strip(sm.root, [], []);
+  return { sitemap: notes.length ? { ...sm, root } : sm, notes };
 }
 
-/** The request to the agent to revise the map: the comments of the user on pages and/or a general wish, with the plan as it is now. */
+/**
+ * The request to the agent to revise the map, from the annotations of the user on its pages: `notes` = [{ where: "Portal > Study > Exams", note }]
+ * (several notes on one page, or one note on several pages, are listed as they are). The plan or the map as it is now goes along.
+ */
 const hasApproved = (sm) => { let f = false; const walk = (x) => { if (x.approved) f = true; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return f; };
-export function reviseMessage({ slug, sm, extra = "", body = "" }) {
-  const list = groupComments(sm), wish = String(extra).trim();
-  const head = slug ? `Revise the SITEMAP of this plan, it is the file plans/${slug}.md (the user may have edited it, so start from this text).` : "Revise the SITEMAP of this project, it is the file sitemap.json (the user may have edited it, so start from the map below, comments included).";
+export function reviseMessage({ slug, sm, notes = [], body = "" }) {
+  const head = slug ? `The user annotated pages of the SITEMAP of the plan plans/${slug}.md (the user may have edited it, so start from this text).` : "The user annotated pages of the SITEMAP of this project, the file sitemap.json (the user may have edited it, so start from the map below).";
   return [
     head,
     ...(kindOf(sm) === "portal" ? ["", "It is a map of PORTALS (`\"kind\": \"portal\"`, keep it): a node of type `page` is a portal (a document of uuManagementKit), a `sheet` is a sheet of the portal above it with its own screen, a `section` is a part of the sheet above it."] : []),
-    ...(list.length ? ["", "The user commented on these pages of the map (the `comment` field of each node). Resolve every comment: change the map as it asks (rename, move, merge, split, make a page a section or the other way round, add or remove pages), or when you disagree say why in the `note` of that node. Then leave the `comment` fields out of the new map.", ...list.map((c) => `- ${c.wheres.join("; ")}${c.wheres.length > 1 ? " (together)" : ""}: ${c.comment}`)] : []),
+    ...(notes.length ? ["", "Resolve every annotation on the map: change the map as it asks (rename, move, merge, split, make a page a section or the other way round, add or remove pages), or when you disagree say why in the `note` of that node.", ...notes.map((n) => `- ${n.where}: ${n.note}`)] : []),
     ...(hasApproved(sm) ? ["", "Nodes with `\"approved\": true` are reviewed and approved by the user. Do NOT rename, move, retype, delete or re-link them, and do not change their `file`; keep the `approved` flag and the `file` in the new map. Add or change other nodes around them as needed."] : []),
-    ...(wish ? ["", `The user also asks, about the map as a whole: ${wish}`] : []),
     "", slug ? "Keep the rest of the plan as it is, and answer with the whole plan, the changed `uu5-sitemap` block included." : "Answer with a short plan in the usual format: what you changed and why, and the whole revised map as the `uu5-sitemap` block (no component tree). The user reviews it and approves it; only then it replaces the sitemap of the project.",
     "", slug ? String(body).trim() : "```uu5-sitemap\n" + serializeSitemap(sm) + "\n```",
   ].join("\n");

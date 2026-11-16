@@ -2,8 +2,8 @@ import { markdownDoc, esc } from "./markdown.js";
 import { parsePlan, serializePlan } from "./planDoc.js";
 import { extractPlan, replaceTreeBlock, removeTreeBlock } from "./planTree.js";
 import { renderTree, renderQuestions } from "./planView.js";
-import { replaceSitemapBlock, countScreens, mapSummary, kindOf, setKind, updateNode, reviseMessage, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
-import { renderSitemap } from "./sitemapView.js";
+import { replaceSitemapBlock, countScreens, mapSummary, kindOf, setKind, updateNode, takeComments, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
+import { renderSitemap, MAP_ID } from "./sitemapView.js";
 
 const GAP = 120, W = 520, H = 640, SITEMAP_W = 840, SITEMAP_H = 920, MIN_W = 320, MIN_H = 240, TITLE_H = 34;
 const STATUS_TEXT = { draft: "draft", approved: "approved, building", built: "built", discarded: "discarded" };
@@ -11,11 +11,12 @@ const STATUS_TEXT = { draft: "draft", approved: "approved, building", built: "bu
 /**
  * The plans of the project (plans/*.md) as cards on the canvas, next to the screens: a card reads the plan (view mode) or edits its Markdown (edit mode).
  * The file is the truth: the card writes it on every change (after a short pause) and shows what changes in it from outside (the agent, an editor, the chat card).
- * `api` = { read(slug) -> { text }, write(slug, text) }; `ctx` = { adoptPlanMap(slug), saveSitemap(sitemap), restoreSitemap(), hasSitemap(), approve(slug), askAgent(slug, message, label), flowEdges() (the links between the screens), screens() (their file names), createScreen({ slug, node, file, where }), createScreens({ slug, items }), showDetail(name, host), docsDescribe(names), openScreen(file), isScreen(file), changed() (positions changed), getInset() }.
+ * `api` = { read(slug) -> { text }, write(slug, text) }; `ctx` = { adoptPlanMap(slug), saveSitemap(sitemap), restoreSitemap(), hasSitemap(), approve(slug), askAgent(slug, message, label), flowEdges() (the links between the screens), screens() (their file names), createScreen({ slug, node, file, where }), createScreens({ slug, items }), showDetail(name, host), docsDescribe(names), openScreen(file), isScreen(file), changed() (positions changed), getInset(), toggleAnnotate() (the Annotate mode), mapPins(scope) (id of a page -> number of its annotation), annotatePages({ scope, pages, anchor }) (a note for the next message), adoptComments(scope, notes) (old review comments of pages become annotations) }; a scope is "project" or the slug of a plan.
  */
 export function createPlanCards({ root, world, canvas, api, ctx }) {
   const cards = new Map(); // slug -> card state
   let saved = {}; // slug -> { x, y, w, h } from the saved layout
+  let annotating = false; // the Annotate mode of the app: a click on a page of a map asks for a note
   let pendingSeparate = 0; // after a project is opened: the cards of the plans and the sitemap are separated once (an older layout may have them on top of each other)
 
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); n.append(...kids.filter((k) => k != null)); return n; };
@@ -153,6 +154,9 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
    * proposal in it) and by the card of the sitemap of the project. `io` = { slug (of the plan, null for the project), write(sitemap) saves a changed map, revise(extra) | null }.
    */
   function mapSection(c, sitemap, io, note = "") {
+    const scope = io.slug ?? "project";
+    // review comments of pages from before annotations: they become annotations of the next message and leave the map
+    if (ctx.adoptComments && io.writable !== false) { const t = takeComments(sitemap); if (t.notes.length) { sitemap = t.sitemap; io.write(sitemap); ctx.adoptComments(scope, t.notes); } }
     c.collapsed ??= new Set(defaultCollapsed(sitemap));
     const exists = (f) => ctx.isScreen?.(f) ?? false, built = countBuilt(sitemap, exists), screens = countScreens(sitemap), kind = kindOf(sitemap);
     const mini = (label, title, fn) => { const b = el("button", { type: "button", className: "pc-mini", textContent: label, title }); b.onclick = fn; return b; };
@@ -165,7 +169,11 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       show: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
       full: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>', canvas: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
       share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+      annotate: '<path d="M4 9V6a2 2 0 0 1 2-2h3"/><path d="M15 4h3a2 2 0 0 1 2 2v3"/><path d="M4 15v3a2 2 0 0 0 2 2h3"/><path d="M12.5 12.5l8 3.1-3.4 1.4-1.4 3.4z"/>',
     };
+    // Annotate: a click on a page asks for a note that goes with the next message (the same mode as on the screens)
+    const annoBtn = ctx.toggleAnnotate && !c.mapHidden && io.writable !== false ? ib(I.annotate, "Annotate: click a page and write what should change there (A)", () => ctx.toggleAnnotate()) : null;
+    if (annoBtn) { annoBtn.dataset.annotate = ""; annoBtn.classList.toggle("on", annotating); annoBtn.setAttribute("aria-pressed", String(annotating)); }
     const hide = ib(c.mapHidden ? I.show : I.hide, c.mapHidden ? "Show the sitemap" : "Hide the sitemap", () => { c.mapHidden = !c.mapHidden; renderView(c); });
     hide.setAttribute("aria-expanded", String(!c.mapHidden));
     // Share, like a screen: a picture, SVG or a uu5string (and, for the sitemap of the project, publishing it onto a page of a Plus4U document)
@@ -188,7 +196,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     // in the full view the tools of the tree (search, fold, unfold) and Share (the last one on the right) sit with the comment row below the toolbar, so the profile stays the first button from the right in the top bar; on the canvas card they stay in the card header
     document.querySelectorAll("#bar .pc-share").forEach((x) => x.remove());
     const tools = el("span", { className: "pc-tools" },
-      c.expanded ? null : foldBtn, c.expanded ? null : unfoldBtn,
+      c.expanded ? null : annoBtn, c.expanded ? null : foldBtn, c.expanded ? null : unfoldBtn,
       c.expanded ? null : hide, c.expanded ? null : expand, c.expanded ? null : exportBtn);
     const head = el("div", { className: "pc-treehead pc-maphead" }, el("h4", { textContent: `${kind === "portal" ? "Portal map" : "Sitemap"} (${mapSummary(sitemap)})` }), kindSw, el("span", { className: "pc-progress", textContent: `${built} of ${screens} with a screen`, title: kind === "portal" ? "Portals and sheets that have a screen: designed. The others are only in the map." : "Pages that have a screen: designed. The others are only in the map." }), tools);
     const box = el("div", { className: "pc-sitemap" }, head);
@@ -234,7 +242,9 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         onToggle: async () => { c.linksOn = !c.linksOn; if (c.linksOn) { c.edges = (await ctx.flowEdges()) ?? []; if (!Array.isArray(c.edges)) c.edges = []; } renderView(c); },
         onAdd: (f) => io.write(addScreenPage(sitemap, f, c.sel ?? [])),
       } : undefined,
-      notes: ctx.loadNotes?.(c.slug) ?? (c.notes ??= []), onNotes: (l) => ctx.saveNotes?.(c.slug, l), draft: c.draft ?? "", onDraft: (v) => { c.draft = v; }, onRevise: io.revise ?? undefined,
+      pins: ctx.mapPins?.(scope) ?? new Map(), annotating: annotating && io.writable !== false,
+      onAnnotateMap: ctx.annotatePages && io.writable !== false ? (anchor) => ctx.annotatePages({ scope, anchor, pages: [{ id: MAP_ID, title: "The whole map", type: "map", where: "the whole map" }] }) : undefined,
+      onAnnotate: ctx.annotatePages && io.writable !== false ? (list, anchor) => ctx.annotatePages({ scope, anchor, pages: list.map(({ node, where }) => ({ id: node.id, title: node.title, type: node.type, ...(node.file ? { file: node.file } : {}), where })) }) : undefined,
       onCreate: ({ node, path, file, where }) => {
         if (node.file !== file) io.write(updateNode(sitemap, path, { file }));
         ctx.createScreen?.({ slug: io.slug, node, file, where });
@@ -244,7 +254,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const bar = box.querySelector(".pc-mapbox > .sm")?.searchBar;
     const row = c.expanded ? box.querySelector(".sm-review") : null; // the row of the comment on the whole map
     if (bar) bar.classList.add("intool");
-    if (row) row.append(el("span", { className: "pc-treetools" }, ...(bar ? [bar] : []), ...(foldBtn ? [el("span", { className: "pc-seg" }, foldBtn, unfoldBtn)] : []), ...(exportBtn ? [exportBtn] : [])));
+    if (row) row.append(el("span", { className: "pc-treetools" }, ...(annoBtn ? [annoBtn] : []), ...(bar ? [bar] : []), ...(foldBtn ? [el("span", { className: "pc-seg" }, foldBtn, unfoldBtn)] : []), ...(exportBtn ? [exportBtn] : [])));
     else { if (bar) tools.prepend(bar); if (c.expanded) tools.append(...[foldBtn, unfoldBtn, exportBtn].filter(Boolean)); }
     return box;
   }
@@ -253,14 +263,13 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
   const planIo = (c) => ({
     slug: c.slug,
     write: (sm) => { c.body = replaceSitemapBlock(c.body, sm); c.ta.value = c.body; flush(c); },
-    revise: c.status !== "discarded" && ctx.askAgent ? (extra) => ctx.askAgent(c.slug, reviseMessage({ slug: c.slug, sm: c.sitemap, extra, body: c.body }), "Revise the sitemap.") : null,
+    writable: c.status !== "discarded",
     adopt: ctx.adoptPlanMap ? () => ctx.adoptPlanMap(c.slug) : null,
   });
   /** What the card of the sitemap of the project does with it: it is saved in sitemap.json at once. */
   const projectIo = (c) => ({
     slug: null,
     write: (sm) => { c.sm = sm; renderView(c); ctx.saveSitemap?.(sm); },
-    revise: ctx.askAgent ? (extra) => ctx.askAgent(null, reviseMessage({ slug: null, sm: c.sm, extra }), "Revise the sitemap.") : null,
   });
 
   /** Puts the parts into the card; the scroll of the card and of the map is kept, the selected page stays in sight. */
@@ -480,9 +489,44 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
   /** A plan or the map is shown one at a time, over the whole canvas (not as a tile on it). */
   function focus(slug) { return openView(slug); }
 
+  const keyOfScope = (scope) => (!scope || scope === "project" ? "@sitemap" : scope);
+  const mapOfCard = (c) => (c ? (c.kind === "sitemap" ? c.sm : c.sitemap) ?? null : null);
+  /** The path of the page with this id in the map, or null. */
+  const pathOfId = (sm, id) => { let out = null; const walk = (n, p) => { if (out) return; if (n.id === id) { out = p; return; } n.children.forEach((x, i) => walk(x, [...p, i])); }; if (sm?.root) walk(sm.root, []); return out; };
+  /**
+   * The page of an annotation comes into sight: its map is opened as the view, the branches above it unfolded, the page scrolled to and flashed.
+   * Resolves to a function that tells where the page is now (for the popover of its note), or null when the page is not in the map any more.
+   */
+  async function revealPage(scope, id) {
+    const key = keyOfScope(scope), c = cards.get(key), sm = mapOfCard(c);
+    if (c && sm && id === MAP_ID) { // the whole map: its note sits on the row of the tools of the map
+      c.mapHidden = false; if (viewCard !== c) openView(key); else renderView(c);
+      await new Promise((r) => requestAnimationFrame(r));
+      const find = () => c.view.querySelector(".sm-mapnote");
+      return find() ? () => { const x = find(); return x?.isConnected ? x.getBoundingClientRect() : null; } : null;
+    }
+    const path = sm && pathOfId(sm, id);
+    if (!c || !path) return null;
+    c.mapHidden = false; c.collapsed ??= new Set();
+    for (let i = 0, n = sm.root; i < path.length; n = n.children[path[i]], i++) c.collapsed.delete(n.id);
+    if (viewCard !== c) openView(key); else renderView(c);
+    await new Promise((r) => requestAnimationFrame(r));
+    const find = () => c.view.querySelector(`.sm-node[data-id="${CSS.escape(id)}"]`);
+    const b = find(); if (!b) return null;
+    b.scrollIntoView({ block: "center", inline: "center" }); b.classList.add("sm-flash"); setTimeout(() => find()?.classList.remove("sm-flash"), 900);
+    return () => { const x = find(); return x?.isConnected ? x.getBoundingClientRect() : null; };
+  }
+
   return {
     /** The zoom of the map shown as the view ({ by(f), reset(), fit(), percent() }), or null when the view is not a map: the zoom of the toolbar then zooms the canvas. */
     mapZoom: () => (viewCard && !viewCard.mapHidden ? viewCard.view.querySelector(".sm")?.zoom ?? null : null),
+    /** The Annotate mode on or off: the maps take a click on a page as an annotation. */
+    setAnnotating: (v) => { if (annotating === Boolean(v)) return; annotating = Boolean(v); for (const c of cards.values()) renderView(c); },
+    /** The annotations changed: the maps show their numbers again. */
+    repaint: () => { for (const c of cards.values()) renderView(c); },
+    /** The map of a scope ("project" or the slug of a plan) and the text of its plan: { sitemap, body } or null. */
+    mapOf: (scope) => { const c = cards.get(keyOfScope(scope)); return c ? { sitemap: mapOfCard(c), body: c.body ?? "" } : null; },
+    revealPage,
     setPlans, setSitemap, focus, arrange, openView, closeView, viewKey: () => (viewCard ? [...cards].find(([, c]) => c === viewCard)?.[0] ?? null : null),
     /** How many cards are on the canvas now (not hidden). */
     visibleCount: () => [...cards.values()].filter((c) => !c.hidden).length,

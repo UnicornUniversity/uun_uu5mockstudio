@@ -25,6 +25,7 @@ One rounded box: your text, a strip of tools under it, and the round send button
 | Control | What it does |
 | --- | --- |
 | crosshair | **Pick components** in the preview and link them in your message (see below) |
+| frame with a pointer | **Annotate**: click a component of a screen or a page of the sitemap and write what should change there (see below; also **A**) |
 | paperclip | **Attach an image**: a screenshot or a sketch (you can also paste with ⌘V or drop it) |
 | cube | **Components from the libraries**: search the uu5 libraries and add a component to the message (the same browser is the **Components** tab at the top of the panel) |
 | round arrow | Send. While Claude works it becomes **Stop**. |
@@ -49,6 +50,12 @@ Type `@` and a few letters:
 - **another screen** of the project (`@room-list`): Claude opens it and uses it as a template;
 - **a file of the linked git repository** (`@repo/…`, see [project memory](07-project-memory.md#linked-git-repository));
 - **a component of the uu5 libraries** (`@Uu5Elements.Block`, `@Uu5Forms.FormText`): Claude gets the description of the component, its props and the reference file. Only components known to the documentation of the `uu5-development` and `uu5bricks` plugins are suggested; the cube button opens a browser of them with the props, defaults (long defaults are one clipped line; click to read all) and a link to the online documentation.
+
+## Annotating screens and the sitemap
+
+**Annotate** (the frame with a pointer next to the crosshair, on the bar over a selected screen and on the toolbar of the sitemap, or the **A** key) is the quickest way to say *what should change where*. Click a component in the preview, or a page in the sitemap: a small window opens right next to it, write what should change and press **Enter** (Shift + Enter breaks the line, Esc cancels). The place gets an orange **number**, and a chip with the number, your note and (for a component) a small picture appears above the field. Annotate as many places as you need (up to 12), on several screens and in the map. **One place can have several notes**: click it again and its window lists the notes it has (click one to edit it) above a field for another note, which gets its own number (the frame then shows e.g. **1,2**). **✕** next to a note in that list removes it (the window stays open with the others). A click on a chip opens its note again; **Delete** in the window (or emptying the note) removes the annotation, and so does **✕** on the chip. The numbers are on the screens only in the Annotate mode (the chips keep the annotations in the other modes). **Esc** leaves the mode.
+
+Then **Send**: with nothing written, the message is "Apply the annotations." Claude receives every annotated place with your note: a component with its exact source and a **picture of it** as it looks now, a page of the sitemap with its place in the map. Annotations of the sitemap are answered as a **plan** with the revised map: it changes only when you approve it. The annotations are part of this one message: after sending they leave the screens and the map and stay listed under your message in the chat. The annotations of one message are on one map (the sitemap of the project, or the map of one plan).
 
 ## Picking components of a screen
 

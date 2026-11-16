@@ -11,6 +11,7 @@
 | `chatdock.js` | The chat panel: docked or floating, drag and resize, the round bubble when minimized (own place, bottom-left by default), the separate context for the fullscreen preview. |
 | `fsnote.js` | The notes of the screen open in fullscreen: the panel and the bubble (bottom-right by default, shows the count; without notes it adds one). |
 | `inspector.js` | **Script injected into screens** (`INJECT`), `createInspector` (host side), `describePick`, `agentContext`, selection rules (`updateSelection`). See [06](06-inspector.md). |
+| `annotations.js`, `annotatePopover.js` | Annotations of the message being written (a note on a component of a screen or on a page of a sitemap): keys, what the agent reads (`annotationsContext`), the chat history entry, the screenshot box, and the small window for the note. See [06](06-inspector.md). |
 | `propsPanel.js` | The inspector side panel: breadcrumb, controls per prop kind (`kindOf`), lists, JSON editor window, text and icon fields, **Show component tree**. |
 | `actionListEditor.js`, `actionGrammar.js` | The window that edits a list of actions, and the grammar of an action (fields built from the documentation of `Uu5Elements.Button`). |
 | `textField.js`, `iconField.js`, `iconPicker.js` | LSI-aware text field with a language switch; the icon field; the catalog dialog (uuGDS, uuBml, states). |

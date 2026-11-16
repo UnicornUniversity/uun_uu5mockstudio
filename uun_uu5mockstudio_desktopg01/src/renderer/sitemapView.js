@@ -1,4 +1,4 @@
-import { relocateNode, splitComments, joinComments, getNode, updateNode, updateNodes, groupComments, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside, searchNodes, lockedIn, countApproved } from "./sitemap.js";
+import { relocateNode, getNode, updateNode, updateNodes, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside, searchNodes, lockedIn, countApproved } from "./sitemap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -7,6 +7,8 @@ const el = (tag, props = {}, ...kids) => {
   return n;
 };
 export const ZOOM_MIN = 0.3, ZOOM_MAX = 2;
+/** The id an annotation of the whole map has (no page has it). */
+export const MAP_ID = "@map";
 const clampZoom = (z) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(z) || 1));
 const same = (a, b) => Boolean(a && b) && a.length === b.length && a.every((x, i) => x === b[i]);
 const IC = {
@@ -19,7 +21,7 @@ const IC = {
 
 /**
  * The sitemap as a map: the root on the left, the pages to the right, and below it a small editor of the selected page.
- * `sm` = { root }; `opts` = { sel: path | null, isScreen(file), onSelect(path | null, multi) (Shift / ⌘ / Ctrl + click adds or removes a page; a click on the selected page or on the empty map deselects), sels (all selected pages), onBulk(sitemap) (a change to all selected pages), onChange(sitemap, path), onOpen(file), onCreate({ node, path, file, where }), onCreateMany([{ node, path, where }]) (the selected pages, at most 8), onRevise(extra) (the comments and a wish go to the agent), collapsed (Set of ids of the folded pages), onToggle(id), links: { on, edges, screens, onToggle(), onAdd(file) } (the real links of the screens over the map) }.
+ * `sm` = { root }; `opts` = { sel: path | null, isScreen(file), onSelect(path | null, multi) (Shift / ⌘ / Ctrl + click adds or removes a page; a click on the selected page or on the empty map deselects), sels (all selected pages), onBulk(sitemap) (a change to all selected pages), onChange(sitemap, path), onOpen(file), onCreate({ node, path, file, where }), onCreateMany([{ node, path, where }]) (the selected pages, at most 8), pins (Map: id of a page -> the numbers of its annotations, "1,3"; MAP_ID for the whole map), annotating (a click on a page annotates it, a click on the empty map annotates the whole map), onAnnotate([{ node, path, where }], anchor()) (a note on the page(s) for the next message), onAnnotateMap(anchor()) (a note on the whole map), collapsed (Set of ids of the folded pages), onToggle(id), links: { on, edges, screens, onToggle(), onAdd(file) } (the real links of the screens over the map) }.
  */
 // F2 renames the selected page: one listener for the document, because a click re-draws the map and the focus is gone with the old buttons
 let f2Rename = null;
@@ -30,11 +32,11 @@ if (typeof document !== "undefined") document.addEventListener("keydown", (e) =>
 });
 
 export function renderSitemap(sm, opts) {
-  const { sel, sels = sel ? [sel] : [], isScreen = () => false, onSelect, onChange, onBulk, onOpen, onCreate, onCreateMany, onRevise, links, collapsed = new Set(), onToggle } = opts;
+  const { sel, sels = sel ? [sel] : [], isScreen = () => false, onSelect, onChange, onBulk, onOpen, onCreate, onCreateMany, links, collapsed = new Set(), onToggle, pins = new Map(), annotating = false, onAnnotate, onAnnotateMap } = opts;
   const picked = (path) => sels.some((p) => same(p, path));
   const kind = kindOf(sm), TYPE_LABEL = typeLabels(kind), TYPES = typesFor(sm), portal = kind === "portal";
   const word = (t) => typeShort(kind, t).toLowerCase(); // "page", "portal", "sheet", "section"
-  const root = el("div", { className: "sm" });
+  const root = el("div", { className: `sm${annotating ? " annotating" : ""}` });
 
   const status = (n) => {
     if (n.type === "external") return el("span", { className: "sm-st ext", textContent: "↗", title: `Leads out of the ${portal ? "portal" : "site"}: not solved here` });
@@ -48,6 +50,12 @@ export function renderSitemap(sm, opts) {
     const hit = nodes.flatMap((x) => lockedIn(x, isScreen)); if (!hit.length) return true;
     const names = hit.slice(0, 3).map((x) => `“${x.title}”`).join(", ") + (hit.length > 3 ? ` and ${hit.length - 3} more` : "");
     return confirm(`${names} ${hit.length === 1 ? "is" : "are"} approved and ${hit.length === 1 ? "has" : "have"} a screen. ${what} anyway?`);
+  };
+  /** The page(s) get a note for the next message; the popover stands at the (last) page, found again after a repaint of the map. */
+  const annotate = (paths) => {
+    const list = paths.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) })).filter((x) => x.node); if (!list.length) return;
+    const id = list[list.length - 1].node.id;
+    onAnnotate?.(list, () => { const b = document.querySelector(`.sm-node[data-id="${CSS.escape(id)}"]`); return b?.isConnected ? b.getBoundingClientRect() : null; });
   };
   /** Rename on the spot: an input over the page; Enter or a click away keeps the name, Esc leaves it. */
   const renameNode = (b, n, path) => {
@@ -78,6 +86,7 @@ export function renderSitemap(sm, opts) {
     const head = (t) => el("div", { className: "sm-ch", textContent: t });
     const act = (r) => onChange?.(r.sitemap, r.path);
     const isRoot = path.length === 0;
+    if (onAnnotate) menu.append(item(many ? `Annotate ${many.length} pages…` : "Annotate…", () => annotate(many ?? [path])), el("hr"));
     if (!many) menu.append(item("Rename", () => { const b = [...document.querySelectorAll(".sm-node.sel")].find((x) => x.querySelector(".sm-title")?.textContent === n.title); if (b) renameNode(b, n, path); }));
     menu.append(head(many ? `Type of ${many.length} pages` : "Type"), ...TYPES.map((t) => item(TYPE_LABEL[t], () => { if (!okToChange(many ? many.map((p) => getNode(sm, p)) : [n], "Change the type")) return; many ? onBulk?.(updateNodes(sm, many, { type: t })) : onChange?.(updateNode(sm, path, { type: t }), path); }, { on: !many && n.type === t })));
     const flaggable = (many ? many.map((p) => getNode(sm, p)) : [n]).filter((x) => canFlag(x.type));
@@ -138,7 +147,7 @@ export function renderSitemap(sm, opts) {
     return b;
   };
   const nodeEl = (n, path) => {
-    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${n.comment ? " has-cm" : ""}${n.approved ? " ap" : ""}${n.approved && opts.dimApproved ? " apdim" : ""}${hitClass(n)}`, title: n.comment ? `Comment: ${n.comment}` : n.note || n.title }, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, n.comment ? el("span", { className: "sm-cm", textContent: "!", title: n.comment, "aria-label": "Has a comment" }) : null, approvalMark(n, path));
+    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${pins.has(n.id) ? " has-pin" : ""}${n.approved ? " ap" : ""}${n.approved && opts.dimApproved ? " apdim" : ""}${hitClass(n)}`, title: annotating ? `Annotate ${n.title}` : n.note || n.title }, pins.has(n.id) ? el("span", { className: "sm-pin", textContent: String(pins.get(n.id)), title: `Annotation #${pins.get(n.id)} of your next message`, "aria-label": `Annotation ${pins.get(n.id)}` }) : null, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, approvalMark(n, path));
     if (n.children.length) {
       const folded = collapsed.has(n.id), tgl = el("span", { className: "sm-tgl", role: "button", tabIndex: 0, textContent: folded ? `▸ ${descendants(n)}` : "▾", title: folded ? `Show the ${descendants(n)} pages below` : "Fold the branch" });
       tgl.setAttribute("aria-label", folded ? `Unfold ${n.title}` : `Fold ${n.title}`); tgl.setAttribute("aria-expanded", String(!folded));
@@ -147,11 +156,12 @@ export function renderSitemap(sm, opts) {
     }
     b.setAttribute("aria-pressed", String(picked(path)));
     if (n.file) b.dataset.file = n.file;
+    b.dataset.id = n.id;
     // drag and drop (with the pointer, not the HTML5 one that a button does not start reliably): the upper quarter of a page drops before it, the lower quarter after it, the middle inside it
     b.dataset.path = JSON.stringify(path);
-    if (path.length && onChange) b.onpointerdown = (e) => { if (e.button === 0 && !e.target.closest(".sm-tgl")) startDrag(e, b, n, path); };
-    b.onclick = (e) => { if (justDragged) return; onSelect?.(path, e.shiftKey || e.metaKey || e.ctrlKey); };
-    b.ondblclick = (e) => { if (e.target.closest(".sm-tgl")) return; e.preventDefault(); getSelection()?.removeAllRanges(); renameNode(b, n, path); }; // double click: rename on the spot
+    if (path.length && onChange && !annotating) b.onpointerdown = (e) => { if (e.button === 0 && !e.target.closest(".sm-tgl")) startDrag(e, b, n, path); };
+    b.onclick = (e) => { if (justDragged) return; if (annotating && !e.target.closest(".sm-tgl,.sm-ap")) return annotate([path]); onSelect?.(path, e.shiftKey || e.metaKey || e.ctrlKey); }; // the Annotate mode: a click asks for a note
+    b.ondblclick = (e) => { if (annotating || e.target.closest(".sm-tgl")) return; e.preventDefault(); getSelection()?.removeAllRanges(); renameNode(b, n, path); }; // double click: rename on the spot
     b.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); nodeMenu(e.clientX, e.clientY, n, path); }; // right click: the quick actions
     return b;
   };
@@ -164,54 +174,20 @@ export function renderSitemap(sm, opts) {
     const path = sels.length === 1 ? sels[0] : sel, n = path && getNode(sm, path); if (!n) return;
     const b = [...document.querySelectorAll(".pc-inview .sm-node.sel")].find((x) => x.querySelector(".sm-title")?.textContent === n.title); if (b) renameNode(b, n, path);
   };
-  const comments = groupComments(sm).length;
-  /** One comment or note of a list: the text (a click edits it on the spot: Enter or a click away keeps it, empty removes it, Esc leaves it) and a cross. */
-  function noteLi(t, { removeTitle, remove, save, cancel }) {
-    const x = el("button", { type: "button", className: "sm-note-x", textContent: "×", title: removeTitle, "aria-label": removeTitle }); x.onclick = remove;
-    const txt = el("span", { textContent: t, title: "Click to edit", tabIndex: 0, role: "button" }), li = el("li", { className: "sm-note" }, txt, x);
-    const edit = () => {
-      const ed = el("textarea", { className: "sm-note-ed", value: t, rows: 1, spellcheck: false, "aria-label": "Edit the text" }); let done = false;
-      const fit = () => { ed.style.height = "auto"; ed.style.height = `${ed.scrollHeight}px`; };
-      const finish = (keep) => { if (done) return; done = true; const v = ed.value.trim(); if (!keep || v === t) { ed.replaceWith(txt); return cancel?.(); } save(v); };
-      ed.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } };
-      ed.oninput = fit; ed.onblur = () => finish(true);
-      txt.replaceWith(ed); fit(); ed.focus(); ed.setSelectionRange(ed.value.length, ed.value.length);
-    };
-    txt.onclick = edit; txt.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); edit(); } };
-    return li;
-  }
-  if (onRevise) {
-    // Enter ADDS a note about the whole map (as many as you like, e.g. while reviewing with someone); only the button sends them all to the agent
-    const notes = opts.notes ?? [];
-    const wish = el("input", { type: "text", className: "sm-wish", placeholder: "Note on the whole map, e.g. merge the departments… (Enter adds it)", spellcheck: false, "aria-label": "A note about the whole map" });
-    const go = el("button", { type: "button", className: "pc-mini accent", title: "The agent revises the map with your comments on the pages and your notes on the whole map" });
-    const list = el("ul", { className: "sm-notes" });
-    const count = () => comments + notes.length;
-    const sync = () => {
-      const n = count();
-      go.textContent = n ? `Revise with the agent (${n} comment${n === 1 ? "" : "s"})` : "Revise with the agent";
-      go.disabled = !n && !wish.value.trim();
-      list.hidden = !notes.length;
-      list.replaceChildren(...notes.map((t, i) => noteLi(t, {
-        removeTitle: "Remove this note",
-        remove: () => { notes.splice(i, 1); opts.onNotes?.(notes); sync(); },
-        save: (v) => { if (v) notes[i] = v; else notes.splice(i, 1); opts.onNotes?.(notes); sync(); },
-      })));
-    };
-    const add = () => { const t = wish.value.trim(); if (!t) return false; notes.push(t); wish.value = ""; opts.onDraft?.(""); opts.onNotes?.(notes); sync(); return true; };
-    const send = () => { add(); const n = notes.splice(0).join("\n- "); opts.onNotes?.(notes); sync(); if (n || comments) onRevise(n ? `\n- ${n}` : ""); };
-    wish.value = opts.draft ?? ""; // what was typed and not yet added stays when the map is repainted
-    wish.oninput = () => { opts.onDraft?.(wish.value); sync(); }; sync();
-    go.onclick = send;
-    wish.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); add(); } };
-    root.append(el("div", { className: "sm-review" }, wish, go), list);
+  const review = el("div", { className: "sm-review" }); root.append(review); // the row of the tools of the map (the card puts search, fold and Share into it in the full view)
+  // a note on the whole map (not on a page): an annotation of the next message, like the notes on pages
+  const annotateMap = () => onAnnotateMap?.(() => { const b = document.querySelector(".pc-inview .sm-mapnote") ?? root.querySelector(".sm-mapnote"); return b?.isConnected ? b.getBoundingClientRect() : null; });
+  if (onAnnotateMap) {
+    const n = pins.get(MAP_ID), b = el("button", { type: "button", className: `pc-mini sm-mapnote${n ? " on" : ""}`, title: n ? "Your notes on the whole map (they go with your next message): edit one or add another" : "Write what should change on the map as a whole: the note goes with your next message, the agent revises the map and you approve it" });
+    if (n) b.append(el("span", { className: "sm-pin", textContent: String(n), "aria-hidden": "true" }), " ");
+    b.append(n ? "Note on the whole map" : "Note on the whole map…"); b.onclick = annotateMap;
+    review.append(b);
   }
   const diff = links?.on ? linkDiff(sm, links.edges ?? [], links.screens ?? []) : null;
   if (links) {
     const tog = el("button", { type: "button", className: `pc-mini${links.on ? " on" : ""}`, textContent: "Real links", title: "Show the links that the screens really have and the map does not say" });
     tog.setAttribute("aria-pressed", String(Boolean(links.on))); tog.onclick = () => links.onToggle?.();
-    root.querySelector(".sm-review")?.append(tog);
-    if (!root.querySelector(".sm-review")) root.append(el("div", { className: "sm-review" }, tog));
+    review.append(tog);
     if (diff) {
       const where = fileNodes(sm), gone = diff.missing.map((f) => `${getNode(sm, where.get(f))?.title ?? f} (${f})`);
       const row = el("div", { className: "sm-diff" }, el("span", { textContent: `${diff.extra.length} link${diff.extra.length === 1 ? "" : "s"} between screens that the map does not show (orange)` }));
@@ -225,13 +201,13 @@ export function renderSitemap(sm, opts) {
   }
   const { approved: nOk, all: nAll } = countApproved(sm);
   if (nOk) {
-    const row = root.querySelector(".sm-review") ?? root.appendChild(el("div", { className: "sm-review" }));
+    const row = review;
     row.append(el("span", { className: "sm-apcount", textContent: `${nOk} / ${nAll} approved`, title: "Pages you have reviewed and approved, of all the pages that count" }));
     if (opts.onDimApproved) { const t = el("button", { type: "button", className: `pc-mini${opts.dimApproved ? " on" : ""}`, textContent: "Dim approved", title: "Fade the approved pages so the ones still to review stand out" }); t.setAttribute("aria-pressed", String(Boolean(opts.dimApproved))); t.onclick = () => opts.onDimApproved(!opts.dimApproved); row.append(t); }
   }
   const treewrap = el("div", { className: "sm-treewrap" }, el("ul", { className: "sm-tree" }, branch(sm.root, [])));
   const scroll = el("div", { className: "sm-scroll" }, treewrap);
-  scroll.onclick = (e) => { if (e.target === scroll || e.target.tagName === "UL" || e.target.tagName === "LI") onSelect?.(null, false); }; // the empty map: nothing selected
+  scroll.onclick = (e) => { if (e.target === scroll || e.target.tagName === "UL" || e.target.tagName === "LI") { if (annotating && onAnnotateMap) annotateMap(); else onSelect?.(null, false); } }; // the empty map: nothing selected (in the Annotate mode: a note on the whole map)
 
   // ----- zoom of the map: ⌘ / Ctrl + wheel and the pinch of a trackpad (Chromium sends it as Ctrl + wheel) around the pointer,
   // and the zoom pill of the toolbar while the map is the view (root.zoom); the map has no zoom bar of its own. The map is zoomed with CSS zoom, so it is laid out (and scrolls) at its size.
@@ -323,30 +299,21 @@ export function renderSitemap(sm, opts) {
   if (opts.editorHost) out.replaceChildren();
   if (chosen.length > 1) { sideTitle(`${chosen.length} pages`, true); out.append(multiEditor(chosen)); return root; }
   const node = sel ? getNode(sm, sel) : null;
-  if (!node) { const a = opts.editorHost?.closest("aside"); if (a) a.hidden = true; /* nothing selected: no panel, the map has the whole width */ out.append(el("p", { className: "mute sm-hint", textContent: "Select a page to rename it, change its type or screen, add pages or move them. Shift / ⌘ + click selects more pages to comment on them together." })); return root; }
+  if (!node) { const a = opts.editorHost?.closest("aside"); if (a) a.hidden = true; /* nothing selected: no panel, the map has the whole width */ out.append(el("p", { className: "mute sm-hint", textContent: "Select a page to rename it, change its type or screen, add pages or move them. Shift / ⌘ + click selects more pages to change or annotate them together." })); return root; }
 
-  /** The comments of the review on the page(s): a box of its own, apart from the settings of the page. Enter adds one more comment; × removes it. */
-  function commentBox(list, label, setList, hint = "") {
-    const ul = el("ul", { className: "sm-notes" });
-    const inp = el("input", { type: "text", placeholder: "Add a comment…  (Enter)", spellcheck: false, "aria-label": label });
-    const paint = () => ul.replaceChildren(...list.map((t, i) => noteLi(t, {
-      removeTitle: "Remove this comment",
-      remove: () => setList(list.filter((_, j) => j !== i)),
-      save: (v) => setList(v ? list.map((c, j) => (j === i ? v : c)) : list.filter((_, j) => j !== i)),
-      cancel: paint,
-    })));
-    paint(); ul.hidden = !list.length;
-    inp.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); const t = inp.value.trim(); if (t) setList([...list, t]); } };
-    return el("div", { className: "sm-cbox" }, el("div", { className: "sm-chead", title: hint || "The agent resolves the comments on a revision" }, el("b", { textContent: "Comments" }), list.length ? el("span", { className: "sm-ccount", textContent: String(list.length) }) : null), ul, inp);
-  }
+  /** The note for the next message (an annotation), instead of the comments the pages once kept. */
+  const annoBox = (paths, label) => {
+    const n = paths.map((p) => getNode(sm, p)?.id).filter((id) => pins.has(id));
+    const b = el("button", { type: "button", className: "sm-annobtn", textContent: n.length ? `${label.replace(/…$/, "")} (has #${n.map((id) => pins.get(id)).join(", #").replace(/,(?=\d)/g, ", #")})…` : label, title: "Write what should change: the note goes with your next message, the agent revises the map and you approve it" });
+    b.onclick = () => annotate(paths);
+    return onAnnotate ? el("div", { className: "sm-cbox" }, b) : null;
+  };
 
-  // ----- several pages selected: one comment (or one type) for all of them
+  // ----- several pages selected: one note (or one type) for all of them
   function multiEditor(paths) {
-    const nodes = paths.map((p) => getNode(sm, p)), same1 = nodes.every((n) => (n.comment ?? "") === (nodes[0].comment ?? ""));
+    const nodes = paths.map((p) => getNode(sm, p));
     const bulk = (patch) => onBulk?.(updateNodes(sm, paths, patch));
-    const addAll = (t) => onBulk?.(paths.reduce((m, p) => { const n = getNode(m, p); return updateNode(m, p, { comment: joinComments([...splitComments(n.comment), t]) }); }, sm));
-    const cbox = same1 ? commentBox(splitComments(nodes[0].comment), `Comments on the ${paths.length} selected pages`, (l) => bulk({ comment: joinComments(l) }), `the same on all ${paths.length} pages`)
-      : commentBox([], `Comment on the ${paths.length} selected pages`, (l) => addAll(l[0]), "the pages have different comments: a new one is added to each");
+    const cbox = annoBox(paths, `Annotate the ${paths.length} pages…`);
     const type = el("select", { "aria-label": "Type of all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), ...TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t] })));
     type.onchange = () => { if (type.value && okToChange(nodes, "Change the type")) bulk({ type: type.value }); else type.value = ""; };
     const ap = el("select", { "aria-label": "Approved, for all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), el("option", { value: "1", textContent: "Yes, approved" }), el("option", { value: "0", textContent: "No, not yet" }));
@@ -407,7 +374,7 @@ export function renderSitemap(sm, opts) {
     const cb = el("input", { type: "checkbox", checked: Boolean(node.approved) }); cb.onchange = () => set({ approved: cb.checked });
     return el("label", { className: "sm-f sm-flag", title: "You have reviewed this page: the agent keeps it as it is on a revision, and changing it here asks first when it has a screen" }, cb, el("span", { textContent: "Approved" }));
   }
-  const cbox = commentBox(splitComments(node.comment), "Comment on this page", (l) => set({ comment: joinComments(l) }));
+  const cbox = annoBox([sel], "Annotate this page…");
   sideTitle(node.title, true);
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     cbox,

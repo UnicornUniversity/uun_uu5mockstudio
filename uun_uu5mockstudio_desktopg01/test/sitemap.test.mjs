@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isLocked, lockedIn, countApproved, commentsOf, groupComments, updateNodes, reviseMessage, normalizeSitemap, extractSitemap, replaceSitemapBlock, serializeSitemap, countPages, countNodes, countSections, getNode, updateNode, addChild, addSibling, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles } from "../src/renderer/sitemap.js";
+import { isLocked, lockedIn, countApproved, commentsOf, takeComments, updateNodes, reviseMessage, normalizeSitemap, extractSitemap, replaceSitemapBlock, serializeSitemap, countPages, countNodes, countSections, getNode, updateNode, addChild, addSibling, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles } from "../src/renderer/sitemap.js";
 
 const sample = () => normalizeSitemap({ root: { title: "Portal", children: [{ title: "Study", type: "group", children: [{ title: "Theses", file: "theses.html" }, { title: "Exams" }] }, { title: "Library", file: "library.html" }, { title: "Moodle", type: "external" }] } });
 
@@ -114,24 +114,23 @@ test("sections are parts of a page: they are not counted as pages", () => {
   assert.equal(updateNode(sm, [1], { type: "section" }).root.children[1].type, "section");
 });
 
-test("comments on pages are kept, listed and turned into the request for a revision", () => {
+test("old review comments of pages are taken out of the map as annotations", () => {
   let sm = sample();
-  sm = updateNode(sm, [0, 1], { comment: "Merge with Theses" });
+  sm = updateNode(sm, [0, 1], { comment: "Merge with Theses ¦ Shorter name" });
   sm = updateNode(sm, [2], { comment: "  Is it a page?  " });
-  assert.deepEqual(commentsOf(sm).map((c) => [c.where, c.comment]), [["Portal > Study > Exams", "Merge with Theses"], ["Portal > Moodle", "Is it a page?"]]);
-  assert.deepEqual(extractSitemap(replaceSitemapBlock("x", sm)).sitemap, sm); // they survive the file
-  const msg = reviseMessage({ slug: "p", sm, extra: "Fewer groups", body: "BODY" });
-  assert.match(msg, /plans\/p\.md/); assert.match(msg, /- Portal > Study > Exams: Merge with Theses/); assert.match(msg, /as a whole: Fewer groups/); assert.match(msg, /BODY$/);
-  assert.equal(commentsOf(updateNode(sm, [0, 1], { comment: "" })).length, 1);
-  assert.doesNotMatch(reviseMessage({ slug: "p", sm: sample(), extra: "x", body: "" }), /commented on these pages/);
+  assert.deepEqual(commentsOf(sm).map((c) => [c.where, c.comment]), [["Portal > Study > Exams", "Merge with Theses ¦ Shorter name"], ["Portal > Moodle", "Is it a page?"]]);
+  const t = takeComments(sm);
+  assert.deepEqual(t.notes.map((n) => [n.where, n.note, n.id === getNode(sm, n.path).id]), [["Portal > Study > Exams", "Merge with Theses", true], ["Portal > Study > Exams", "Shorter name", true], ["Portal > Moodle", "Is it a page?", true]]);
+  assert.equal(commentsOf(t.sitemap).length, 0);
+  assert.equal(getNode(t.sitemap, [0, 1]).title, getNode(sm, [0, 1]).title);
+  const none = sample(); assert.equal(takeComments(none).sitemap, none); assert.equal(takeComments(none).notes.length, 0); // nothing to take: the same map
 });
 
-test("one comment on several pages is shared and sent as one together", () => {
-  let sm = updateNodes(sample(), [[0, 0], [0, 1]], { comment: "Make them sections" });
-  assert.equal(commentsOf(sm).length, 2); assert.equal(groupComments(sm).length, 1);
-  assert.deepEqual(groupComments(sm)[0].wheres, ["Portal > Study > Theses", "Portal > Study > Exams"]);
-  assert.match(reviseMessage({ slug: "p", sm, body: "" }), /- Portal > Study > Theses; Portal > Study > Exams \(together\): Make them sections/);
-  assert.equal(updateNodes(sm, [[0, 0], [0, 1]], { type: "section" }).root.children[0].children[1].type, "section");
+test("the annotations of pages are turned into the request for a revision", () => {
+  const msg = reviseMessage({ slug: "p", sm: sample(), notes: [{ where: "#1 Portal > Study > Exams", note: "Merge with Theses" }, { where: "#2 Portal > Moodle", note: "Is it a page?" }], body: "BODY" });
+  assert.match(msg, /plans\/p\.md/); assert.match(msg, /- #1 Portal > Study > Exams: Merge with Theses/); assert.match(msg, /- #2 Portal > Moodle: Is it a page\?/); assert.match(msg, /BODY$/);
+  assert.doesNotMatch(reviseMessage({ slug: "p", sm: sample(), body: "" }), /Resolve every annotation/);
+  assert.equal(updateNodes(sample(), [[0, 0], [0, 1]], { type: "section" }).root.children[0].children[1].type, "section");
 });
 
 import { countBuilt, foldable, defaultCollapsed, descendants, fileNodes, linkDiff, sitemapFromScreens, addScreenPage, titleFromFile } from "../src/renderer/sitemap.js";
@@ -180,8 +179,8 @@ test("progress of the map and folding", () => {
 });
 
 test("the revision of the map of the project carries the map itself and says that the user approves it", () => {
-  const sm = updateNode(sample(), [1], { comment: "Rename" });
-  const msg = reviseMessage({ slug: null, sm, extra: "" });
+  const sm = sample();
+  const msg = reviseMessage({ slug: null, sm, notes: [{ where: "Portal > Library", note: "Rename" }] });
   assert.match(msg, /sitemap\.json/); assert.match(msg, /```uu5-sitemap/); assert.match(msg, /Library: Rename|Portal > Library: Rename/); assert.match(msg, /only then it replaces/);
   assert.doesNotMatch(msg, /plans\//);
 });

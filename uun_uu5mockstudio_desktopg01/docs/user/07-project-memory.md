@@ -39,7 +39,7 @@ Yellow sticky notes of a screen, kept in `<screen>.notes.md`; see [Projects, scr
 
 **Comments** (the speech-bubble icon in the top bar, with the number of open ones) are for the conversation between people who review the design, not for the agent. A comment belongs to a screen, or to a component of it (mark it in the inspector and choose **Comment on this**), has an author, can be answered, **resolved** and **reopened**. They are saved beside the screen as `<screen>.comments.json`, so they travel with the project folder and the ZIP; the app is desktop-only and has no server, so a colleague gets them with the files. Your name in comments is the system user; click “You are …” in the dialog to change it.
 
-How they differ from **notes**: a note is yellow context on the canvas that the agent **reads** before it changes the screen (rules, open questions, a decision); it has no author and no state. A comment is a review remark with an author and a state that the agent does not read. Both go into the specification (notes under “Notes”, comments under “Open comments” and “Open questions”).
+How they differ from **notes**: a note is yellow context on the canvas that the agent **reads** before it changes the screen (rules, open questions, a decision); it has no author and no state. A comment is a review remark with an author and a state that the agent does not read. What the agent should change in the next message is an **annotation** (Chat and agent). Both go into the specification (notes under “Notes”, comments under “Open comments” and “Open questions”).
 
 ## Linked git repository
 

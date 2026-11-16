@@ -106,7 +106,8 @@ export const INJECT = `(async () => {
   // (with all its copies when it is rendered by \`.map\`: they get a dashed frame, since a change of the element changes every copy),
   // Cmd / Ctrl + click adds or removes just the copy that was clicked (its own solid frame; the key ends with "@" and the place of the copy).
   // Entries: { fib, others: [fibers of the other copies], ord, sub, inst }
-  const sel = new Map(), marks = [];
+  const sel = new Map(), marks = [], badges = [];
+  let annotate = false; // the Annotate mode: every click adds (never takes off) a component, the app asks for a note
   const keyOf = (T, sub, inst) => ordOf(T) + "|" + (sub ? sub.prop + "[" + sub.index + "]" : "") + (inst ? "@" + (inst.key != null ? "k:" + inst.key : inst.path.join(".")) : "");
   const mark = (fib, ord, sub, inst, others) => ({ fib, ord, sub: sub ? { prop: sub.prop, index: sub.index } : null, inst: inst || null, others: others || [] });
   const paintSel = () => {
@@ -121,6 +122,20 @@ export const INJECT = `(async () => {
       const r = rectOf(fib), m = marks[i];
       if (!r) { m.style.display = "none"; return; }
       Object.assign(m.style, { display: "block", borderStyle: dashed ? "dashed" : "solid", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+    });
+    // the number of an annotation on its component: a round badge on the top left corner of the frame
+    const pins = [...sel.values()].filter((e) => e.n);
+    while (badges.length > pins.length) badges.pop().remove();
+    while (badges.length < pins.length) {
+      const b = document.createElement("div");
+      b.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#e8590c;color:#fff;font:700 11px/20px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff,0 2px 6px rgba(0,0,0,.3);display:none";
+      document.documentElement.appendChild(b); badges.push(b);
+    }
+    pins.forEach((e, i) => {
+      const r = rectOf(e.fib), b = badges[i];
+      if (!r) { b.style.display = "none"; return; }
+      b.textContent = String(e.n);
+      Object.assign(b.style, { display: "block", left: Math.max(2, r.left - 10) + "px", top: Math.max(2, r.top - 10) + "px" });
     });
   };
   const selTimer = setInterval(paintSel, 400); // the page re-renders and scrolls: keep the frames on their components
@@ -181,8 +196,9 @@ export const INJECT = `(async () => {
     if (h && h.ok) console.log("${MOVE}" + JSON.stringify({ ordinal: m.ord, name: m.name, target: h.ordinal, targetName: h.name, position: h.zone }));
   };
   // mode: "one" (a plain click), "add" (Shift: the component), "copy" (Cmd / Ctrl: only the copy that was clicked); \`additive\` of old callers = "add"
-  const doPick = (hit, mode) => {
+  const doPick = (hit, mode, quiet) => {
     if (mode === true) mode = "add"; else if (!mode) mode = "one";
+    const pin = mode === "pin"; if (pin) mode = "one";
     const f = hit.T, sub = hit.sub, shown = sub ? sub.fiber : f, additive = mode !== "one";
     levels = []; lastSub = sub;
     for (let g = f, last = null; g && levels.length < 8; g = g.return) { const o = ordOf(g); if (o !== null && o !== last) { levels.push(outermost(g)); last = o; } }
@@ -194,8 +210,10 @@ export const INJECT = `(async () => {
       return null;
     }).filter(Boolean);
     const key = keyOf(f, sub, inst), entry = mark(shown, ordOf(f), sub, inst, others);
-    if (additive) { if (sel.has(key)) sel.delete(key); else sel.set(key, entry); } else { sel.clear(); sel.set(key, entry); }
+    if (pin) { if (!sel.has(key)) sel.set(key, entry); } // an annotation: added, a second click on it only opens its note
+    else if (additive) { if (sel.has(key)) sel.delete(key); else sel.set(key, entry); } else { sel.clear(); sel.set(key, entry); }
     paintSel();
+    if (quiet) return key;
     const r = rectOf(shown) || { width: 0, height: 0 }, props = {};
     for (const [k, v] of Object.entries(shown.memoizedProps || {})) if (k !== SRC && k !== "children") props[k] = sum(v);
     const ownerRuntime = {};
@@ -206,14 +224,16 @@ export const INJECT = `(async () => {
       sub: sub ? { prop: sub.prop, index: sub.index, count: sub.count, name: sub.name } : null,
       assets: { gdsBase: (() => { const e = performance.getEntriesByType("resource").find((x) => /uu_gds_svgg01-icons\\.min\\.css/.test(x.name)); return e ? e.name.slice(0, e.name.lastIndexOf("/") + 1) : null; })() },
       palettes, text: (hostNodes(shown)[0]?.innerText || "").trim().slice(0, 100), w: Math.round(r.width), h: Math.round(r.height),
+      rect: { x: Math.round(r.left || 0), y: Math.round(r.top || 0), w: Math.round(r.width), h: Math.round(r.height) }, view: { w: innerWidth, h: innerHeight }, pin,
     }));
+    return key;
   };
   const click = (e) => {
     if (ed && ed.el.contains(e.target)) return void e.stopPropagation(); // a click in the text being edited is not a pick, and not a click of the page
     stop(e);
     if (afterDrag) return;
     if (MAC && e.ctrlKey && !e.metaKey) return; // on macOS Ctrl + click is a right click: it is picked in \`ctx\` below
-    const hit = resolve(e.target); if (hit) doPick(hit, e.metaKey || e.ctrlKey ? "copy" : e.shiftKey ? "add" : "one");
+    const hit = resolve(e.target); if (hit) doPick(hit, annotate ? "pin" : e.metaKey || e.ctrlKey ? "copy" : e.shiftKey ? "add" : "one");
   };
   const MAC = /Mac/.test(navigator.platform || navigator.userAgent);
   // macOS sends Ctrl + click as a context menu (button 0, ctrlKey); the preload of the webview leaves it to the page while the inspector is on
@@ -293,6 +313,20 @@ export const INJECT = `(async () => {
   document.documentElement.appendChild(cursorCss);
   window.__studioInspect = {
     drop(key) { sel.delete(key); paintSel(); }, clear() { sel.clear(); paintSel(); },
+    /* The Annotate mode on or off. */
+    setAnnotate(v) { annotate = Boolean(v); },
+    /* The frame and the number of an annotation, without a pick (after the page was loaded again); the component by its ordinal, an item of a list by its prop and index. */
+    pin(ord, prop, index, n) {
+      for (const el of document.querySelectorAll("body *")) {
+        const f = compAt(el); if (!f || ordOf(f) !== ord) continue;
+        const h = prop == null ? { T: outermost(f), sub: null } : resolve(el);
+        if (prop != null && !(h && h.sub && h.sub.prop === prop && h.sub.index === index)) continue;
+        const key = doPick(h, "pin", true); const e = sel.get(key); if (e) e.n = n ? String(n) : ""; paintSel(); return key;
+      }
+      return null;
+    },
+    /* The numbers of the annotations of a component on its frame ("1,3"; empty: none). */
+    label(key, n) { const e = sel.get(key); if (e) { e.n = n ? String(n) : ""; paintSel(); return true; } return false; },
     /* Marks the component with this ordinal as if it was clicked (after it was added, moved or copied). */
     pickItem(ord, prop, index, additive) {
       for (const el of document.querySelectorAll("body *")) {
@@ -312,7 +346,7 @@ export const INJECT = `(async () => {
       removeEventListener("scroll", paintSel, true); removeEventListener("resize", paintSel); clearInterval(selTimer);
       for (const t of events) removeEventListener(t, swallow, true);
       removeEventListener("pointerdown", pdown, true); removeEventListener("pointermove", pmove, true); removeEventListener("pointerup", pup, true);
-      box.remove(); tip.remove(); dropMark.remove(); for (const m of marks) m.remove(); cursorCss.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
+      box.remove(); tip.remove(); dropMark.remove(); for (const m of marks) m.remove(); for (const b of badges) b.remove(); cursorCss.remove(); document.documentElement.style.cursor = ""; delete window.__studioInspect;
     },
   };
 })()`;
@@ -332,6 +366,12 @@ export function createInspector({ onPick, onEscape, onMove, onDelete, onDuplicat
     drop: (view, key) => run(view, `window.__studioInspect && window.__studioInspect.drop(${JSON.stringify(key)})`),
     markLevel: (view, i, item) => run(view, `window.__studioInspect && window.__studioInspect.markLevel(${Number(i)}, ${item ? "true" : "false"})`),
     clearIn: (views) => { for (const view of views) run(view, "window.__studioInspect && window.__studioInspect.clear()"); },
+    /** The Annotate mode in the pages of `views`. */
+    setAnnotate: (views, v) => { for (const view of views) run(view, `window.__studioInspect && window.__studioInspect.setAnnotate(${v ? "true" : "false"})`); },
+    /** The number of an annotation on the frame of its component (the frame is there from the pick). */
+    label: (view, key, n) => run(view, `window.__studioInspect && window.__studioInspect.label(${JSON.stringify(key)}, ${JSON.stringify(String(n ?? ""))})`),
+    /** Frames and numbers the annotation again after the page was loaded again; resolves to its key on the page, or null when the component is gone. */
+    pin: (view, ordinal, sub, n) => run(view, `window.__studioInspect ? window.__studioInspect.pin(${Number(ordinal)}, ${sub ? JSON.stringify(String(sub.prop)) : "null"}, ${sub ? Number(sub.index) : "null"}, ${JSON.stringify(String(n ?? ""))}) : null`),
     /** Call from each webview's console-message event. Returns true when the message was an inspector pick. */
     handleConsole(file, message) {
       if (message === "__studio_esc__") { onEscape?.(); return true; }
@@ -397,7 +437,7 @@ export function describePick(p) {
   return `${chain[0] ?? "component"}${what}${copy}${nested} in ${p.file}`.replace(/\s+/g, " ");
 }
 
-const LEVEL = `The file is a React/JSX program (a <script type="text/babel"> block) that is interpreted and rendered into HTML by the uu5 loader. ` +
+export const LEVEL = `The file is a React/JSX program (a <script type="text/babel"> block) that is interpreted and rendered into HTML by the uu5 loader. ` +
   `Work at the component level: change props, children or the place in the JSX tree, using the uu5/uuGDS component API — do not think in terms of the resulting DOM, CSS selectors or HTML.`;
 const fence = (code) => (code ? `\n\`\`\`jsx\n${code}\n\`\`\`` : "");
 
@@ -416,7 +456,7 @@ function copiesForAgent(p) {
 }
 
 /** One selected component (or list item) as a sentence plus its source. */
-function describeForAgent(p) {
+export function describeForAgent(p) {
   const chain = (p.chain ?? []).map((c) => c.name).filter(Boolean);
   if (p.sub) {
     return `item ${p.sub.index + 1} (counting from 1) of the \`${p.sub.prop}\` prop of ${chain[0] ?? "(unknown)"} in ${p.file}` +

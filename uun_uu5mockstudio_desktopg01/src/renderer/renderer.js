@@ -1,5 +1,7 @@
 import { createCanvas, DEVICES } from "./canvas.js";
-import { createInspector, describePick, agentContext, updateSelection, MAX_MARKED } from "./inspector.js";
+import { createInspector, describePick, updateSelection, MAX_MARKED } from "./inspector.js";
+import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, MAX_ANNOTATIONS, MAP_WHOLE } from "./annotations.js";
+import { createAnnotatePopover } from "./annotatePopover.js";
 import { createPropsPanel } from "./propsPanel.js";
 import { createIconPicker } from "./iconPicker.js";
 import { createMemory } from "./memory.js";
@@ -35,7 +37,7 @@ import { createStructureDialog } from "./structureDialog.js";
 import { createPlanCards } from "./planCards.js";
 import { createPlansMenu } from "./plansMenu.js";
 import { parsePlan, serializePlan, slugify, withStatus } from "./planDoc.js";
-import { serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapUu5String, sitemapOffered } from "./sitemap.js";
+import { reviseMessage, takeComments, serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapUu5String, sitemapOffered } from "./sitemap.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
 import { esc, markdown } from "./markdown.js";
 import { createChatDock } from "./chatdock.js";
@@ -97,6 +99,18 @@ function entryEl(e) {
   else if (e.kind === "user") {
     el.innerHTML = highlightMentions(e.text);
     if (e.images?.length) { const row = Object.assign(document.createElement("div"), { className: "atts" }); for (const im of e.images) row.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name ?? "attachment", title: im.name ?? "" })); el.append(row); }
+    if (e.annotations?.length) {
+      const ol = Object.assign(document.createElement("ol"), { className: "annos" });
+      for (const a of e.annotations) {
+        const li = Object.assign(document.createElement("li"), { title: a.label });
+        li.append(Object.assign(document.createElement("b"), { className: "anno-n", textContent: String(a.ref) }));
+        if (a.thumb) li.append(Object.assign(document.createElement("img"), { src: a.thumb, alt: "" }));
+        const body = Object.assign(document.createElement("span"), { className: "anno-body" });
+        body.append(Object.assign(document.createElement("span"), { className: "anno-note", textContent: a.note ?? "" }), Object.assign(document.createElement("span"), { className: "anno-what", textContent: `${a.kind === "sitemap" ? "🗺 " : ""}${a.label}` }));
+        li.append(body); ol.append(li);
+      }
+      el.append(ol);
+    }
     if (e.docs?.length) { const row = Object.assign(document.createElement("div"), { className: "atts docs" }); for (const d of e.docs) { if (d.thumb) row.append(Object.assign(document.createElement("img"), { src: d.thumb, alt: d.title, title: `${kindLabel(d.kind)}: ${d.title}` })); row.append(Object.assign(document.createElement("button"), { type: "button", className: "docchip", textContent: `📄 ${d.title}`, title: `${kindLabel(d.kind)}: ${d.url}`, onclick: () => window.studio.openExternal(d.url) })); } el.append(row); }
   }
   else el.textContent = e.text;
@@ -441,7 +455,7 @@ const syncEmptyForCards = () => $("empty")?.classList.toggle("has-cards", planCa
 let projectSitemap = null;
 let p4uOn = false; // signed in to Plus4U with a usable token: only then the Plus4U features show
 let plus4uBar = null; // the Plus4U link in the toolbar (created further down; loadProject may run before)
-function setProjectSitemap(r) { projectSitemap = r?.sitemap ? r : null; planCards.setSitemap(projectSitemap); syncEmptyForCards(); updateMapBtn(); plansMenu?.render?.(); sitemapMenu?.render?.(); }
+function setProjectSitemap(r) { projectSitemap = r?.sitemap ? r : null; if (projectSitemap) takeOldMapNotes(); planCards.setSitemap(projectSitemap); syncEmptyForCards(); updateMapBtn(); plansMenu?.render?.(); sitemapMenu?.render?.(); }
 /** Whether this project gets the sitemap offered: it has one, or it was started as a whole web site or portal (sitemap.js). */
 const mapOffered = () => Boolean(project) && sitemapOffered({ hasSitemap: Boolean(projectSitemap), scope: projectScope, level: projectLevel });
 /** The Sitemap button of the toolbar is there only where a sitemap is offered; elsewhere it is made from the Plans menu. */
@@ -759,7 +773,7 @@ const canvas = createCanvas({
   onDescClick: (file) => openDesc(file),
   onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); syncMenuScreenState(); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
-  onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
+  onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (injected) Promise.resolve(injected).then(() => { inspector.setAnnotate([f.view], annotating); if (annotating) return repinScreen(f.file, f.view); }); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
   getExtraRects: () => planCards?.rects() ?? [],
   getInset: () => canvasInset(),
 });
@@ -776,7 +790,7 @@ function canvasInset() {
 planCards = createPlanCards({
   root: $("canvas"), world: $("world"), canvas,
   api: { read: (slug) => window.studio.plansRead(slug), write: (slug, text) => window.studio.plansWrite(slug, text) },
-  ctx: { chatPlan: (slug) => entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.state !== "superseded") ?? null, answersChanged: (e) => { paint(e); persist(); }, answersTyped: () => persist(), sendAnswers: (e) => answerPlan(e), saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), shareSitemap: (anchor, sm, collapsed, o) => openSitemapShare(anchor, sm, collapsed, o), loadNotes: (key) => loadMapNotes(key), saveNotes: (key, list) => saveMapNotes(key, list), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); syncZoomLabel(); syncViewSw(); }, zoomChanged: () => syncZoomLabel(), getInset: () => canvasInset() },
+  ctx: { chatPlan: (slug) => entries.find((x) => x.kind === "plan" && x.planSlug === slug && x.state !== "superseded") ?? null, answersChanged: (e) => { paint(e); persist(); }, answersTyped: () => persist(), sendAnswers: (e) => answerPlan(e), saveSitemap: (sm) => { smUndone = false; return window.studio.sitemapWrite(sm).then((r) => { if (r?.error) toast(r.error, { err: true }); return r; }); }, restoreSitemap: async () => { const r = await window.studio.sitemapRestore(); if (r?.error) toast(r.error, { err: true }); return r; }, hasSitemap: () => Boolean(projectSitemap), sitemapOffered: () => mapOffered(), flowEdges: () => window.studio.flowEdges().catch(() => []), screens: () => canvas.files(), approve: (slug) => approvePlanFile(slug), askAgent: (slug, message, label) => revisePlanFromCard(message, label), createScreen: (o) => createScreenFromPage(o), createScreens: (o) => createScreensFromPages(o), adoptPlanMap: (slug) => adoptPlanMap(slug), showDetail: (name, host) => planCtx.showDetail(name, host), docsDescribe: (names) => window.studio.docsDescribe(names).catch(() => null), openScreen: (f) => canvas.get(f) && canvas.focus(f), isScreen: (f) => Boolean(canvas.get(f)), changed: () => { persistLayout(); syncEmptyForCards(); }, deletePlan: (slug, title) => deletePlan(slug, title), shareSitemap: (anchor, sm, collapsed, o) => openSitemapShare(anchor, sm, collapsed, o), toggleAnnotate: () => toggleAnnotate(), mapPins: (scope) => mapPins(scope), annotatePages: (o) => annotatePages(o), adoptComments: (scope, notes) => adoptMapComments(scope, notes), viewChanged: () => { plansMenu?.sync?.(); sitemapMenu?.sync?.(); syncZoomLabel(); syncViewSw(); }, zoomChanged: () => syncZoomLabel(), getInset: () => canvasInset() },
 });
 // the Plans menu of the toolbar: the sitemap and the plans of the project, to show, hide or make
 let plansCache = [];
@@ -870,10 +884,18 @@ function renderTabs() {
 }
 // a mouse wheel scrolls the tab strip sideways (trackpads already send horizontal deltas)
 $("tabs").addEventListener("wheel", (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); $("tabs").scrollLeft += e.deltaY; } }, { passive: false });
-/** The notes on the whole map (not yet sent to the agent) are kept per project and map, so that they survive a restart. */
-const notesKey = (key) => `uu5studio.mapnotes:${project}:${key}`;
-function loadMapNotes(key) { try { const l = JSON.parse(localStorage.getItem(notesKey(key)) ?? "[]"); return Array.isArray(l) ? l.filter((t) => typeof t === "string") : []; } catch { return []; } }
-function saveMapNotes(key, list) { try { if (list.length) localStorage.setItem(notesKey(key), JSON.stringify(list)); else localStorage.removeItem(notesKey(key)); } catch { /* not kept */ } }
+/** Notes on a whole map that older versions kept unsent (per project and map): once, they become the annotation of the whole map in the message being written. */
+function takeOldMapNotes() {
+  const pre = `uu5studio.mapnotes:${project}:`;
+  try {
+    for (const k of Object.keys(localStorage).filter((x) => x.startsWith(pre))) {
+      let l = []; try { l = JSON.parse(localStorage.getItem(k) ?? "[]"); } catch { /* unreadable */ }
+      localStorage.removeItem(k);
+      const notes = Array.isArray(l) ? l.filter((t) => typeof t === "string" && t.trim()) : [], key = k.slice(pre.length);
+      if (notes.length) adoptMapComments(key === "null" || key === "undefined" ? "project" : key, [{ id: MAP_WHOLE, where: "the whole map", type: "map", note: notes.join("; ") }]);
+    }
+  } catch { /* no storage */ }
+}
 /** The sitemap as a picture to share: "png" and "svg" are saved (dialog), "copy" puts the PNG on the clipboard. */
 // The Share panel of the sitemap, like the Share menu of a screen: WHAT goes out (Image, SVG, uu5String), then WHAT TO DO with it (Copy, Save…,
 // and Publish for the uu5String of the sitemap of the project while signed in to Plus4U). The chosen format is remembered.
@@ -1021,6 +1043,7 @@ addEventListener("keydown", (e) => {
   else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); $("zin").click(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); $("zout").click(); }
   else if (e.key === "i" && !e.metaKey && !e.ctrlKey) setInspect(!inspector.on);
+  else if (e.key === "a" && !e.metaKey && !e.ctrlKey && !e.altKey) toggleAnnotate();
   else if (inspector.on && !chatPick && marked.length && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) deleteInScreen(g); }
   else if (inspector.on && !chatPick && marked.length && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); if (!copyRefused(marked)) for (const g of markedByFile()) duplicateInScreen(g); }
   else if ((e.key === "Delete" || e.key === "Backspace") && canvas.selected() && !inspector.on) { e.preventDefault(); deleteScreen(canvas.selected()); }
@@ -1030,10 +1053,21 @@ addEventListener("keydown", (e) => {
 // ---------- inspector ----------
 // chat mode: the picker works without the side panel; every click adds the component to the message being written
 let chatPick = false, pickedKeys = new Set(); // pickedKeys: the chips this pick session added (a plain click replaces them)
-function setInspect(v, { chat = false } = {}) {
+// the Annotate mode: a click on a component of a screen (or on a page of a sitemap) asks for a note; the place gets a number and the note goes with the next message
+let annotating = false;
+function setInspect(v, { chat = false, annotate = false } = {}) {
   chatPick = v && chat; pickedKeys.clear();
-  inspector.set(v, canvas.all().map((f) => f.view)); canvas.setInspecting(v); canvas.setEditing(v && !chatPick);
-  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick); $("railsel").classList.toggle("on", !(v && !chatPick)); $("seledit").classList.toggle("on", v && !chatPick);
+  const was = annotating; annotating = chatPick && annotate;
+  const views = canvas.all().map((f) => f.view);
+  inspector.set(v, views); canvas.setInspecting(v); canvas.setEditing(v && !chatPick);
+  // the numbers of the annotations are on the components only in the Annotate mode, where a click on one opens its notes;
+  // another mode (Edit, picking components) starts without them (the chips keep the annotations)
+  if (v) { inspector.setAnnotate(views, annotating); if (annotating) for (const f of canvas.all()) repinScreen(f.file, f.view); else if (was) inspector.clearIn(views); }
+  if (!annotating) annotatePopover.close();
+  planCards?.setAnnotating?.(annotating);
+  $("pickhint").innerHTML = annotating ? ANNOTATE_HINT : PICK_HINT;
+  for (const b of document.querySelectorAll("[data-annotate]")) { b.classList.toggle("on", annotating); b.setAttribute("aria-pressed", String(annotating)); }
+  $("inspect").classList.toggle("on", v && !chatPick); $("pickcomp").classList.toggle("on", chatPick && !annotating); $("railsel").classList.toggle("on", !(v && !chatPick)); $("seledit").classList.toggle("on", v && !chatPick);
   // the side panel keeps its tab: the Edit mode does not switch the chat to the Components catalogue (the user opens it to drag a component in)
   $("inspector").hidden = !v || chatPick; $("pickhint").hidden = !chatPick;
   if (!v || chatPick) { propsPanel.clear(); resetMarked(); }
@@ -1042,7 +1076,12 @@ $("inspect").onclick = () => setInspect(!inspector.on || chatPick);
 $("railsel").onclick = () => { if (inspector.on && !chatPick) setInspect(false); }; // the tool rail of the canvas: Select leaves the Edit mode
 const inspectedFile = () => propsPanel.file ?? activeMarked?.file ?? canvas.selected() ?? null; // the screen the user works with (undo falls back to the last change in the project)
 $("insp-close").onclick = () => { structFrom = null; $("insp-back").hidden = true; setInspect(false); };
-$("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick, { chat: true }); };
+$("pickcomp").onclick = () => { if (!project) return; setInspect(!chatPick || annotating, { chat: true }); };
+const PICK_HINT = $("pickhint").innerHTML;
+const ANNOTATE_HINT = "Click a component of a screen or a page of the sitemap and write what should change there: it gets a number and goes with your next message. A click on a numbered place lists its notes: edit one or add another. <b>Esc</b> to finish.";
+/** The Annotate mode on or off (the buttons in the chat, on the bar of a screen and on the toolbar of the map, the A key). */
+function toggleAnnotate(v = !annotating) { if (!project) return; setInspect(v, { chat: true, annotate: true }); }
+for (const b of document.querySelectorAll("[data-annotate]")) b.onclick = () => toggleAnnotate();
 const iconPicker = createIconPicker({ getCatalog: () => window.studio.iconCatalog(), getBml: () => window.studio.uuBml(), getMdi: () => window.studio.iconsMdi() });
 // the list of actions (actionList, itemList of ActionGroup, …) of the picked component, in a window
 const actionListEditor = createActionListEditor({ api: {
@@ -1118,6 +1157,7 @@ function unmark(m) {
 function resetMarked() { marked = []; activeMarked = null; renderMarked(); }
 async function showPick(p) {
   structFrom = null; $("insp-back").hidden = true;
+  if (chatPick && (annotating || p.pin)) return annotateScreenPick(p);
   if (chatPick) { // chat mode: resolve names and the source of the component, then add it to the message
     const c = await chipFrom(p);
     if (c.error) return toast(c.error, { err: true });
@@ -1144,33 +1184,177 @@ async function useMarked() {
   toast(added ? `${added} component${added > 1 ? "s" : ""} added to the message${skipped ? ` (${skipped} already there or not possible)` : ""}.` : "Those components are already in the message.");
   $("prompt").focus();
 }
-// components picked for the message being written (several can be added)
+// components picked for the message being written (several can be added) and annotations: picks with a note, of screens and of sitemaps (annotations.js)
 let chips = [];
-const MAX_CHIPS = 8;
-const chipKey = (p) => `${p.file}#${(p.chain ?? []).map((c) => (typeof c === "number" ? c : c.ordinal)).join(",")}|${p.sub ? `${p.sub.prop}[${p.sub.index}]` : ""}|${p.pickKey ?? ""}`;
+const MAX_CHIPS = MAX_ANNOTATIONS;
+const chipKey = (p) => annotationKey(p);
+const isNote = (c) => c.note != null;
 function renderChips() {
   const box = $("chips"); box.hidden = !chips.length; box.replaceChildren();
-  chips.forEach((c, i) => {
-    const t = Object.assign(document.createElement("span"), { textContent: `📍 #${c.ref} ${describePick(c)}`, title: `${describePick(c)}: click to show it in the screen` });
-    const x = Object.assign(document.createElement("button"), { type: "button", title: "Remove (and its link in the text)", textContent: "✕", onclick: (e) => { e.stopPropagation(); removeRef(c); dropMark(c); pickedKeys.delete(chipKey(c)); chips.splice(i, 1); renderChips(); } });
-    const chip = Object.assign(document.createElement("div"), { className: "chip showable", onclick: () => showChip(c) });
-    chip.append(t, x); box.append(chip);
+  chips.forEach((c) => {
+    const label = describeAnnotation(c);
+    const t = Object.assign(document.createElement("span"), { textContent: `${isNote(c) ? "" : "📍 "}#${c.ref} ${label}`, title: `${label}: click to ${isNote(c) ? "show it and edit the note" : "show it in the screen"}` });
+    const x = Object.assign(document.createElement("button"), { type: "button", title: isNote(c) ? "Remove the annotation" : "Remove (and its link in the text)", textContent: "✕", onclick: (e) => { e.stopPropagation(); removeChip(c); } });
+    const chip = Object.assign(document.createElement("div"), { className: `chip showable${isNote(c) ? " anno" : ""}${c.gone ? " gone" : ""}`, onclick: () => (isNote(c) ? editAnnotation(c) : showChip(c)) });
+    if (isNote(c)) {
+      const num = Object.assign(document.createElement("b"), { className: "anno-n", textContent: String(c.ref) });
+      const body = Object.assign(document.createElement("span"), { className: "anno-body" });
+      body.append(Object.assign(document.createElement("span"), { className: "anno-note", textContent: c.note || "(no note)" }), Object.assign(document.createElement("span"), { className: "anno-what", textContent: c.gone ? `${label} · not on the screen any more` : label }));
+      chip.title = `${c.note}\n${label}\nClick to show it and edit the note`;
+      chip.append(num, ...(c.thumb ? [Object.assign(document.createElement("img"), { src: c.thumb, alt: "" })] : []), body, x);
+    } else chip.append(t, x);
+    box.append(chip);
   });
+}
+function removeChip(c) {
+  removeRef(c); pickedKeys.delete(chipKey(c));
+  chips = chips.filter((x) => x !== c); renderChips();
+  if (c.kind === "sitemap") planCards.repaint?.(); else if (isNote(c)) relabelScreen(c); else dropMark(c); // the other notes of the same component keep its frame
 }
 /** A click on a chip: the screen of the component comes into view and the component is framed for a moment. */
 async function showChip(c) {
-  const f = c.file && canvas.get(c.file), ord = c.chain?.[0]; if (!f) return;
+  const f = c.file && canvas.get(c.file), ord = c.chain?.[0]; if (!f) return false;
+  if (planCards.viewKey?.()) planCards.closeView();
   canvas.focus(c.file);
   await new Promise((r) => setTimeout(r, 450)); // the screen is moved into view first
   const ok = await f.view.executeJavaScript(flashCode(typeof ord === "object" ? ord.ordinal : ord, c.inst?.nth ?? null)).catch(() => false);
   if (!ok) toast("That component is not on the screen any more.");
+  return Boolean(ok);
 }
 function addChip(p, { quiet = false } = {}) {
-  if (chips.some((c) => chipKey(c) === chipKey(p))) { if (!quiet) toast("That component is already in the message."); return false; }
-  if (chips.length >= MAX_CHIPS) { if (!quiet) toast(`At most ${MAX_CHIPS} components per message.`); return false; }
-  p.ref = ++chipSeq; chips.push(p); insertRef(p); renderChips(); return true;
+  if (!isNote(p) && chips.some((c) => chipKey(c) === chipKey(p))) { if (!quiet) toast("That component is already in the message."); return false; }
+  if (chips.length >= MAX_CHIPS) { if (!quiet) toast(`At most ${MAX_CHIPS} components and annotations per message.`); return false; }
+  p.ref = ++chipSeq; chips.push(p); if (!isNote(p)) insertRef(p); renderChips(); return true;
 }
-function clearChips() { chips = []; chipSeq = 0; pickedKeys.clear(); renderChips(); }
+function clearChips() {
+  const hadMap = chips.some((c) => c.kind === "sitemap");
+  if (annotating) for (const c of chips) if (isNote(c)) dropMark(c);
+  chips = []; chipSeq = 0; pickedKeys.clear(); renderChips();
+  if (hadMap) planCards.repaint?.();
+}
+
+// ----- annotations: a note on a component of a screen or on a page of a sitemap
+const annotatePopover = createAnnotatePopover();
+/** Where a component of a screen is in the window: its box in the page (from the pick), scaled with the canvas. */
+function screenAnchor(file, rect) {
+  const v = viewOfFile(file); if (!v?.isConnected || !rect) return null;
+  const vr = v.getBoundingClientRect(); if (!vr.width) return null;
+  const k = vr.width / (v.offsetWidth || vr.width);
+  const left = vr.left + rect.x * k, top = vr.top + rect.y * k;
+  return { left, top, right: left + rect.w * k, bottom: top + rect.h * k };
+}
+/** A picture of the component as it is now (with a margin), small enough for the chat: { shot: { mime, data }, thumb } or {}. */
+async function captureScreenPart(file, rect, view) {
+  const v = viewOfFile(file), r = captureRect(rect, view); if (!v || !r) return {};
+  try {
+    const img = await Promise.race([v.capturePage(r), new Promise((res) => setTimeout(() => res(null), 2500))]);
+    if (!img || img.isEmpty?.()) return {};
+    const url = img.toDataURL(), el = new Image(); el.src = url; await el.decode();
+    const k = Math.min(1, 96 / el.naturalHeight, 160 / el.naturalWidth), cv = Object.assign(document.createElement("canvas"), { width: Math.max(1, Math.round(el.naturalWidth * k)), height: Math.max(1, Math.round(el.naturalHeight * k)) });
+    cv.getContext("2d").drawImage(el, 0, 0, cv.width, cv.height);
+    return { shot: { mime: "image/png", data: url.slice(url.indexOf(",") + 1) }, thumb: cv.toDataURL("image/png") };
+  } catch { return {}; }
+}
+/** The notes of one place (a component of a screen, a page or a whole map), in their order. */
+const notesAt = (k) => chips.filter((x) => isNote(x) && chipKey(x) === k);
+/** The numbers of the notes of a component on its frame in the page ("1, 3"); without notes the frame goes. */
+function relabelScreen(a) {
+  const v = viewOfFile(a.file); if (!v || !a.key || !annotating) return; // outside the Annotate mode the page shows no numbers
+  const refs = chips.filter((x) => isNote(x) && x.kind !== "sitemap" && x.file === a.file && x.key === a.key).map((x) => x.ref);
+  if (refs.length) inspector.label(v, a.key, refs.join(",")); else inspector.drop(v, a.key);
+}
+/**
+ * A component of a screen clicked in the Annotate mode: a note on it. A component that has notes lists them in the popover:
+ * a click on one edits it, the field adds another note (each note is an annotation with its own number).
+ */
+async function annotateScreenPick(p) {
+  const c = await chipFrom(p);
+  if (c.error) { inspector.drop(viewOfFile(p.file), p.key); return toast(c.error, { err: true }); }
+  const k = chipKey(c.chip), linked = chips.find((x) => !isNote(x) && chipKey(x) === k);
+  let here = notesAt(k);
+  if (linked) { if (!here.length) inspector.drop(viewOfFile(p.file), p.key); return toast(`#${linked.ref} is already linked in your text.`); }
+  for (const x of here) { x.rect = p.rect; x.view = p.view; x.key = p.key; } // where the component is now
+  const anchor = () => screenAnchor(p.file, p.rect);
+  let r = await annotatePopover.open({ anchor, title: describePick(c.chip), others: here.map((x) => ({ ref: x.ref, note: x.note })) });
+  while (r && typeof r === "object" && r.remove != null) { // × of a note in the list: it goes, the window stays with the others (it closes with the last one)
+    const x = here.find((y) => y.ref === r.remove); if (x) removeChip(x);
+    here = notesAt(k); if (!here.length) return;
+    r = await annotatePopover.open({ anchor, title: describePick(c.chip), others: here.map((y) => ({ ref: y.ref, note: y.note })) });
+  }
+  if (r && typeof r === "object") { const x = here.find((y) => y.ref === r.edit); return x && settleNote(x, await annotatePopover.open({ anchor, note: x.note, title: describeAnnotation(x) })); }
+  if (!r) { if (!here.length) inspector.drop(viewOfFile(p.file), p.key); return; } // cancelled, or nothing written: no new annotation
+  if (chips.length >= MAX_CHIPS) { if (!here.length) inspector.drop(viewOfFile(p.file), p.key); return toast(`At most ${MAX_CHIPS} components and annotations per message.`); }
+  const pic = here.find((x) => x.shot) ?? await captureScreenPart(p.file, p.rect, p.view); // one picture of a component serves all its notes
+  const a = { ...c.chip, kind: "screen", rect: p.rect, view: p.view, key: p.key, note: r, ...(pic.shot ? { shot: pic.shot, thumb: pic.thumb } : {}) };
+  if (!addChip(a)) { if (!here.length) inspector.drop(viewOfFile(p.file), p.key); return; }
+  relabelScreen(a);
+}
+/** The note of an annotation that is there: kept, changed, or (emptied) the annotation goes. */
+function settleNote(a, note) {
+  if (note === null) return;
+  if (!note) return removeChip(a);
+  a.note = note; renderChips();
+  if (a.kind === "sitemap") planCards.repaint?.();
+}
+/** A click on the chip of an annotation: its place comes into view and its note opens. */
+async function editAnnotation(a) {
+  if (a.kind === "sitemap") {
+    const anchor = await planCards.revealPage?.(a.scope, a.id);
+    if (!anchor) return toast("That page is not in the map any more.");
+    return settleNote(a, await annotatePopover.open({ anchor, note: a.note, title: describeAnnotation(a) }));
+  }
+  if (!(await showChip(a))) return;
+  settleNote(a, await annotatePopover.open({ anchor: () => screenAnchor(a.file, a.rect), note: a.note, title: describeAnnotation(a) }));
+}
+/** The pages of a sitemap with annotations: id -> their numbers ("1,3"), for the badges on the map. */
+function mapPins(scope) {
+  const m = new Map();
+  for (const c of chips) if (c.kind === "sitemap" && c.scope === scope) m.set(c.id, m.has(c.id) ? `${m.get(c.id)},${c.ref}` : String(c.ref));
+  return m;
+}
+/**
+ * A page (or several selected pages) of a sitemap to annotate: `pages` = [{ id, title, type, file, where }], `anchor()` = where the (last) page is.
+ * Several pages get one note each, the same. The annotations of a message are of one map: the agent revises that map.
+ */
+async function annotatePages({ scope, pages, anchor }) {
+  const other = chips.find((c) => c.kind === "sitemap" && c.scope !== scope);
+  if (other) return toast(`The message already has annotations of ${other.scope === "project" ? "the sitemap of the project" : `the map of ${other.scope}`}: send them first.`, { err: true });
+  // one page lists the notes it has (a click edits one, the field adds another); several pages get the same new note each
+  const pageKey = pages.length === 1 ? annotationKey({ kind: "sitemap", scope, id: pages[0].id }) : null;
+  let here = pageKey ? notesAt(pageKey) : [];
+  if (chips.length + pages.length > MAX_CHIPS) return toast(`At most ${MAX_CHIPS} components and annotations per message.`, { err: true });
+  const title = pages.length === 1 && pages[0].id === MAP_WHOLE ? `Note on ${describeAnnotation({ kind: "sitemap", scope, id: MAP_WHOLE })}` : pages.length === 1 ? `${pages[0].title} (${pages[0].where})` : `${pages.length} pages: ${pages.map((x) => x.title).join(", ")}`;
+  let r = await annotatePopover.open({ anchor, title, others: here.map((x) => ({ ref: x.ref, note: x.note })) });
+  while (r && typeof r === "object" && r.remove != null) { // × of a note in the list: it goes, the window stays with the others
+    const x = here.find((y) => y.ref === r.remove); if (x) removeChip(x);
+    here = notesAt(pageKey); if (!here.length) return;
+    await new Promise((res) => requestAnimationFrame(res)); // the map is drawn again: the anchor finds the page anew
+    r = await annotatePopover.open({ anchor, title, others: here.map((y) => ({ ref: y.ref, note: y.note })) });
+  }
+  if (r && typeof r === "object") { const x = here.find((y) => y.ref === r.edit); return x && settleNote(x, await annotatePopover.open({ anchor, note: x.note, title: describeAnnotation(x) })); }
+  if (!r) return;
+  for (const pg of pages) addChip({ kind: "sitemap", scope, ...pg, note: r });
+  planCards.repaint?.();
+}
+/** Review comments of a map from before annotations: they become annotations of this message (and leave the map). */
+function adoptMapComments(scope, notes) {
+  let n = 0; // each comment is an annotation of its own (a page can have several)
+  for (const c of notes) if (chips.length < MAX_CHIPS && !chips.some((x) => x.kind === "sitemap" && x.scope !== scope)) { addChip({ kind: "sitemap", scope, id: c.id, title: c.id === MAP_WHOLE ? "The whole map" : c.where.split(" > ").pop(), type: c.type ?? "page", where: c.where, note: c.note }); n++; }
+  if (n) toast(`${n} ${notes.some((c) => c.id === MAP_WHOLE) ? "note" : "comment"}${n === 1 ? "" : "s"} of the ${scope === "project" ? "sitemap" : `map of ${scope}`} ${n === 1 ? "is" : "are"} now ${n === 1 ? "an annotation" : "annotations"} of your next message.`);
+}
+/** The page was loaded again: the annotations of its components get their frames and numbers back. */
+async function repinScreen(file, view) {
+  const list = chips.filter((c) => isNote(c) && c.kind !== "sitemap" && c.file === file); if (!list.length) return;
+  let changed = false;
+  for (const a of list) {
+    const ord = a.chain?.[0], o = typeof ord === "object" ? ord?.ordinal : ord;
+    const key = await inspector.pin(view, o, a.sub, a.ref);
+    if (key) a.key = key;
+    if (Boolean(!key) !== Boolean(a.gone)) { a.gone = !key; changed = true; }
+  }
+  for (const a of list) if (a.key && !a.gone) relabelScreen(a); // a component with several notes shows all their numbers
+  if (changed) renderChips();
+}
 
 // A component picked for the message is linked in the text where the cursor is, as `[#1]`, so that the text can say
 // "change this one [#1] and in that one [#2] too"; the chips above the field name them (a click shows the component), the agent is told what #1, #2 are.
@@ -1180,11 +1364,11 @@ function insertRef(p) {
   t.setRangeText(`${sep}[#${p.ref}] `, t.selectionStart, t.selectionEnd, "end");
 }
 /** The frame the inspector keeps on the page around a component that was linked in the message. */
-function dropMark(c) { const v = c.file ? viewOfFile(c.file) : null; if (v && c.key) inspector.drop(v, c.key); }
-/** A link [#n] that was deleted from the text takes its chip and its frame on the page with it. */
+function dropMark(c) { const v = c.file && c.kind !== "sitemap" ? viewOfFile(c.file) : null; if (v && c.key) inspector.drop(v, c.key); }
+/** A link [#n] that was deleted from the text takes its chip and its frame on the page with it (an annotation is not linked in the text: it stays). */
 function syncChipsWithText() {
   if (!chips.length) return;
-  const text = $("prompt").value, keep = chips.filter((c) => new RegExp(`\\[#${c.ref}\\]`).test(text));
+  const text = $("prompt").value, keep = chips.filter((c) => isNote(c) || new RegExp(`\\[#${c.ref}\\]`).test(text));
   if (keep.length === chips.length) return;
   for (const c of chips) if (!keep.includes(c)) { dropMark(c); pickedKeys.delete(chipKey(c)); }
   chips = keep; renderChips();
@@ -1640,7 +1824,7 @@ let outFormat = (() => { try { return OUT_FORMATS.some((f) => f.id === localStor
 function updateSelbar() {
   const f = canvas.selected();
   $("selbar").hidden = !f; $("selmenu").hidden = true;
-  for (const b of $("selbar").querySelectorAll("button.on")) b.classList.remove("on");
+  for (const b of $("selbar").querySelectorAll("button.on:not([data-annotate])")) b.classList.remove("on");
   drags.clear(); // a different screen: prepare the files to drag again
 }
 // ----- the bar above the selected screen can be moved: by its grip or its name, the place is remembered, a double click puts it back
@@ -1770,6 +1954,7 @@ function dragEntry(kind) {
 $("selbar").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
   e.stopPropagation();
+  if (b.hasAttribute("data-annotate")) return; // its own click switches the Annotate mode
   const file = canvas.selected(); if (!file) return;
   // only one menu of the bar is open at a time: the Share menu and the ⋯ menu close each other, a second click closes its own
   const ctx = $("ctxmenu"), ctxOpen = !ctx.hidden && ctx.dataset.from === "bar";
@@ -2429,7 +2614,9 @@ $("form").onsubmit = async (e) => {
   let prompt = $("prompt").value.trim();
   if (docCards.scan(prompt) || docCards.busy()) return toast("The documents are still loading, one moment.");
   if (docCards.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
-  if (!prompt && !imgs.length && !docCards.count()) return;
+  const notes = chips.filter(isNote);
+  if (!prompt && !imgs.length && !docCards.count() && !notes.length) return;
+  if (!prompt && notes.length) prompt = "Apply the annotations.";
   if (!prompt) prompt = docCards.count() ? "Use the attached document." : imgs.some((i) => i.asset) ? "Use the attached picture in the design." : "Attaching a screenshot, see the attachment.";
   const docs = docCards.take(), pages = sitePick;
   // attached screenshots become files in the project (hidden folder) that the agent opens with Read
@@ -2445,9 +2632,16 @@ $("form").onsubmit = async (e) => {
     if (!Array.isArray(r)) return toast(r?.error ?? "The pictures could not be saved.", { err: true });
     assetPaths = r;
   }
-  const ctx = chips.length ? chips.slice() : null;
+  // the pictures of the annotated components become files like the attached screenshots
+  const shots = chips.filter((c) => c.shot);
+  if (shots.length) {
+    const r = await window.studio.saveAttachments(shots.map((c) => c.shot));
+    if (Array.isArray(r)) shots.forEach((c, i) => { c.shotPath = r[i]; }); // without them the notes still go
+  }
+  const all = chips.slice(), ctx = all.filter((c) => c.kind !== "sitemap"), mapNotes = all.filter((c) => c.kind === "sitemap");
   const shown = pages ? `${prompt}\n🗺 Pages picked from “${pages.title}” (${pages.count})` : prompt;
-  push({ kind: "user", text: ctx ? `${shown}\n${ctx.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : shown, ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
+  const picks = all.filter((c) => !isNote(c));
+  push({ kind: "user", text: picks.length ? `${shown}\n${picks.map((c) => `📍 #${c.ref} ${describePick(c)}`).join("\n")}` : shown, ...(notes.length ? { annotations: historyOf(notes) } : {}), ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
   $("prompt").value = ""; pending = []; sitePick = null; renderAttachments(); setBusy(true);
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
@@ -2464,13 +2658,22 @@ $("form").onsubmit = async (e) => {
     paths.length && `Attached images (screenshots from the user, as files): ${paths.join(", ")}. Open them with the Read tool first and base your work on what they show.`,
     assetPaths.length && `Pictures to USE IN THE DESIGN (not just references; e.g. a logo): ${assetPaths.join(", ")}. They are already files in the project, so do not copy or re-create them: place each into the screen with exactly that relative path (src="${assetPaths[0]}"), at its natural proportions. Open one with the Read tool only to see what it shows.`,
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,
-    ctx && agentContext(ctx),
+    annotationsContext(ctx),
+    mapNotes.length && mapRevision(mapNotes),
   ].filter(Boolean);
+  // annotations of a sitemap are answered with a plan: the map changes only when the user approves it
+  const plan = planMode || mapNotes.length > 0;
+  if (window.__plan?.dryRun) { window.__plan.lastSend = { message: extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, plan }; setBusy(false); clearChips(); if (chatPick) setInspect(false); return; } // the automated checks read the message instead of starting the agent
   sentModel = $("model").value;
-  planPending = planMode;
-  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan: planMode, economy });
+  planPending = plan;
+  window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan, economy });
   clearChips(); if (chatPick) setInspect(false);
 };
+/** The request to revise the sitemap the annotations are on: their notes, the rules of the map and the map (or the plan) as it is now. */
+function mapRevision(list) {
+  const scope = list[0].scope, m = planCards.mapOf?.(scope); if (!m?.sitemap) return null;
+  return reviseMessage({ slug: scope === "project" ? null : scope, sm: m.sitemap, body: m.body ?? "", notes: list.map((a) => ({ where: `#${a.ref} ${a.where}`, note: a.note })) });
+}
 $("prompt").onkeydown = (e) => {
   const box = $("mentions");
   if (!box.hidden) {

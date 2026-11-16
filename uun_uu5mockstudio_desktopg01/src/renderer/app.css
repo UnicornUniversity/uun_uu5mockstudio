@@ -439,7 +439,7 @@ body:not([data-chat="float"]) #chat header .tools #chatmin{display:none}
 #form .row #model{flex:0 1 auto;min-width:70px}
 
 /* start screen while no project is open */
-body[data-noproject] #chat :is(#chathist,#newchat,#attach,#pickcomp,#chatmode){opacity:.45;pointer-events:none}
+body[data-noproject] #chat :is(#chathist,#newchat,#attach,#pickcomp,#annotate,#chatmode){opacity:.45;pointer-events:none}
 /* no project open: no chat panel at all (docked or floating); the start screen gets the whole window */
 body[data-noproject] #chat{display:none!important}
 body[data-platform="darwin"][data-noproject] #bar{padding-left:84px} /* traffic lights now sit over the toolbar */
@@ -711,11 +711,12 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 #form .row #model:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
 #form .row #modebtn:focus-visible{outline:none;background:color-mix(in srgb,var(--acc) 10%,transparent)}
 /* the tools are a strip under the text, not on top of it: the field grows with the text (then scrolls), the strip stays below */
-.inputbox{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:4px;padding-bottom:8px}
+.inputbox{display:grid;grid-template-columns:auto auto auto auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:4px;padding-bottom:8px}
 .inputbox textarea{grid-column:1/-1;grid-row:1;padding:10px 14px 6px;field-sizing:content;min-height:3.4em;max-height:min(40vh,320px);overflow-y:auto;width:100%}
-.inputbox #pickcomp,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
-.inputbox #pickcomp{grid-column:1;margin-left:8px}.inputbox #attach{grid-column:2}.inputbox #libbtn{grid-column:3}
-.inputbox #send,.inputbox #stop{position:static;grid-column:5;grid-row:2;margin-right:8px}
+.inputbox #pickcomp,.inputbox #annotate,.inputbox #attach,.inputbox #libbtn{position:static;grid-row:2;margin:0 0 0 0}
+.inputbox #pickcomp{grid-column:1;margin-left:8px}.inputbox #annotate{grid-column:2}.inputbox #attach{grid-column:3}.inputbox #libbtn{grid-column:4}
+.inputbox #annotate{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;flex:none;border-color:transparent;background:none;color:var(--mute)}.inputbox #annotate:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.inputbox #annotate.on{background:#e8590c;border-color:#e8590c;color:#fff}
+.inputbox #send,.inputbox #stop{position:static;grid-column:6;grid-row:2;margin-right:8px}
 #structbox .row{align-items:center;gap:8px}#structbox #st-regen{background:var(--acc);border-color:var(--acc);color:#fff}#structbox #st-regen:disabled,#structbox #st-reset:disabled{opacity:.45}#st-hint{font-size:12px}
 #insp-struct{margin-top:8px;width:100%}
 #insp-uu5,#insp-comment{margin-top:8px;width:100%}
@@ -1225,8 +1226,11 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .pc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin:0 0 12px;padding:6px 10px;border:1px dashed var(--line);border-radius:9px;font-size:12.5px;color:var(--mute)}
 /* a block of a page: part of the design like a page (full colour), but no screen of its own, so a small tinted pill without the bar of a page; grey is kept for what is not solved here */
 .sm-node.t-section{border:1px solid color-mix(in srgb,var(--acc) 32%,var(--line));border-radius:999px;background:color-mix(in srgb,var(--acc) 9%,var(--panel));font-size:12px;color:var(--fg);padding:3px 11px}.sm-node.t-section:hover{background:color-mix(in srgb,var(--acc) 16%,var(--panel))}
-.sm-cm{flex:none;width:15px;height:15px;border-radius:50%;background:#e0912f;color:#fff;font:700 10px/15px system-ui,sans-serif;text-align:center}
-.sm-node.has-cm{box-shadow:0 0 0 1px #e0912f55}
+.sm-pin{flex:none;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:#e8590c;color:#fff;font:700 10.5px/18px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px var(--panel)}
+.sm-node.has-pin{box-shadow:0 0 0 2px #e8590c88}
+.sm.annotating .sm-node{cursor:crosshair}.sm.annotating .sm-node:hover{box-shadow:0 0 0 2px #e8590c}
+.sm-node.sm-flash{animation:smflash .9s ease-out}@keyframes smflash{0%,40%{box-shadow:0 0 0 4px #e8590c}100%{box-shadow:0 0 0 0 transparent}}
+.sm-review:empty{display:none}
 /* a sheet of a portal: a page of its own (its own screen) with a teal bar; the chip names the type of the node (portal / sheet / section) */
 .sm-node.t-sheet{border-left-color:var(--sm-sheet)}
 :root{--sm-sheet:#14a3a3}
@@ -1719,3 +1723,24 @@ body[data-noproject] #projpick{display:none}
    transparent bar instead. The bar over a screen and its menu lie above it, so that they can be grabbed (and clicked) wherever they are put. */
 #selbar{z-index:26}
 #selmenu{z-index:27}
+
+/* ----- annotations: the note of a marked component or page, the chips of the message, the list in the chat */
+.anpop{position:fixed;z-index:9000;width:300px;max-width:calc(100vw - 16px);background:var(--panel);color:var(--fg);border:1px solid var(--line);border-top:3px solid #e8590c;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box}
+.anpop-head{font-size:11.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anpop textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:58px;font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+.anpop textarea:focus{outline:none;border-color:#e8590c}
+.anpop-acts{display:flex;align-items:center;gap:6px}.anpop-hint{flex:1;min-width:0;font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anpop-acts button{font-size:12px;padding:3px 10px}
+.anno-n{flex:none;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:#e8590c;color:#fff;font:700 10.5px/18px system-ui,sans-serif;text-align:center}
+#chips .chip.anno{max-width:100%;padding:4px 6px;font-size:12px;line-height:1.35;font-weight:400}.chip.anno{flex:1 1 100%;border-color:#e8590c;align-items:flex-start;padding:4px 6px}.chip.anno img{flex:none;max-width:44px;max-height:30px;border-radius:4px;border:1px solid var(--line);object-fit:cover}
+.anno-body{display:flex;flex-direction:column;min-width:0;flex:1}.anno-body>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anno-note{font-weight:600}.anno-what{font-size:10.5px;color:var(--mute)}
+.chip.anno.gone{opacity:.6;border-style:dashed}
+.msg ol.annos{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.msg ol.annos li{display:flex;gap:6px;align-items:flex-start;font-size:12px}.msg ol.annos img{flex:none;max-width:60px;max-height:40px;border-radius:4px;border:1px solid var(--line)}
+.msg ol.annos .anno-body>span{white-space:normal}
+.sm-annobtn{width:100%;text-align:left}
+#selbar #selannotate.on,.pc-ib[data-annotate].on{background:#e8590c;border-color:#e8590c;color:#fff}
+.sm-mapnote{display:inline-flex;align-items:center;gap:4px}.sm-mapnote.on{border-color:#e8590c!important}.sm-mapnote .sm-pin{box-shadow:none}
+.msg.user ol.annos .anno-what{color:inherit;opacity:.8}
+.anpop-list{display:flex;flex-direction:column;gap:3px;max-height:140px;overflow-y:auto}.anpop-other{display:flex;align-items:flex-start;gap:6px;text-align:left;font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}.anpop-other:hover{border-color:#e8590c}.anpop-other .anpop-note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.anpop-x{flex:none;padding:0 4px;color:var(--mute);cursor:pointer;border-radius:4px}.anpop-x:hover{color:#ff7b7b;background:var(--panel)}.anpop-del{color:#ff7b7b}
