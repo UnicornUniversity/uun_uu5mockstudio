@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadPrerequisites, pluginStates, installPlan, classifyInstallError } from "./prerequisites.mjs";
+import { loadPrerequisites, marketplaceGroups, pluginStates, installPlan, classifyInstallError } from "./prerequisites.mjs";
 import { findUpdates } from "./pluginUpdates.mjs";
 
 const run = promisify(execFile);
@@ -71,8 +71,11 @@ export async function pluginInfo() {
   const cfg = prerequisites();
   const [list, mps] = await Promise.all([runClaude(["plugin", "list", "--json"], { timeout: 30000 }), runClaude(["plugin", "marketplace", "list", "--json"], { timeout: 30000 })]);
   const installed = parseJson(list.stdout, []), marketplaces = parseJson(mps.stdout, []);
-  const market = marketplaces.find?.((m) => m.name === cfg.marketplace.name);
-  return { cfg, states: pluginStates(installed, cfg), marketplaceKnown: Boolean(market), installLocation: market?.installLocation ?? null, ok: list.code === 0 };
+  const found = (name) => marketplaces.find?.((m) => m.name === name);
+  const market = found(cfg.marketplace.name);
+  // every marketplace the app takes plugins from: { name, known, installLocation }
+  const markets = marketplaceGroups(cfg).map((g) => ({ name: g.marketplace.name, known: Boolean(found(g.marketplace.name)), installLocation: found(g.marketplace.name)?.installLocation ?? null }));
+  return { cfg, states: pluginStates(installed, cfg), marketplaceKnown: Boolean(market), installLocation: market?.installLocation ?? null, markets, ok: list.code === 0 };
 }
 
 /** state: "missing" | "loggedOut" | "pluginsMissing" | "ready"; `plugins` lists the wanted plugins with their state. */
@@ -137,7 +140,7 @@ export function cancelInstall() { try { installChild?.kill(); } catch { /* alrea
 
 /** Adds the marketplace and installs / enables / updates the wanted plugins that are not in order. Resolves { ok, steps, error? }. */
 export async function installPlugins({ onStep } = {}) {
-  const info = await pluginInfo(), steps = installPlan(info.states, info.marketplaceKnown, info.cfg), done = [];
+  const info = await pluginInfo(), steps = installPlan(info.states, info.markets.filter((m) => m.known).map((m) => m.name), info.cfg), done = [];
   for (const [i, step] of steps.entries()) {
     onStep?.({ label: step.label, index: i, total: steps.length, state: "run" });
     const r = await runClaude(step.args, { timeout: 5 * 60 * 1000 });
@@ -151,15 +154,20 @@ export async function installPlugins({ onStep } = {}) {
 
 /** Refreshes the marketplace and lists plugins that have a newer version there. Failures (offline, no SSH access) just return no updates. */
 export async function checkPluginUpdates({ refreshCatalog = true, later = {} } = {}) {
-  const before = await pluginInfo();
-  if (!before.marketplaceKnown || !before.installLocation) return { updates: [], checked: false };
-  if (refreshCatalog) await runClaude(["plugin", "marketplace", "update", before.cfg.marketplace.name], { timeout: 90000 });
-  return { updates: findUpdates(before.states.filter((s) => s.state !== "missing"), before.installLocation, { later }), checked: true };
+  const before = await pluginInfo(), usable = before.markets.filter((m) => m.known && m.installLocation);
+  if (!usable.length) return { updates: [], checked: false };
+  const updates = [];
+  for (const m of usable) {
+    if (refreshCatalog) await runClaude(["plugin", "marketplace", "update", m.name], { timeout: 90000 });
+    updates.push(...findUpdates(before.states.filter((s) => s.state !== "missing" && s.marketplace === m.name), m.installLocation, { later }));
+  }
+  return { updates, checked: true };
 }
 
 /** `claude plugin update <id> -y` for each plugin. Resolves { ok, steps, error? }. */
 export async function updatePlugins(ids, { onStep } = {}) {
-  const cfg = prerequisites(), valid = ids.filter((id) => new RegExp(`^[\\w.-]+@${cfg.marketplace.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(id)), done = [];
+  const names = new Set(marketplaceGroups(prerequisites()).map((g) => g.marketplace.name)), done = [];
+  const valid = ids.filter((id) => /^[\w.-]+@[\w.-]+$/.test(id) && names.has(id.split("@")[1]));
   for (const [i, id] of valid.entries()) {
     onStep?.({ label: `Update ${id.split("@")[0]}`, index: i, total: valid.length, state: "run" });
     const r = await runClaude(["plugin", "update", id, "-y"], { timeout: 5 * 60 * 1000 }), ok = r.code === 0;

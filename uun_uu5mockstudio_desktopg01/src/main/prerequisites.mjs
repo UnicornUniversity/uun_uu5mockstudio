@@ -10,7 +10,18 @@ export const DEFAULTS = {
   required: ["uu5-mockup", "uugds"], // skills the agent builds the mockups with
   recommended: ["uu5-development", "uu5bricks"], // component reference for the inspector (uu5bricks: the Bricks of content pages)
   minVersions: {}, // { plugin: "x.y.z" }: older than this counts as "needs update"
+  // more marketplaces with plugins the app uses (it reads uuBookKit pages and uuManagementKit documents through them): installed and kept up to date like the rest
+  extra: [
+    { marketplace: { name: "uu-business-products-mp", source: "ssh://git@uucodebase.plus4u.net:9422/aef3057e3d70156f0f2e9e7c733c1427/uu-business-products-mp.git" }, required: [], recommended: ["uubookkit", "uumanagementkit"] },
+  ],
 };
+
+/** Every marketplace the app takes plugins from: the main one (marketplace / required / recommended) first, then `extra`. [{ marketplace, required, recommended }] */
+export function marketplaceGroups(cfg) {
+  const main = { marketplace: cfg.marketplace, required: cfg.required ?? [], recommended: cfg.recommended ?? [] };
+  const seen = new Set([main.marketplace.name]);
+  return [main, ...(cfg.extra ?? []).filter((g) => g?.marketplace?.name && !seen.has(g.marketplace.name) && seen.add(g.marketplace.name)).map((g) => ({ marketplace: g.marketplace, required: g.required ?? [], recommended: g.recommended ?? [] }))];
+}
 
 export function loadPrerequisites({ userDataDir, env = process.env } = {}) {
   let file = {};
@@ -20,7 +31,9 @@ export function loadPrerequisites({ userDataDir, env = process.env } = {}) {
   if (env.STUDIO_MARKETPLACE_SOURCE) mp.source = env.STUDIO_MARKETPLACE_SOURCE;
   if (env.STUDIO_MARKETPLACE_NAME) mp.name = env.STUDIO_MARKETPLACE_NAME;
   if (!/^[\w.-]+$/.test(mp.name)) mp.name = DEFAULTS.marketplace.name;
-  return { marketplace: mp, required: list(file.required, DEFAULTS.required), recommended: list(file.recommended, DEFAULTS.recommended), minVersions: { ...DEFAULTS.minVersions, ...(file.minVersions ?? {}) } };
+  const okMp = (m) => m && /^[\w.-]+$/.test(m.name ?? "") && typeof m.source === "string" && m.source.length > 0;
+  const extra = Array.isArray(file.extra) ? file.extra.filter((g) => okMp(g?.marketplace)).map((g) => ({ marketplace: { name: g.marketplace.name, source: g.marketplace.source }, required: list(g.required, []), recommended: list(g.recommended, []) })) : DEFAULTS.extra;
+  return { marketplace: mp, required: list(file.required, DEFAULTS.required), recommended: list(file.recommended, DEFAULTS.recommended), minVersions: { ...DEFAULTS.minVersions, ...(file.minVersions ?? {}) }, extra };
 }
 
 /** -1 / 0 / 1 for dotted version numbers (numeric parts compared as numbers: 0.9.0 < 0.10.0; a pre-release suffix sorts before the release). */
@@ -37,17 +50,22 @@ export function compareVersions(a, b) {
  * state: "ok" | "disabled" | "missing" | "outdated" (installed but older than the minimum version).
  */
 export function pluginStates(installed, cfg) {
-  const byName = new Map();
-  for (const p of Array.isArray(installed) ? installed : []) {
-    const [name, mp] = String(p.id ?? "").split("@");
-    if (mp === cfg.marketplace.name) byName.set(name, p);
+  const list = Array.isArray(installed) ? installed : [];
+  const out = [];
+  for (const g of marketplaceGroups(cfg)) {
+    const mpName = g.marketplace.name, byName = new Map();
+    for (const p of list) {
+      const [name, mp] = String(p.id ?? "").split("@");
+      if (mp === mpName) byName.set(name, p);
+    }
+    const entry = (name, kind) => {
+      const p = byName.get(name), min = cfg.minVersions[name];
+      const state = !p ? "missing" : p.enabled === false ? "disabled" : min && compareVersions(p.version, min) < 0 ? "outdated" : "ok";
+      return { name, id: `${name}@${mpName}`, marketplace: mpName, kind, state, version: p?.version ?? null };
+    };
+    out.push(...g.required.map((n) => entry(n, "required")), ...g.recommended.map((n) => entry(n, "recommended")));
   }
-  const entry = (name, kind) => {
-    const p = byName.get(name), min = cfg.minVersions[name];
-    const state = !p ? "missing" : p.enabled === false ? "disabled" : min && compareVersions(p.version, min) < 0 ? "outdated" : "ok";
-    return { name, id: `${name}@${cfg.marketplace.name}`, kind, state, version: p?.version ?? null };
-  };
-  return [...cfg.required.map((n) => entry(n, "required")), ...cfg.recommended.map((n) => entry(n, "recommended"))];
+  return out;
 }
 
 /** Makes sense of a failed `marketplace add` / `plugin install`: { kind: "ssh" | "network" | "other", message }. */
@@ -60,10 +78,17 @@ export function classifyInstallError(output) {
   return { kind: "other", message: t.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 300) || "The command failed." };
 }
 
-/** The steps that bring the plugins in: add the marketplace if it is not there, install or enable what is not ok. */
+/**
+ * The steps that bring the plugins in: add the marketplaces that are not there (only those with a missing plugin), install or enable what is not ok.
+ * `marketplaceKnown`: a boolean for all marketplaces, or a Set / array of the names Claude Code knows.
+ */
 export function installPlan(states, marketplaceKnown, cfg) {
   const steps = [];
-  if (!marketplaceKnown && states.some((s) => s.state === "missing")) steps.push({ label: `Add the marketplace ${cfg.marketplace.name}`, args: ["plugin", "marketplace", "add", cfg.marketplace.source, "--scope", "user"] });
+  const known = (name) => (typeof marketplaceKnown === "boolean" ? marketplaceKnown : new Set(marketplaceKnown).has(name));
+  for (const g of marketplaceGroups(cfg)) {
+    if (!known(g.marketplace.name) && states.some((s) => s.state === "missing" && (s.marketplace ?? cfg.marketplace.name) === g.marketplace.name))
+      steps.push({ label: `Add the marketplace ${g.marketplace.name}`, args: ["plugin", "marketplace", "add", g.marketplace.source, "--scope", "user"] });
+  }
   for (const s of states) {
     if (s.state === "missing") steps.push({ label: `Install ${s.name}`, args: ["plugin", "install", s.id, "-y", "--scope", "user"] });
     else if (s.state === "disabled") steps.push({ label: `Enable ${s.name}`, args: ["plugin", "enable", s.id] });

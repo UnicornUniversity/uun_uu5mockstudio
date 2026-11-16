@@ -1,5 +1,7 @@
 import { mkdir, readdir, rename, rmdir, stat, readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
+import { parsePlan } from "../renderer/planDoc.js";
+import { normalizeSitemap, commentsOf } from "../renderer/sitemap.js";
 
 export const DEFAULT_PROJECT = "Default project";
 const exists = (p) => access(p).then(() => true, () => false);
@@ -20,6 +22,28 @@ export function createProjects(root, { trash }) {
 
   const htmlIn = async (d) => (await readdir(d)).filter((f) => f.endsWith(".html"));
 
+  /** What waits for the user in a project: plans still in draft and open comments. Unreadable files count as nothing. */
+  async function pending(dir, htmls = []) {
+    let plans = 0, comments = 0, notes = 0, mapComments = 0;
+    // variants not chosen yet: room-list-b.html next to room-list.html
+    const variants = htmls.filter((f) => { const m = /^(.+)-([a-z])\.html$/.exec(f); return m && htmls.includes(`${m[1]}.html`); }).length;
+    try {
+      for (const f of await readdir(path.join(dir, "plans"))) {
+        if (!f.endsWith(".md")) continue;
+        if ((parsePlan(await readFile(path.join(dir, "plans", f), "utf8")).meta.status ?? "draft") === "draft") plans++;
+      }
+    } catch { /* no plans */ }
+    try {
+      for (const f of await readdir(dir)) {
+        if (f.endsWith(".notes.md")) { try { notes += (await readFile(path.join(dir, f), "utf8")).match(/<!--\s*note\s+\S+\s*-->/g)?.length ?? 0; } catch { /* unreadable */ } continue; }
+        if (!f.endsWith(".comments.json")) continue;
+        try { const d = JSON.parse(await readFile(path.join(dir, f), "utf8")); comments += (Array.isArray(d) ? d : d?.comments ?? []).filter((c) => c?.status !== "resolved").length; } catch { /* unreadable */ }
+      }
+    } catch { /* no folder */ }
+    try { const sm = normalizeSitemap(JSON.parse(await readFile(path.join(dir, "sitemap.json"), "utf8"))); if (sm) mapComments = commentsOf(sm).length; } catch { /* no sitemap */ }
+    return { plans, comments, mapComments, variants, notes };
+  }
+
   async function list() {
     await mkdir(root, { recursive: true });
     const out = [];
@@ -28,7 +52,7 @@ export function createProjects(root, { trash }) {
       const htmls = await htmlIn(dirOf(e.name));
       let updated = (await stat(dirOf(e.name))).mtimeMs; // the newest screen tells when the work was last touched
       for (const f of htmls) updated = Math.max(updated, (await stat(path.join(dirOf(e.name), f))).mtimeMs);
-      out.push({ name: e.name, screens: htmls.length, updated });
+      out.push({ name: e.name, screens: htmls.length, updated, ...(await pending(dirOf(e.name), htmls)) });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, "en"));
   }

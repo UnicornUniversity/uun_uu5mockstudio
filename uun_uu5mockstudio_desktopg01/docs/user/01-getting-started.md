@@ -4,7 +4,7 @@
 
 - A Mac (Apple Silicon is the supported build; see the [release page](https://github.com/UnicornUniversity/uun_uu5mockstudio/releases/latest) for others).
 - **Claude Code** and a Claude account. The app drives *your* Claude Code, it does not contain an agent of its own. The first-run setup can install Claude Code for you.
-- Claude Code **plugins**: `uu5-mockup` and `uugds` (required) and `uu5-development` and `uu5bricks` (recommended; they provide the component documentation used by the `@` suggestions, the library browser and the checks of component names in plans; `uu5bricks` documents the Bricks that Page templates are built from). The setup dialog installs them from the uuCodebase marketplace, which needs access to uuCodebase over SSH.
+- Claude Code **plugins**: `uu5-mockup` and `uugds` (required) and `uu5-development` and `uu5bricks` (recommended; they provide the component documentation used by the `@` suggestions, the library browser and the checks of component names in plans; `uu5bricks` documents the Bricks that Page templates are built from). The setup dialog installs them from the uuCodebase marketplace, which needs access to uuCodebase over SSH. The `uubookkit` and `uumanagementkit` plugins (recommended, from the `uu-business-products-mp` marketplace) let the app read uuBookKit and uuManagementKit documents; they are installed and kept up to date together with the others (also in Codex).
 - Internet access: uu5 pages load their libraries from the Plus4U CDN. The app caches them, and there is an [offline mode](09-appearance-and-settings.md#offline-use).
 
 ## Install

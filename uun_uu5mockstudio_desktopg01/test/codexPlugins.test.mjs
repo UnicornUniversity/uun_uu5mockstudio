@@ -6,7 +6,7 @@ import { tmp } from "./helpers.mjs";
 import { loadPrerequisites } from "../src/main/prerequisites.mjs";
 import { installedFromToml, marketplacesFromToml, codexInstallPlan, ensureCodexPlugins } from "../src/main/codexPlugins.mjs";
 
-const cfg = loadPrerequisites({ env: {} });
+const cfg = { ...loadPrerequisites({ env: {} }), extra: [] }; // the plugins of the main marketplace only; the others are tested below
 const TOML = `[marketplaces.uu-technical-products-mp]
 source_type = "local"
 
@@ -95,7 +95,7 @@ import { codexPluginVersions } from "../src/main/codexPlugins.mjs";
 test("the versions report lists installed and offered versions of the wanted plugins", async () => {
   const h = await withVersions("0.2.1", "0.3.0");
   const r = codexPluginVersions({ ...cfg, required: ["uugds"], recommended: ["uu5-mockup"] }, h);
-  assert.deepEqual(r, [{ name: "uugds", installed: "0.2.1", available: "0.3.0" }, { name: "uu5-mockup", installed: null, available: null }]);
+  assert.deepEqual(r, [{ name: "uugds", marketplace: "uu-technical-products-mp", installed: "0.2.1", available: "0.3.0" }, { name: "uu5-mockup", marketplace: "uu-technical-products-mp", installed: null, available: null }]);
 });
 
 import { codexPluginStates } from "../src/main/codexPlugins.mjs";
@@ -105,4 +105,14 @@ test("plugin states for the window: ok, outdated, missing, with the kind", async
   const r = codexPluginStates({ ...cfg, required: ["uugds"], recommended: ["uu5-mockup"] }, h);
   assert.deepEqual(r.map((p) => [p.name, p.kind, p.state]), [["uugds", "required", "outdated"], ["uu5-mockup", "recommended", "missing"]]);
   assert.equal(codexPluginStates({ ...cfg, required: ["uugds"], recommended: [] }, await withVersions("0.3.0", "0.3.0"))[0].state, "ok");
+});
+
+test("the plugins of the other marketplaces are installed into Codex too, their marketplace registered from its own folder", async () => {
+  const full = loadPrerequisites({ env: {} }), h = await home("");
+  await mkdir(path.join(h, ".skilled-plus4u-mcp", "marketplaces", "uu-business-products-mp"), { recursive: true });
+  const calls = [];
+  const r = await ensureCodexPlugins({ bin: "codex", cfg: full, home: h, env: {}, exec: async (_b, args) => { calls.push(args.join(" ")); } });
+  assert.equal(calls.filter((c) => c.startsWith("plugin marketplace add")).length, 2);
+  assert.ok(calls.some((c) => c.endsWith("uu-business-products-mp")));
+  assert.ok(r.installed.includes("uubookkit@uu-business-products-mp") && r.installed.includes("uumanagementkit@uu-business-products-mp"));
 });

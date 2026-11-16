@@ -139,3 +139,28 @@ test("legacy single project ends up as a flat default project (migrate + flatten
   assert.equal(await readFile(path.join(root, DEFAULT_PROJECT, "a.html"), "utf8"), "old");
   assert.deepEqual((await projects.list()).map((p) => p.name), [DEFAULT_PROJECT]);
 });
+
+test("the list tells what waits in a project: draft plans and open comments", async () => {
+  const { root, projects } = await setup();
+  const dir = path.join(root, "alfa");
+  await mkdir(path.join(dir, "plans"), { recursive: true });
+  await writeFile(path.join(dir, "plans", "a.md"), "---\ntitle: A\nstatus: draft\n---\nx");
+  await writeFile(path.join(dir, "plans", "b.md"), "---\ntitle: B\nstatus: approved\n---\nx");
+  await writeFile(path.join(dir, "s.html"), "<p>s</p>");
+  await writeFile(path.join(dir, "s.comments.json"), JSON.stringify([{ text: "one", status: "open" }, { text: "two", status: "resolved" }]));
+  const p = (await projects.list()).find((x) => x.name === "alfa");
+  assert.equal(p.plans, 1); assert.equal(p.comments, 1);
+});
+
+test("the list also counts notes, variants not chosen yet and comments in the sitemap", async () => {
+  const { root, projects } = await setup();
+  const dir = path.join(root, "beta2");
+  await mkdir(dir, { recursive: true });
+  for (const f of ["room.html", "room-b.html", "alone-b.html"]) await writeFile(path.join(dir, f), "<p>x</p>");
+  await writeFile(path.join(dir, "room.notes.md"), "# Notes: room\n\n<!-- note n1aaa -->\nfirst\n\n<!-- note n2bbb -->\nsecond\n");
+  await writeFile(path.join(dir, "sitemap.json"), JSON.stringify({ title: "Site", children: [{ title: "Home", comment: "make it shorter" }, { title: "About" }] }));
+  const p = (await projects.list()).find((x) => x.name === "beta2");
+  assert.equal(p.variants, 1); // alone-b.html has no original: not a variant
+  assert.equal(p.notes, 2);
+  assert.equal(p.mapComments, 1);
+});

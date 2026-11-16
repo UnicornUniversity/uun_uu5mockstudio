@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadPrerequisites, classifyInstallError, compareVersions } from "./prerequisites.mjs";
+import { loadPrerequisites, marketplaceGroups, classifyInstallError, compareVersions } from "./prerequisites.mjs";
 
 const run = promisify(execFile);
 
@@ -19,12 +19,23 @@ export function marketplacesFromToml(toml) {
   return new Set([...String(toml ?? "").matchAll(/^\[marketplaces\.([\w.-]+)\]/gm)].map((m) => m[1]));
 }
 
-/** What is to be done so that the skills of the app are in Codex: the plugins that are missing, and the local folder of the marketplace to register first when Codex does not know it. */
-export function codexInstallPlan(toml, cfg, { marketplaceDir } = {}) {
-  const have = installedFromToml(toml);
-  const missing = [...cfg.required, ...cfg.recommended].map((n) => `${n}@${cfg.marketplace.name}`).filter((id) => !have.has(id));
-  const addMarketplace = missing.length && !marketplacesFromToml(toml).has(cfg.marketplace.name) && marketplaceDir && fs.existsSync(marketplaceDir) ? marketplaceDir : null;
-  return { missing, addMarketplace };
+/** Every wanted plugin of every marketplace: [{ name, kind, mp }]. */
+const wanted = (cfg) => marketplaceGroups(cfg).flatMap((g) => [...g.required.map((name) => ({ name, kind: "required", mp: g.marketplace.name })), ...g.recommended.map((name) => ({ name, kind: "recommended", mp: g.marketplace.name }))]);
+
+/**
+ * What is to be done so that the skills of the app are in Codex: the plugins that are missing, and the marketplaces (with their local folders) to register first
+ * when Codex does not know them (`addMarketplaces`; `addMarketplace` is the folder of the first one).
+ */
+export function codexInstallPlan(toml, cfg, { marketplaceDir, home = os.homedir() } = {}) {
+  const have = installedFromToml(toml), known = marketplacesFromToml(toml);
+  const missingBy = wanted(cfg).filter((w) => !have.has(`${w.name}@${w.mp}`));
+  const missing = missingBy.map((w) => `${w.name}@${w.mp}`);
+  const addMarketplaces = [];
+  for (const mp of new Set(missingBy.map((w) => w.mp))) {
+    const dir = mp === cfg.marketplace.name && marketplaceDir ? marketplaceDir : marketplaceDirOf(mp, home);
+    if (!known.has(mp) && fs.existsSync(dir)) addMarketplaces.push({ name: mp, dir });
+  }
+  return { missing, addMarketplace: addMarketplaces[0]?.dir ?? null, addMarketplaces };
 }
 
 /** Where the uuAiMarketplace extension keeps the marketplaces it has synchronised. */
@@ -44,21 +55,21 @@ export function availableVersion(name, mp, home = os.homedir()) {
  */
 export function outdatedPlugins(cfg, toml, home = os.homedir()) {
   const have = installedFromToml(toml);
-  return [...cfg.required, ...cfg.recommended].filter((n) => {
-    const id = `${n}@${cfg.marketplace.name}`, inst = installedVersion(n, cfg.marketplace.name, home), avail = availableVersion(n, cfg.marketplace.name, home);
-    return have.has(id) && inst && avail && compareVersions(inst, avail) < 0;
-  }).map((n) => `${n}@${cfg.marketplace.name}`);
+  return wanted(cfg).filter(({ name, mp }) => {
+    const inst = installedVersion(name, mp, home), avail = availableVersion(name, mp, home);
+    return have.has(`${name}@${mp}`) && inst && avail && compareVersions(inst, avail) < 0;
+  }).map(({ name, mp }) => `${name}@${mp}`);
 }
 
-/** The wanted plugins with the version installed in Codex and the one the marketplace offers: [{ name, installed, available }] (null = none). */
+/** The wanted plugins with the version installed in Codex and the one the marketplace offers: [{ name, marketplace, installed, available }] (null = none). */
 export function codexPluginVersions(cfg = loadPrerequisites(), home = os.homedir()) {
-  return [...cfg.required, ...cfg.recommended].map((name) => ({ name, installed: installedVersion(name, cfg.marketplace.name, home), available: availableVersion(name, cfg.marketplace.name, home) }));
+  return wanted(cfg).map(({ name, mp }) => ({ name, marketplace: mp, installed: installedVersion(name, mp, home), available: availableVersion(name, mp, home) }));
 }
 
 /** The wanted plugins with their state for the window: [{ name, kind, installed, available, state: "ok" | "outdated" | "missing" }]. */
 export function codexPluginStates(cfg = loadPrerequisites(), home = os.homedir()) {
-  const kind = (n) => (cfg.required.includes(n) ? "required" : "recommended");
-  return codexPluginVersions(cfg, home).map((p) => ({ ...p, kind: kind(p.name), state: !p.installed ? "missing" : p.available && compareVersions(p.installed, p.available) < 0 ? "outdated" : "ok" }));
+  const kinds = new Map(wanted(cfg).map((w) => [`${w.name}@${w.mp}`, w.kind]));
+  return codexPluginVersions(cfg, home).map((p) => ({ ...p, kind: kinds.get(`${p.name}@${p.marketplace}`), state: !p.installed ? "missing" : p.available && compareVersions(p.installed, p.available) < 0 ? "outdated" : "ok" }));
 }
 
 /**
@@ -71,16 +82,17 @@ export async function ensureCodexPlugins({ bin, cfg = loadPrerequisites(), home 
   if (!bin) return { ...out, skipped: true };
   const codexHome = env.CODEX_HOME || path.join(home, ".codex");
   let toml = ""; try { toml = fs.readFileSync(path.join(codexHome, "config.toml"), "utf8"); } catch { /* none yet */ }
-  const plan = codexInstallPlan(toml, cfg, { marketplaceDir: marketplaceDirOf(cfg.marketplace.name, home) });
+  const plan = codexInstallPlan(toml, cfg, { marketplaceDir: marketplaceDirOf(cfg.marketplace.name, home), home });
   const outdated = outdatedPlugins(cfg, toml, home);
   if (!plan.missing.length && !outdated.length) return { ...out, skipped: true };
   const opts = { timeout: 120000, env };
   const fail = (id, e) => out.failed.push({ id, message: classifyInstallError(`${e?.stderr ?? ""}${e?.stdout ?? ""}${e?.message ?? ""}`).message });
-  if (plan.addMarketplace) {
-    try { await exec(bin, ["plugin", "marketplace", "add", plan.addMarketplace], opts); }
-    catch (e) { for (const id of plan.missing) fail(id, e); return out; }
+  const broken = new Set();
+  for (const m of plan.addMarketplaces) {
+    try { await exec(bin, ["plugin", "marketplace", "add", m.dir], opts); }
+    catch (e) { broken.add(m.name); for (const id of plan.missing.filter((x) => x.endsWith(`@${m.name}`))) fail(id, e); }
   }
-  for (const id of plan.missing) {
+  for (const id of plan.missing.filter((x) => !broken.has(x.split("@")[1]))) {
     try { await exec(bin, ["plugin", "add", id], opts); out.installed.push(id); } catch (e) { fail(id, e); }
   }
   for (const id of outdated) {

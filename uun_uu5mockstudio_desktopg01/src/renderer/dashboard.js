@@ -29,7 +29,7 @@ const SITE = {
   web: ["Whole web site", "A web site of several pages: the agent proposes its sitemap first, you approve it, then the pages are built", "Describe the web site: who it is for and what it should cover. The agent proposes the sitemap first."],
   page: ["Portal (several pages)", "A portal of several document pages: the agent proposes its sitemap first, you approve it, then the pages are built", "Describe the portal: who it is for and what it should cover. The agent proposes the sitemap first."],
 };
-const PLACEHOLDER = "Design anything… A project is created for it and the chat goes on there.";
+const PLACEHOLDER = "Describe the screen you need. A project is created for it and the work continues there.";
 const TRASH = svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>');
 const VIEW_KEY = "uu5studio.dashView";
 
@@ -68,7 +68,7 @@ export function projectNameFromTitle(title, taken = []) {
  */
 export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onNewFromDoc, onFolder, onDelete, onTemplates, onLevel, onScope }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
-  let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null, scope = "single";
+  let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null, scope = "single", filter = "all";
   try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; if (localStorage.getItem(SCOPE_KEY) === "site") scope = "site"; } catch { /* default */ }
   /** "site" only where the level has the choice (Web, Document), else null: an application, a route or a component has no scope. */
   const scopeNow = () => (SITE[level] ? scope : null);
@@ -90,8 +90,8 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   }
   function setSection(sec) {
     section = sec;
-    for (const b of root.querySelectorAll("#dash-nav button")) b.classList.toggle("on", b.dataset.sec === sec);
-    $("dash-h").textContent = sec === "all" ? `All projects${projects.length ? ` (${projects.length})` : ""}` : "Recents";
+    for (const b of root.querySelectorAll("#dash-nav button[data-sec]")) b.classList.toggle("on", b.dataset.sec === sec);
+    $("dash-h").textContent = sec === "all" ? `All projects${projects.length ? ` (${projects.length})` : ""}` : sec === "waiting" ? "Waiting for you" : "Your projects";
     paint();
   }
   function submit() {
@@ -111,15 +111,46 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
       if (box) { box.replaceChildren(Object.assign(document.createElement("img"), { src: img, alt: "", draggable: false })); box.classList.add("has"); }
     }
   }
+  const isWaiting = (p) => Boolean(p.plans || p.comments || p.mapComments || p.variants);
+  /** Small pills for what waits in a project: a plan to approve, open comments. null when nothing does. */
+  function badges(p, { all = true } = {}) {
+    const row = el("span", "dc-tags"), tag = (text, cls = "") => row.append(el("span", `dc-tag ${cls}`.trim(), text)), n = (k, one, many) => (k === 1 ? one : `${k} ${many}`);
+    if (p.plans) tag(n(p.plans, "Plan to approve", "plans to approve"), "plan");
+    if (p.variants) tag(n(p.variants, "1 variant to choose", "variants to choose"), "plan");
+    if (p.comments) tag(`${p.comments} open comment${p.comments === 1 ? "" : "s"}`);
+    if (p.mapComments) tag(`${p.mapComments} comment${p.mapComments === 1 ? "" : "s"} in the map`);
+    if (all && p.notes) tag(`${p.notes} note${p.notes === 1 ? "" : "s"}`, "soft");
+    return row.childElementCount ? row : null;
+  }
+  /** The strip over the list: the projects that wait for the user (up to 3, the most recently touched first). */
+  function paintAttention() {
+    const all = projects.filter(isWaiting), n = $("dash-waiting-n"); n.textContent = String(all.length); n.hidden = !all.length;
+    const waiting = all.sort((a, b) => b.updated - a.updated).slice(0, 3);
+    $("dash-attn").hidden = !waiting.length;
+    $("dash-attn-list").replaceChildren(...waiting.map((p) => {
+      const b = el("button", "attn"); b.type = "button"; b.dataset.name = p.name;
+      b.append(el("b", "", p.name), ...[badges(p, { all: false })].filter(Boolean), el("small", "", ago(p.updated)));
+      b.onclick = () => onOpen(p.name);
+      return b;
+    }));
+  }
+  function setFilter(f) {
+    filter = f;
+    for (const b of root.querySelectorAll("#dash-filters button")) b.classList.toggle("on", b.dataset.filter === f);
+    paint();
+  }
   function paint() {
+    paintAttention();
     const q = search.value.trim().toLowerCase(), my = ++seq;
-    let shown = projects.filter((p) => !q || p.name.toLowerCase().includes(q));
+    let shown = projects.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (filter === "all" || (filter === "plans" ? p.plans : filter === "variants" ? p.variants : (p.comments || 0) + (p.mapComments || 0)) > 0));
+    if (section === "waiting") shown = shown.filter(isWaiting);
     shown = section === "all" ? shown.sort((a, b) => a.name.localeCompare(b.name, "en")) : shown.sort((a, b) => b.updated - a.updated).slice(0, q ? 100 : 24);
     const cards = shown.map((p) => {
       const c = el("button", "dc"); c.type = "button"; c.dataset.name = p.name;
       const pic = el("div", "dc-pic"); pic.append(el("span", "dc-initial", p.name[0]?.toUpperCase() ?? "?"));
       const meta = el("div", "dc-meta"), when = `${p.screens ? `${p.screens} ${p.screens === 1 ? "screen" : "screens"}` : "No screen yet"} · ${ago(p.updated)}`;
       meta.append(el("b", "", p.name), el("small", "", when));
+      const tags = badges(p); if (tags) meta.append(tags);
       c.append(pic, meta); c.onclick = () => onOpen(p.name);
       const del = el("button", "dc-del"); del.type = "button"; del.title = `Delete “${p.name}”`; del.setAttribute("aria-label", `Delete project ${p.name}`); del.innerHTML = TRASH;
       del.onclick = (e) => { e.stopPropagation(); onDelete?.(p.name); };
@@ -140,8 +171,10 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   prompt.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
   $("dash-form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
   for (const b of root.querySelectorAll("#dash-mode button")) b.onclick = () => setPlan(b.dataset.mode === "plan");
-  for (const b of root.querySelectorAll("#dash-nav button")) b.onclick = () => setSection(b.dataset.sec);
+  for (const b of root.querySelectorAll("#dash-nav button[data-sec]")) b.onclick = () => setSection(b.dataset.sec);
+  $("dash-nav-tpl").onclick = () => $("dash-tpl").click();
   for (const b of root.querySelectorAll("#dash-views button")) b.onclick = () => setView(b.dataset.view);
+  for (const b of root.querySelectorAll("#dash-filters button")) b.onclick = () => setFilter(b.dataset.filter);
   search.addEventListener("input", paint);
   $("dash-newbtn").onclick = onNew;
   // New Project has a caret while signed in to Plus4U: a project from a Plus4U document

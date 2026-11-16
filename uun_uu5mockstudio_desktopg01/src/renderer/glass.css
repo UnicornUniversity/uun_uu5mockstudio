@@ -162,12 +162,12 @@ body[data-glass] :is(#dash-levels,#dash-scope,#dash-views) button.on{background:
 body[data-glass] #dash-tpl{border-radius:999px}body[data-glass] #dash-tpl:hover{background:var(--glass-thin)}
 body[data-glass] .idea{background:var(--glass-thin);border-color:var(--glass-stroke);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
 body[data-glass] .idea:hover{background:var(--glass-thick)}
-body[data-glass] .idea.on{border-color:var(--fg);box-shadow:0 0 0 1px var(--fg),var(--glass-shadow-sm)}
+body[data-glass] .idea.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc),var(--glass-shadow-sm)}
 body[data-glass] .dash-box{background:var(--glass-regular);border-color:var(--glass-edge);border-radius:24px;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 body[data-glass] #dash-mode button.on{background:var(--glass-thin);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);border-radius:999px}
 body[data-glass] :is(#dash-badge,#dash-search){background:var(--glass-thin);border-color:var(--glass-stroke);border-radius:999px;-webkit-backdrop-filter:var(--glass-blur-thin);backdrop-filter:var(--glass-blur-thin)}
 body[data-glass] #dash-top .icon{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:999px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
-body[data-glass] #dash-newbtn{border-radius:999px;box-shadow:var(--glass-shadow-md),inset 0 1px 0 rgba(255,255,255,.25)}
+body[data-glass] #dash-send{border-radius:999px}body[data-glass] #dash-newbtn{border-radius:999px;box-shadow:var(--glass-shadow-md),inset 0 1px 0 rgba(255,255,255,.25)}
 body[data-glass] .dc{background:var(--glass-thin);border-color:var(--glass-edge);border-radius:20px;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 body[data-glass] .dc:hover,body[data-glass] .dc:focus-visible{border-color:var(--glass-edge);box-shadow:var(--glass-shadow-md),inset 0 1px 0 var(--glass-hi);transform:translateY(-1px)}
 body[data-glass] .dc{transition:box-shadow .15s,transform .15s}

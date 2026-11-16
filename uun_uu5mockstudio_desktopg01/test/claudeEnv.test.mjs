@@ -9,12 +9,13 @@ afterEach(() => delete process.env.STUDIO_CLAUDE_BIN);
 
 const PLUGINS_OK = JSON.stringify([
   { id: "uu5-mockup@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uugds@uu-technical-products-mp", version: "0.2.1", enabled: true }, { id: "uu5-development@uu-technical-products-mp", version: "1.5.0", enabled: true }, { id: "uu5bricks@uu-technical-products-mp", version: "0.3.0", enabled: true },
+  { id: "uubookkit@uu-business-products-mp", version: "1.0.0", enabled: true }, { id: "uumanagementkit@uu-business-products-mp", version: "1.0.0", enabled: true },
 ]);
 /**
  * A stand-in for the `claude` CLI. `auth` / `list` / `market` are shell snippets answering `auth ...`, `plugin list --json` and
  * `plugin marketplace list --json`; every other call is appended to `<dir>/calls.log` and answered by `other` (default: success).
  */
-async function fakeClaude(authScript, { list = PLUGINS_OK, market = '[{"name":"uu-technical-products-mp","source":"directory","installLocation":"/x"}]', other = "exit 0" } = {}) {
+async function fakeClaude(authScript, { list = PLUGINS_OK, market = '[{"name":"uu-technical-products-mp","source":"directory","installLocation":"/x"},{"name":"uu-business-products-mp","source":"directory","installLocation":"/y"}]', other = "exit 0" } = {}) {
   const dir = await tmp("claude"), bin = path.join(dir, "claude");
   await writeFile(bin, `#!/bin/sh
 if [ "$1" = "--version" ]; then echo "9.9.9 (Claude Code)"; exit 0; fi
@@ -58,7 +59,7 @@ test("pluginsMissing when logged in but a required plugin is not installed, read
   process.env.STUDIO_CLAUDE_BIN = await fakeClaude(`echo '{"loggedIn":true}'`, { list: none });
   const s = await getStatus({ refresh: true });
   assert.equal(s.state, "pluginsMissing");
-  assert.deepEqual(s.plugins.map((p) => [p.name, p.state]), [["uu5-mockup", "missing"], ["uugds", "ok"], ["uu5-development", "missing"], ["uu5bricks", "missing"]]);
+  assert.deepEqual(s.plugins.map((p) => [p.name, p.state]), [["uu5-mockup", "missing"], ["uugds", "ok"], ["uu5-development", "missing"], ["uu5bricks", "missing"], ["uubookkit", "missing"], ["uumanagementkit", "missing"]]);
   process.env.STUDIO_CLAUDE_BIN = await fakeClaude(`echo '{"loggedIn":true}'`);
   assert.equal((await getStatus({ refresh: true })).state, "ready");
 });
@@ -81,9 +82,10 @@ test("installPlugins adds the marketplace, installs the missing plugins and repo
   const seen = [], r = await installPlugins({ onStep: (e) => seen.push(`${e.state}:${e.label}`) });
   assert.equal(r.ok, true);
   const log = await calls(bin);
-  assert.match(log[0], /^plugin marketplace add ssh:\/\/git@uucodebase\.plus4u\.net\S+ --scope user$/);
-  assert.deepEqual(log.slice(1), ["plugin install uu5-mockup@uu-technical-products-mp -y --scope user", "plugin install uugds@uu-technical-products-mp -y --scope user", "plugin install uu5-development@uu-technical-products-mp -y --scope user", "plugin install uu5bricks@uu-technical-products-mp -y --scope user"]);
-  assert.equal(seen.filter((x) => x.startsWith("ok:")).length, 5);
+  assert.match(log[0], /^plugin marketplace add ssh:\/\/git@uucodebase\.plus4u\.net\S+uu-technical-products-mp\.git --scope user$/);
+  assert.match(log[1], /^plugin marketplace add ssh:\/\/git@uucodebase\.plus4u\.net\S+uu-business-products-mp\.git --scope user$/);
+  assert.deepEqual(log.slice(2), ["plugin install uu5-mockup@uu-technical-products-mp -y --scope user", "plugin install uugds@uu-technical-products-mp -y --scope user", "plugin install uu5-development@uu-technical-products-mp -y --scope user", "plugin install uu5bricks@uu-technical-products-mp -y --scope user", "plugin install uubookkit@uu-business-products-mp -y --scope user", "plugin install uumanagementkit@uu-business-products-mp -y --scope user"]);
+  assert.equal(seen.filter((x) => x.startsWith("ok:")).length, 8);
 });
 
 test("installPlugins stops at the first failure and explains missing SSH access", async () => {
@@ -153,4 +155,19 @@ test("checkPluginUpdates compares installed versions with the marketplace folder
 test("checkPluginUpdates without the marketplace configured just reports nothing", async () => {
   process.env.STUDIO_CLAUDE_BIN = await fakeClaude(`echo '{"loggedIn":true}'`, { market: "[]" }); await getStatus({ refresh: true });
   assert.deepEqual(await checkPluginUpdates(), { updates: [], checked: false });
+});
+
+test("checkPluginUpdates also looks at the plugins of the other marketplaces and updatePlugins accepts them", async () => {
+  const tech = await tmp("mptech"), biz = await tmp("mpbiz");
+  await mkdir(path.join(biz, "plugins", "uubookkit", ".claude-plugin"), { recursive: true });
+  await writeFile(path.join(biz, "plugins", "uubookkit", ".claude-plugin", "plugin.json"), JSON.stringify({ version: "1.1.0" }));
+  const market = JSON.stringify([{ name: "uu-technical-products-mp", source: "directory", installLocation: tech }, { name: "uu-business-products-mp", source: "directory", installLocation: biz }]);
+  const bin = await fakeClaude(`echo '{"loggedIn":true}'`, { market });
+  process.env.STUDIO_CLAUDE_BIN = bin; await getStatus({ refresh: true });
+  const r = await checkPluginUpdates();
+  assert.deepEqual(r.updates, [{ name: "uubookkit", id: "uubookkit@uu-business-products-mp", installed: "1.0.0", latest: "1.1.0" }]);
+  const log = await calls(bin);
+  assert.ok(log.includes("plugin marketplace update uu-technical-products-mp") && log.includes("plugin marketplace update uu-business-products-mp"));
+  const u = await updatePlugins(["uubookkit@uu-business-products-mp"]);
+  assert.deepEqual(u.steps, [{ id: "uubookkit@uu-business-products-mp", ok: true }]);
 });

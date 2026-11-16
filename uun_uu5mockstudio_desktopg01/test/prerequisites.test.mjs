@@ -36,10 +36,10 @@ test("pluginStates: ok, disabled, missing and outdated, only for the configured 
     { id: "uu5-mockup@uu-technical-products-mp", version: "0.2.1", enabled: false },
     { id: "uu5-development@other-mp", version: "9.9.9", enabled: true },
   ];
-  const s = pluginStates(installed, { ...cfg, minVersions: { uugds: "0.3.0" } });
+  const s = pluginStates(installed, { ...cfg, extra: [], minVersions: { uugds: "0.3.0" } });
   assert.deepEqual(s.map((x) => [x.name, x.kind, x.state]), [["uu5-mockup", "required", "disabled"], ["uugds", "required", "outdated"], ["uu5-development", "recommended", "missing"], ["uu5bricks", "recommended", "missing"]]);
-  assert.equal(pluginStates([], cfg).every((x) => x.state === "missing"), true);
-  assert.equal(pluginStates("garbage", cfg).length, 4);
+  assert.equal(pluginStates([], { ...cfg, extra: [] }).every((x) => x.state === "missing"), true);
+  assert.equal(pluginStates("garbage", { ...cfg, extra: [] }).length, 4);
 });
 
 test("classifyInstallError recognises missing SSH access and network trouble", () => {
@@ -74,4 +74,14 @@ test("latestVersion reads the plugin manifest or the marketplace catalog; findUp
   assert.deepEqual(findUpdates(states, mp), [{ name: "uugds", id: "uugds@m", installed: "0.9.0", latest: "0.10.0" }]);
   assert.deepEqual(findUpdates(states, mp, { later: { "uugds@m": "0.10.0" } }), []);
   assert.equal(findUpdates(states, mp, { later: { "uugds@m": "0.9.5" } }).length, 1); // postponed an older version only
+});
+
+import { marketplaceGroups } from "../src/main/prerequisites.mjs";
+test("the business marketplace with uubookkit and uumanagementkit is a default; pluginStates and installPlan cover it", () => {
+  const cfg = loadPrerequisites({ env: {} });
+  assert.deepEqual(marketplaceGroups(cfg).map((g) => g.marketplace.name), ["uu-technical-products-mp", "uu-business-products-mp"]);
+  const st = pluginStates([{ id: "uubookkit@uu-business-products-mp", version: "1", enabled: true }], cfg);
+  assert.deepEqual(st.filter((s) => s.marketplace === "uu-business-products-mp").map((s) => [s.name, s.kind, s.state]), [["uubookkit", "recommended", "ok"], ["uumanagementkit", "recommended", "missing"]]);
+  const plan = installPlan(st, ["uu-technical-products-mp"], cfg).map((s) => s.args.slice(0, 3).join(" "));
+  assert.ok(plan.includes("plugin marketplace add") && plan.includes("plugin install uumanagementkit@uu-business-products-mp"));
 });
