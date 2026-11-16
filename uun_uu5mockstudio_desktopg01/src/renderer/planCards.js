@@ -106,6 +106,12 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const host = document.getElementById("canvas"); if (!host) return null;
     dv = el("div", { id: "docview", hidden: true }, el("div", { className: "dv-body" }));
     for (const ev of ["pointerdown", "wheel", "dblclick", "contextmenu", "mousedown"]) dv.addEventListener(ev, (e) => e.stopPropagation()); // the canvas below does not pan, zoom or select
+    // Esc closes the panel of the selected page on the right (like its ×); it never leaves the map or the plan: the Canvas button does that
+    document.addEventListener("keydown", (e) => {
+      const x = document.querySelector("#smside:not([hidden]) .smside-x");
+      if (e.key !== "Escape" || e.defaultPrevented || !x || dv.hidden || document.querySelector("#dialog:not([hidden]),#confirm:not([hidden]),.pm-pop:not([hidden]),.sm-rename,.sm-ctx")) return;
+      e.preventDefault(); x.click();
+    });
     host.append(dv); return dv;
   }
   const tabsOf = () => [...(cards.has("@sitemap") ? [["@sitemap", "Sitemap"]] : []), ...[...cards].filter(([k]) => k !== "@sitemap").map(([k, c]) => [k, c.title || k])];
@@ -125,8 +131,6 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       host.hidden = false; dv.hidden = false;
       c.ro = new ResizeObserver(fitView); for (const id of ["canvas"]) { const n = document.getElementById(id); if (n) c.ro.observe(n); }
       c.fitTimer = setInterval(fitView, 400);
-      c.esc = (e) => { if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("#dialog:not([hidden]),#confirm:not([hidden]),.pm-pop:not([hidden]),.sm-rename,.sm-ctx") && !(e.target instanceof HTMLElement && e.target.closest("select,#plansmenu,#mapmenu,#projmenu"))) { e.preventDefault(); e.stopPropagation(); closeView(); } };
-      document.addEventListener("keydown", c.esc, true);
     }
     fitView(); paintTabs(); renderView(c); ctx.viewChanged?.(); return true;
   }
@@ -134,7 +138,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const c = viewCard; if (!c) return;
     viewCard = null; c.expanded = false;
     document.querySelectorAll(".sm-rename,.sm-ctx,#bar .pc-share").forEach((x) => x.remove()); // an open rename field or menu does not outlive the view
-    document.removeEventListener("keydown", c.esc, true); c.ro?.disconnect(); clearInterval(c.fitTimer);
+    c.ro?.disconnect(); clearInterval(c.fitTimer);
     c.el.classList.remove("pc-inview");
     if (c.home?.parent?.isConnected) c.home.parent.insertBefore(c.el, c.home.next?.parentNode === c.home.parent ? c.home.next : null);
     c.el.hidden = Boolean(c.hidden); c.home = null;

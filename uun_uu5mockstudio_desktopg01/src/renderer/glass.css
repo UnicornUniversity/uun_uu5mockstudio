@@ -191,7 +191,7 @@ body[data-glass] #selmenu .fmt-acts button.primary:hover{background:var(--acc);c
 body[data-glass] #selbar#selbar button.on:not(#x1):not(#x2):not(#x3):not(#x4):not(#x5){background:var(--glass-thick)!important;color:var(--fg)!important;border-color:var(--glass-edge)!important}
 
 /* the view of a plan or the sitemap lies where the canvas lies: the same wash and the grey of the canvas, not a flat white sheet, so that the floating chat (glass) has something to blur over it */
-body[data-glass] #docview{background:var(--glass-wash),var(--canvas)}
+body[data-glass] #docview{background:radial-gradient(color-mix(in srgb,var(--dot) 40%,transparent) 1px,transparent 1px),var(--canvas);background-size:40px 40px,auto}
 body[data-glass] #docview .sm-node{background:var(--glass-thin);-webkit-backdrop-filter:none;backdrop-filter:none}
 body[data-glass] #docview .sm-node.t-section{background:color-mix(in srgb,var(--acc) 12%,var(--glass-thin))}
 
@@ -236,8 +236,8 @@ body[data-glass] #bar#bar{background:transparent!important;border-bottom:0!impor
 /* one surface around the floating cards: the window, the work area and the canvas show the same wash over the canvas colour (the canvas keeps only its dots) */
 body[data-glass]{background:var(--glass-wash),var(--canvas);background-attachment:fixed}
 body[data-glass] :is(#work,#canvas){background-color:transparent!important}
-/* the sitemap or a plan covers the screens: opaque, with the same wash pinned to the window, so it continues the surface around it */
-body[data-glass] #docview{background:var(--glass-wash),var(--canvas)!important;background-attachment:fixed,fixed!important}
+/* the sitemap or a plan covers the screens: opaque, the very surface of the canvas (colour and dots), no wash of its own */
+body[data-glass] #docview{background:radial-gradient(color-mix(in srgb,var(--dot) 40%,transparent) 1px,transparent 1px),var(--canvas)!important;background-size:40px 40px,auto!important;background-attachment:scroll,scroll!important}
 /* the dashboard: the sidebar a glass card like the docked chat, the pane shows the surface of the window */
 body[data-glass] #dash-side{border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
 body[data-glass] #dash-pane{background:transparent!important}

@@ -1331,7 +1331,7 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 .sm-node.drop-inside{outline:2px solid var(--acc);outline-offset:1px;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
 .sm-node.drop-before{box-shadow:0 -3px 0 0 var(--acc)}.sm-node.drop-after{box-shadow:0 3px 0 0 var(--acc)}
 /* the view is the work area itself, not a card on it: no frame, no title bar of the sitemap (the toolbar says what is shown), no row of chips */
-#docview{background:var(--canvas)} /* the sitemap and the plans lie where the canvas lies: the same surface */
+#docview{background:var(--canvas);background-image:radial-gradient(color-mix(in srgb,var(--dot) 40%,transparent) 1px,transparent 1px);background-size:40px 40px} /* the sitemap and the plans lie where the canvas lies: the same surface, dots included */
 .plancard.pc-inview{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
 .pc-inview .pc-mapbox{border:0;padding:0;background:transparent}
 .pc-inview .pc-treehead{padding-top:10px}
