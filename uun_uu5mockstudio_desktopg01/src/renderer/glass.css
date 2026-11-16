@@ -236,6 +236,8 @@ body[data-glass] #bar#bar{background:transparent!important;border-bottom:0!impor
 /* one surface around the floating cards: the window, the work area and the canvas show the same wash over the canvas colour (the canvas keeps only its dots) */
 body[data-glass]{background:var(--glass-wash),var(--canvas);background-attachment:fixed}
 body[data-glass] :is(#work,#canvas){background-color:transparent!important}
+/* in a project the surface under the docked chat is the one of the canvas (no wash); the wash stays on the dashboard */
+body[data-glass]:has(#dash[hidden]){background:var(--canvas)}
 /* the sitemap or a plan covers the screens: opaque, the very surface of the canvas (colour and dots), no wash of its own */
 body[data-glass] #docview{background:radial-gradient(color-mix(in srgb,var(--dot) 40%,transparent) 1px,transparent 1px),var(--canvas)!important;background-size:40px 40px,auto!important;background-attachment:scroll,scroll!important}
 /* the dashboard: the sidebar a glass card like the docked chat, the pane shows the surface of the window */
