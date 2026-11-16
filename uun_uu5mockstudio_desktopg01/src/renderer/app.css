@@ -1735,7 +1735,6 @@ body[data-noproject] #projpick{display:none}
 .msg ol.annos{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .msg ol.annos li{display:flex;gap:6px;align-items:flex-start;font-size:12px}.msg ol.annos img{flex:none;max-width:60px;max-height:40px;border-radius:4px;border:1px solid var(--line)}
 .msg ol.annos .anno-body>span{white-space:normal}
-.sm-annobtn{width:100%;text-align:left}
 #selbar #selannotate.on,.pc-ib[data-annotate].on{background:#e8590c;border-color:#e8590c;color:#fff}
 .sm-mapnote{display:inline-flex;align-items:center;gap:4px}.sm-mapnote.on{border-color:#e8590c!important}.sm-mapnote .sm-pin{box-shadow:none}
 .msg.user ol.annos .anno-what{color:inherit;opacity:.8}
@@ -1743,3 +1742,7 @@ body[data-noproject] #projpick{display:none}
 .anpop-note.linked{color:var(--mute);font-style:italic}.anpop-link{font-size:12px}
 .chip.anno.link .anno-note{font-weight:400;font-style:italic;color:var(--mute)}
 .msg ol.annos .anno-note.link{font-weight:400;font-style:italic;opacity:.8}
+.smside-anno{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;margin-left:auto;border:1px solid transparent;border-radius:8px;background:none;color:var(--mute)}.smside-anno:hover{background:var(--bg);border-color:var(--line);color:var(--fg)}.smside-anno .ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.smside-anno.on{color:#e8590c}.smside-anno .sm-pin{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;font-size:9.5px;line-height:16px;padding:0 3px}
+.sm-acts .smside-anno{margin-left:0;border-color:var(--line)}
+/* the row of the map: the note on the whole map (content) on the left, the tools of the view on the right */
+.sm-review>.sm-mapnote{margin-right:auto}.sm-review>.pc-treetools{margin-left:auto}.sm-review>.sm-mapnote+.pc-treetools,.sm-review>.sm-mapnote~*:not(.pc-treetools)~.pc-treetools{margin-left:0}

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { INJECT } from "../src/renderer/inspector.js";
-import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, popoverSpot, mapWhere, MAP_WHOLE } from "../src/renderer/annotations.js";
+import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, popoverSpot, mapWhere, renumbering, renumberText, MAP_WHOLE } from "../src/renderer/annotations.js";
 
 const button = (o = {}) => ({ kind: "screen", file: "a.html", text: "Save", chain: [{ name: "Uu5Elements.Button", ordinal: 4 }, { name: "Uu5Elements.Box", ordinal: 2 }], element: { name: "Uu5Elements.Button", snippet: "<Uu5Elements.Button>" }, ...o });
 const page = (o = {}) => ({ kind: "sitemap", scope: "project", id: "n7", title: "Exams", type: "page", file: "exams.html", where: "Portal > Study > Exams", ...o });
@@ -73,4 +73,12 @@ test("one place can carry several notes: each is an annotation of its own with i
   const ctx = annotationsContext([a, b]);
   assert.match(ctx, /#1\) the uu5 component Uu5Elements.Button[\s\S]*"make it red"[\s\S]*#2\) the uu5 component Uu5Elements.Button[\s\S]*"and bigger"/);
   assert.match(INJECT, /label\(key, n\) \{ const e = sel\.get\(key\); if \(e\) \{ e\.n = n \? String\(n\) : ""/); // "1,2" on the frame
+});
+
+test("after a removal the places are numbered 1…n again and the links in the text follow", () => {
+  assert.deepEqual([...renumbering([1, 3, 4])], [[3, 2], [4, 3]]);
+  assert.equal(renumbering([1, 2]).size, 0);
+  const map = renumbering([2, 3]); // #1 went
+  assert.equal(renumberText("move [#3] under [#2], keep [#9] and #3", map), "move [#2] under [#1], keep [#9] and #3"); // all at once, only links
+  assert.equal(renumberText("x", new Map()), "x");
 });

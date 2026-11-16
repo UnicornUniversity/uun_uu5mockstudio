@@ -68,3 +68,15 @@ export function popoverSpot(anchor, size, win, gap = 8) {
   const top = below + size.h <= win.h - gap || above < gap ? Math.min(below, win.h - size.h - gap) : above;
   return { left: Math.round(left), top: Math.round(Math.max(gap, top)) };
 }
+
+/** The numbers after some were removed: 1…n in the order the places were added. Returns Map(old -> new) of the ones that change. */
+export function renumbering(refs) {
+  const m = new Map();
+  refs.forEach((r, i) => { if (r !== i + 1) m.set(r, i + 1); });
+  return m;
+}
+/** The links [#n] of the text with their new numbers (all at once, so that [#3] -> [#2] does not meet a [#2] -> [#1]). */
+export function renumberText(text, map) {
+  if (!map?.size) return text;
+  return String(text).replace(/\[#(\d+)\]/g, (all, n) => (map.has(Number(n)) ? `[#${map.get(Number(n))}]` : all));
+}

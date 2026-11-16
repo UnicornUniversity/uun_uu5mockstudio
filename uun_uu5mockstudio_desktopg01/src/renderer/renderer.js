@@ -1,6 +1,6 @@
 import { createCanvas, DEVICES } from "./canvas.js";
 import { createInspector, describePick, updateSelection, MAX_MARKED } from "./inspector.js";
-import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, MAX_ANNOTATIONS, MAP_WHOLE } from "./annotations.js";
+import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, renumbering, renumberText, MAX_ANNOTATIONS, MAP_WHOLE } from "./annotations.js";
 import { createAnnotatePopover } from "./annotatePopover.js";
 import { createPropsPanel } from "./propsPanel.js";
 import { createIconPicker } from "./iconPicker.js";
@@ -1192,8 +1192,26 @@ function renderChips() {
 }
 function removeChip(c) {
   removeRef(c);
-  chips = chips.filter((x) => x !== c); renderChips();
-  if (c.kind === "sitemap") planCards.repaint?.(); else if (annotating) relabelScreen(c); else dropMark(c); // the other notes of the same component keep its frame
+  chips = chips.filter((x) => x !== c);
+  afterRemoval([c]);
+}
+/**
+ * Places left the message: the others are numbered 1…n again (no gaps; the links [#n] in the text follow), the chips are drawn again
+ * and the numbers on the screens and on the map follow; a component without notes or links loses its frame.
+ */
+function afterRemoval(gone) {
+  const map = renumbering(chips.map((c) => c.ref));
+  chipSeq = chips.length;
+  if (map.size) {
+    const t = $("prompt"), at = t.selectionStart, before = t.value;
+    t.value = renumberText(before, map);
+    if (t.value !== before) t.setSelectionRange(Math.min(at, t.value.length), Math.min(at, t.value.length));
+    for (const c of chips) c.ref = map.get(c.ref) ?? c.ref;
+  }
+  renderChips();
+  if ([...gone, ...chips].some((c) => c.kind === "sitemap")) planCards.repaint?.();
+  const places = new Map(); for (const c of [...gone, ...(map.size ? chips : [])]) if (c.kind !== "sitemap" && c.key) places.set(`${c.file}|${c.key}`, c);
+  for (const c of places.values()) { if (annotating) relabelScreen(c); else if (gone.includes(c)) dropMark(c); }
 }
 /** A click on a chip: the screen of the component comes into view and the component is framed for a moment. */
 async function showChip(c) {
@@ -1366,8 +1384,7 @@ function syncChipsWithText() {
   const text = $("prompt").value, keep = chips.filter((c) => isNote(c) || new RegExp(`\\[#${c.ref}\\]`).test(text));
   if (keep.length === chips.length) return;
   const gone = chips.filter((c) => !keep.includes(c));
-  chips = keep; renderChips();
-  for (const c of gone) { if (annotating) relabelScreen(c); else dropMark(c); }
+  chips = keep; afterRemoval(gone);
 }
 $("prompt").addEventListener("input", syncChipsWithText);
 function removeRef(p) { const t = $("prompt"); t.value = t.value.replace(new RegExp(`\\s?\\[#${p.ref}\\]`), ""); }
@@ -2145,7 +2162,12 @@ function loadProject(info) {
   syncFrames(info.screens);
   showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); refreshBrandFlag(); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
   window.studio.plansList().then((list) => { if (!list.error && project === info.project) onPlansChanged(list); });
-  window.studio.sitemapRead().then((r) => { if (project === info.project) setProjectSitemap(r?.error ? null : r); });
+  window.studio.sitemapRead().then((r) => {
+    if (project !== info.project) return;
+    setProjectSitemap(r?.error ? null : r);
+    // a project with a sitemap and no screen yet opens on the map: the empty canvas has nothing to show
+    if (projectSitemap && !canvas.files().length && !planCards.viewKey()) planCards.focus("@sitemap");
+  });
   if (info.layout?.camera) canvas.setCamera(info.layout.camera, false); else setTimeout(() => canvas.fitAll(false), 300);
   if (project) plus4uBar?.refresh({ remote: true }); else plus4uBar?.clear();
   $("projname").textContent = project || "No project"; $("projbtn").title = project ? `Project: ${project}` : "Open or create a project";

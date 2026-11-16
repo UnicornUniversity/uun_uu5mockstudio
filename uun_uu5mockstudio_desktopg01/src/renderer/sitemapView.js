@@ -16,6 +16,7 @@ const IC = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>', down: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
   indent: '<path d="M3 6h18M12 12h9M3 18h18M3 9l3 3-3 3"/>', outdent: '<path d="M3 6h18M12 12h9M3 18h18M6 9l-3 3 3 3"/>',
+  annotate: '<path d="M4 9V6a2 2 0 0 1 2-2h3"/><path d="M15 4h3a2 2 0 0 1 2 2v3"/><path d="M4 15v3a2 2 0 0 0 2 2h3"/><path d="M12.5 12.5l8 3.1-3.4 1.4-1.4 3.4z"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
 
@@ -288,32 +289,40 @@ export function renderSitemap(sm, opts) {
   };
 
   const chosen = sels.filter((p) => getNode(sm, p));
-  const sideTitle = (t, closable = false) => {
-    const aside = opts.editorHost?.closest("aside"), head = aside?.querySelector(".insp-head"); if (!head) return;
+  /**
+   * Annotate as an action on the selected page(s), not a box in the panel: the icon of the Annotate mode, with the numbers of the page's annotations on it.
+   * The notes themselves are edited in the window at the page (and travel with the message).
+   */
+  const annoButton = (paths) => {
+    if (!onAnnotate) return null;
+    const refs = paths.map((p) => pins.get(getNode(sm, p)?.id)).filter(Boolean), many = paths.length > 1;
+    const what = many ? `the ${paths.length} pages` : "this page";
+    const b = el("button", { type: "button", className: `icon smside-anno${refs.length ? " on" : ""}`, title: refs.length ? `Annotations #${refs.join(", #").replace(/,(?=\d)/g, ", #")} of your next message: edit them or add another (A)` : `Annotate ${what}: write what should change; the note goes with your next message (A)`, innerHTML: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${IC.annotate}</svg>` });
+    b.setAttribute("aria-label", refs.length ? `Annotations of ${what}` : `Annotate ${what}`);
+    if (refs.length) b.append(el("span", { className: "sm-pin", textContent: refs.join(","), "aria-hidden": "true" }));
+    b.onclick = () => annotate(paths);
+    return b;
+  };
+  const sideTitle = (t, closable = false, paths = []) => {
+    const aside = opts.editorHost?.closest("aside"), head = aside?.querySelector(".insp-head"); if (!head) return false;
     aside.hidden = false; // a page is selected: the panel is there
     head.querySelector("h3").textContent = t;
     let x = head.querySelector(".smside-x"); if (!x) { x = el("button", { type: "button", className: "icon smside-x", textContent: "×", title: "Deselect the page", "aria-label": "Deselect the page" }); head.append(x); }
     x.hidden = !closable; x.onclick = () => onSelect?.(null, false);
+    head.querySelector(".smside-anno")?.remove();
+    const a = paths.length ? annoButton(paths) : null; if (a) x.before(a);
+    return true;
   };
   const out = opts.editorHost ?? root; // the editor of the selected page(s): in the side panel when there is one, else below the map
   if (opts.editorHost) out.replaceChildren();
-  if (chosen.length > 1) { sideTitle(`${chosen.length} pages`, true); out.append(multiEditor(chosen)); return root; }
+  if (chosen.length > 1) { const inPanel = sideTitle(`${chosen.length} pages`, true, chosen); out.append(multiEditor(chosen, inPanel)); return root; }
   const node = sel ? getNode(sm, sel) : null;
   if (!node) { const a = opts.editorHost?.closest("aside"); if (a) a.hidden = true; /* nothing selected: no panel, the map has the whole width */ out.append(el("p", { className: "mute sm-hint", textContent: "Select a page to rename it, change its type or screen, add pages or move them. Shift / ⌘ + click selects more pages to change or annotate them together." })); return root; }
 
-  /** The note for the next message (an annotation), instead of the comments the pages once kept. */
-  const annoBox = (paths, label) => {
-    const n = paths.map((p) => getNode(sm, p)?.id).filter((id) => pins.has(id));
-    const b = el("button", { type: "button", className: "sm-annobtn", textContent: n.length ? `${label.replace(/…$/, "")} (has #${n.map((id) => pins.get(id)).join(", #").replace(/,(?=\d)/g, ", #")})…` : label, title: "Write what should change: the note goes with your next message, the agent revises the map and you approve it" });
-    b.onclick = () => annotate(paths);
-    return onAnnotate ? el("div", { className: "sm-cbox" }, b) : null;
-  };
-
   // ----- several pages selected: one note (or one type) for all of them
-  function multiEditor(paths) {
+  function multiEditor(paths, inPanel) {
     const nodes = paths.map((p) => getNode(sm, p));
     const bulk = (patch) => onBulk?.(updateNodes(sm, paths, patch));
-    const cbox = annoBox(paths, `Annotate the ${paths.length} pages…`);
     const type = el("select", { "aria-label": "Type of all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), ...TYPES.map((t) => el("option", { value: t, textContent: TYPE_LABEL[t] })));
     type.onchange = () => { if (type.value && okToChange(nodes, "Change the type")) bulk({ type: type.value }); else type.value = ""; };
     const ap = el("select", { "aria-label": "Approved, for all the selected pages" }, el("option", { value: "", textContent: "(keep)" }), el("option", { value: "1", textContent: "Yes, approved" }), el("option", { value: "0", textContent: "No, not yet" }));
@@ -323,8 +332,8 @@ export function renderSitemap(sm, opts) {
     ns.onchange = () => { if (ns.value) onBulk?.(updateNodes(sm, flagPaths, { notSolved: ns.value === "1" })); };
     return el("div", { className: "sm-edit", role: "group", "aria-label": `${paths.length} selected pages` },
       el("div", { className: "sm-multi" }, el("b", { textContent: `${paths.length} pages selected` }), el("span", { className: "mute", textContent: nodes.map((n) => n.title).join(" · ") })),
-      cbox, el("div", { className: "sm-settings" }, field("Type", type), field("Not solved here", ns), field("Approved", ap)),
-      el("div", { className: "sm-acts" }, el("button", { type: "button", textContent: "Clear the selection", onclick: () => onSelect?.(paths[paths.length - 1], false) }), createMany(paths)));
+      el("div", { className: "sm-settings" }, field("Type", type), field("Not solved here", ns), field("Approved", ap)),
+      el("div", { className: "sm-acts" }, inPanel ? null : annoButton(paths), el("button", { type: "button", textContent: "Clear the selection", onclick: () => onSelect?.(paths[paths.length - 1], false) }), createMany(paths)));
   }
   /** Several pages at once: the screens are created for the selected pages only, not for the whole map. */
   function createMany(paths) {
@@ -374,14 +383,13 @@ export function renderSitemap(sm, opts) {
     const cb = el("input", { type: "checkbox", checked: Boolean(node.approved) }); cb.onchange = () => set({ approved: cb.checked });
     return el("label", { className: "sm-f sm-flag", title: "You have reviewed this page: the agent keeps it as it is on a revision, and changing it here asks first when it has a screen" }, cb, el("span", { textContent: "Approved" }));
   }
-  const cbox = annoBox([sel], "Annotate this page…");
-  sideTitle(node.title, true);
+  const inPanel = sideTitle(node.title, true, [sel]);
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
-    cbox,
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
     el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, node.type !== "external" ? approveField() : null, field("Screen file", screenField()), field("Note", text(node.note, "note", "What the page is for")), field("Source", sourceField())),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
+      inPanel ? null : annoButton([sel]), // on the card (no side panel) the action sits with the others
       // one row of icon buttons (the name is in the tooltip): add | move | delete; the screen is the one primary button
       el("div", { className: "sm-bar", role: "toolbar", "aria-label": "Actions on the page" },
         ibtn(IC.inside, `Add a ${word(childType(sm, node))} inside this one`, () => act(addChild(sm, sel))), ibtn(IC.after, `Add a ${portal && ["page", "sheet", "section"].includes(node.type) ? word(node.type) : "page"} after this one (next to it)`, () => act(addSibling(sm, sel))), ibtn(IC.copy, "Duplicate this page (a copy right after it)", () => act(duplicateNode(sm, sel)), !sel.length || node.children.length > 0, "", sel.length ? "only a page without sub-pages can be duplicated" : "the root cannot be duplicated"), el("span", { className: "sm-bsep" }),
