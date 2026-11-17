@@ -41,3 +41,16 @@ test("the outline for the agent names pages, types, files and notes", () => {
   assert.equal(out, "- Portal -> index.html\n  - A [section] (part)\n  - B -> b.html");
   assert.match(sitemapOutline(sm("x"), { limit: 10 }), /shortened/);
 });
+
+test("deleting a screen takes its page out of sitemap.json, keeps the map before and notes what went", async () => {
+  const { sitemapPagesOf, forgetScreenInSitemap } = await import("../src/main/sitemapFile.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uu5studio-smdel-"));
+  await writeSitemap(dir, { root: { title: "Home", children: [{ title: "Orders", file: "orders.html", children: [{ title: "Detail", file: "detail.html" }] }] } });
+  assert.equal((await sitemapPagesOf(dir, "orders.html")).length, 1);
+  assert.deepEqual(await forgetScreenInSitemap(dir, "orders.html"), [{ title: "Orders", where: "Home" }]);
+  const r = await readSitemap(dir);
+  assert.deepEqual(r.sitemap.root.children.map((c) => c.title), ["Detail"]); assert.ok(r.hasPrev);
+  assert.match(fs.readFileSync(path.join(dir, ".studio", "removed-screen-memory.md"), "utf8"), /“Orders” \(under Home\)/);
+  assert.deepEqual(await forgetScreenInSitemap(dir, "nothing.html"), []);
+  assert.deepEqual(await forgetScreenInSitemap(fs.mkdtempSync(path.join(os.tmpdir(), "uu5studio-smnone-")), "a.html"), []); // no sitemap
+});

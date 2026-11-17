@@ -14,7 +14,7 @@
 | `<project>/.studio/template/` | main (`templates.mjs`) | `template.json` + `TEMPLATE.md` of the template the project was started from (read by the agent) |
 | `<project>/.studio/attachments/` | main | images attached to messages (read by the agent, never edited) |
 | `<project>/.studio/removed-screen-memory.md` | main | rules and descriptions removed with a deleted screen (a log, by date) |
-| `<userData>/app-state.json` | main | `lastProject` (remembered but unused: the app always starts on the dashboard), `projectsRoot` (the chosen projects folder), `offline` (CDN mode), `glass`, `tourSeen`, `updateCheckedAt` / `updateLater` (app updates), `pluginsCheckedAt` / `pluginsLater` / `pluginUpdates` (plugin updates) |
+| `<userData>/app-state.json` | main | `lastProject` (remembered but unused: the app always starts on the dashboard), `projectsRoot` (the chosen projects folder), `offline` (CDN mode), `glass`, `tourSeen` (the version of the tour that was closed, `TOUR_VERSION` in `tourVersion.mjs`; an old `true` counts as 1), `updateCheckedAt` / `updateLater` (app updates), `pluginsCheckedAt` / `pluginsLater` / `pluginUpdates` (plugin updates) |
 | `<userData>/uubml.json` | main | cache of the uuBml catalog |
 
 `<projects>` is **Documents/uu5Mock Studio** in a packaged app and `./projects` in a development run; a folder chosen in **Project → Projects Folder** wins, and `STUDIO_PROJECTS_DIR` beats everything (used by tests).
@@ -43,6 +43,10 @@ An item is `- R-nnn [(screen: name)] text`; the next id is the highest plus one 
 - **Chat entries** are saved in `state.json`: `{ kind: "user", text, images? }`, `{ kind: "ai", text }`, `{ kind: "steps", steps }`, `{ kind: "note" | "err", text }`, `{ kind: "usage", in, out, cacheRead, cacheWrite, models, cum, ctx, sofar? }` (tokens of one request, `cum` the cumulative counters, `ctx` the context size; see `usage.js`), `{ kind: "plan", text, tree, questions, answers, original, state, mode, sel, … }`. Transient flags are not saved (`planning`, `full`).
 - **localStorage** (view preferences only; nothing the user would miss): `uu5studio.planMode`, `uu5studio.chat` / `uu5studio.chatfs` (chat dock geometry and state, normal and fullscreen), `uu5studio.fsnote2` (notes panel in fullscreen), `uu5studio.selbarPos` (bar over a screen), `uu5studio.rulesMode`, `uu5studio.rulesScope`, `uu5studio.rulesCollapsed` (rolled up sections), `uu5studio.defaultModel`, theme keys.
 - **Canvas layout** (positions and sizes of frames, device per frame, camera) is saved per project with `layout:save` into `state.json`.
+
+## Copy / paste of a screen
+
+`screenClip.mjs`: `bundleScreen` snapshots the screen, its media (`findAssets`, base64), its `.notes.md`, its rules (`screenRules`: the `## Screen:` section and `(screen: name)` items elsewhere) and its description; `pasteScreen` writes the bundle under a free name (`freeName`), keeps a media file that already has the same bytes, renames a different one and rewrites the reference, adds the rules as a new `## Screen:` section with the next free `R-nnn` (`addScreenRules`) and reports links to screens that are not there. Comments, sitemap, chats and plans are not copied.
 
 ## Screens and the preview
 

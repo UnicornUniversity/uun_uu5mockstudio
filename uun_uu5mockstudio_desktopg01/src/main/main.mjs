@@ -25,7 +25,7 @@ import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip } from "./exporter.mjs";
 import { gatherHandoff, buildHandoff } from "./handoff.mjs";
 import { findFlowEdges } from "./flow.mjs";
-import { SITEMAP_FILE, readSitemap, writeSitemap, restoreSitemap } from "./sitemapFile.mjs";
+import { SITEMAP_FILE, readSitemap, writeSitemap, restoreSitemap, sitemapPagesOf, forgetScreenInSitemap } from "./sitemapFile.mjs";
 import { PLANS_DIR, listPlans, readPlan, writePlan, savePlan, removePlan, withStatus, STATUSES } from "./plans.mjs";
 import { readComments, changeComments, screensWithComments, defaultAuthor } from "./comments.mjs";
 import { findAssets, writeUu5Assets } from "./assets.mjs";
@@ -63,6 +63,8 @@ import { loadIcons } from "./uuGdsIcons.mjs";
 import { loadMdi } from "./mdiIcons.mjs";
 import { validateRepo, listRepoFiles, listBranches, snapshotBranch } from "./repo.mjs";
 import { keepVariantFiles } from "./variantKeep.mjs";
+import { bundleScreen, bundleFromHtml, pasteScreen, looksLikeScreen } from "./screenClip.mjs";
+import { TOUR_VERSION, tourSeenNow } from "./tourVersion.mjs";
 import { RULES_FILE, GLOBAL_FILE, readGlobalRules, writeGlobalRules, appendGlobalRule, readRules, writeRules, readProject, writeProject, migrateDescriptions, appendRule, summarizeChange, readNotes, writeNotes, newNoteId, notePath, screensWithNotes, screenMemoryInfo, forgetScreen } from "./rules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -1272,7 +1274,7 @@ app.whenReady().then(async () => {
     return { shared: true, method: "eml", path: eml };
   }));
   ipcMain.handle("screen:reveal", guard((_e, file) => void shell.showItemInFolder(path.join(dir(), path.basename(String(file))))));
-  ipcMain.handle("screen:deleteInfo", guard((_e, file) => screenMemoryInfo(dir(), path.basename(String(file)))));
+  ipcMain.handle("screen:deleteInfo", guard(async (_e, file) => ({ ...(await screenMemoryInfo(dir(), path.basename(String(file)))), sitemap: (await sitemapPagesOf(dir(), path.basename(String(file)))).length })));
   ipcMain.handle("screen:delete", guard(async (_e, file) => {
     const name = path.basename(String(file));
     if (!name.endsWith(".html")) throw new Error("Only .html screens can be deleted.");
@@ -1282,7 +1284,28 @@ app.whenReady().then(async () => {
     if (fs.existsSync(target)) throw new Error(`Could not delete file ${name}.`);
     const note = notePath(dir(), name); if (fs.existsSync(note)) await shell.trashItem(note); // the note goes with its screen
     const memory = await forgetScreen(dir(), name); // and so do its rules and its description (a copy stays in .studio/removed-screen-memory.md)
-    return { ok: true, ...memory };
+    const pages = await forgetScreenInSitemap(dir(), name); // and its pages in the sitemap (the sitemap before is the previous version)
+    return { ok: true, ...memory, sitemap: pages.length };
+  }));
+
+  // ----- copy / paste of a screen (also into another project): the clipboard gets the HTML as text, the whole screen (media, notes, rules,
+  // description) is kept here while that text is still on the clipboard; HTML of a mockup copied elsewhere is pasted as a screen too
+  let screenClip = null; // { text, bundle }
+  ipcMain.handle("screen:copy", guard(async (_e, file) => {
+    const bundle = await bundleScreen(dir(), path.basename(String(file)));
+    await clipboard.writeText(bundle.html); screenClip = { text: bundle.html, bundle };
+    return { ok: true, file: bundle.file, media: bundle.media.length, rules: (bundle.rules.match(/^\s*[-*]\s+R-\d+/gm) ?? []).length, notes: Boolean(bundle.notes.trim()), description: Boolean(bundle.description) };
+  }));
+  ipcMain.handle("screen:paste", guard(async () => {
+    const text = String(await clipboard.readText() ?? ""); // this Electron's clipboard is asynchronous
+    const bundle = screenClip && text === screenClip.text ? screenClip.bundle : looksLikeScreen(text) ? bundleFromHtml(text) : null;
+    if (!bundle) return { none: true };
+    return pasteScreen(dir(), bundle);
+  }));
+  ipcMain.handle("screen:copyTo", guard(async (_e, file, project) => {
+    const name = String(project ?? "");
+    if (!(await projects.list()).some((p) => p.name === name)) throw new Error(`The project “${name}” does not exist.`);
+    return { ...(await pasteScreen(projects.dirOf(name), await bundleScreen(dir(), path.basename(String(file))))), project: name };
   }));
 
   // ----- project memory: a linked git repository (read-only for the agent), business rules, notes of a screen
@@ -1423,7 +1446,7 @@ app.whenReady().then(async () => {
     } finally { fs.rmSync(work, { recursive: true, force: true }); }
   });
   // the welcome tour is shown on the first run only (STUDIO_NO_TOUR: tests and the demo recorder start from a fresh profile)
-  ipcMain.handle("tour:done", () => void saveApp({ tourSeen: true }));
+  ipcMain.handle("tour:done", () => void saveApp({ tourSeen: TOUR_VERSION })); // the version seen: a newer tour opens once more (tourVersion.mjs)
   // the role of the user (role.js): chosen once, changeable in Help; an unknown value is refused
   ipcMain.handle("role:set", (_e, role) => { if (!isRole(role)) return { error: "Unknown role." }; saveApp({ role, roleAsked: true }); return { ok: true, role }; });
   ipcMain.handle("role:skip", () => { saveApp({ roleAsked: true }); return { ok: true }; });
@@ -1433,7 +1456,7 @@ app.whenReady().then(async () => {
   const depVersion = (name) => { try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "node_modules", name, "package.json"), "utf8")).version; } catch { return null; } };
   nativeTheme.on("updated", () => emit("glass:set", glassOn())); // Reduce transparency was switched in System Settings
   ipcMain.handle("app:meta", async () => ({
-    version: app.getVersion(), platform: process.platform, glass: glassOn(), tourSeen: Boolean(loadApp().tourSeen) || Boolean(process.env.STUDIO_NO_TOUR), role: isRole(loadApp().role) ? loadApp().role : null, roleAsked: Boolean(loadApp().roleAsked) || Boolean(process.env.STUDIO_NO_TOUR), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
+    version: app.getVersion(), platform: process.platform, glass: glassOn(), tourSeen: tourSeenNow(loadApp().tourSeen) || Boolean(process.env.STUDIO_NO_TOUR), role: isRole(loadApp().role) ? loadApp().role : null, roleAsked: Boolean(loadApp().roleAsked) || Boolean(process.env.STUDIO_NO_TOUR), updates: updater.enabled, selfUpdate: await selfUpdateOk(), appUpdate: updater.enabled ? null : knownUpdate(),
     runtime: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     deps: Object.fromEntries(["@anthropic-ai/claude-agent-sdk", "@babel/parser", "fflate", "electron-updater"].map((n) => [n, depVersion(n)])),
   }));

@@ -96,6 +96,11 @@ export function buildMenuTemplate({ platform = process.platform, appName = "uu5M
       item("Add Rule…", "screen:rule", { enabled: has }),
       item("Mention in Chat", "screen:mention", { enabled: has }),
       sep,
+      // ⌘C / ⌘V on the canvas do the same (the renderer handles the copy / paste events); shown here, not registered, so text fields keep them
+      item("Copy Screen", "screen:copy", { enabled: has, accelerator: "CmdOrCtrl+C", registerAccelerator: false }),
+      item("Paste Screen", "screen:paste", { enabled: has, accelerator: "CmdOrCtrl+V", registerAccelerator: false }),
+      { label: "Copy to Project", enabled: has && projects.some((p) => p.name !== current), submenu: projects.filter((p) => p.name !== current).map((p) => ({ label: p.name, click: act("screen:copyto:" + p.name) })).concat(projects.length > 1 ? [] : [{ label: "(no other project)", enabled: false }]) },
+      sep,
       item(`Show in ${fileManager}`, "screen:reveal", { enabled: has }),
       item("Delete Screen…", "screen:delete", { enabled: has }),
     ],

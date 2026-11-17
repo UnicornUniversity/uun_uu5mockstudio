@@ -23,7 +23,7 @@
 | `planTree.js` | Pure functions of the plan: normalize, extract (`extractPlan`: text, tree, questions; a drawn ASCII tree is parsed too), edit by path, `moveTo`, `layoutTree`, `dropTarget`, `describeEdits`, `approvalMessage`, `regenerateMessage`. |
 | `planView.js`, `planDiagram.js` | The plan card (questions, outline, editor) and the interactive SVG/HTML diagram with zoom, collapse and drag and drop. |
 | `structureDialog.js` | The component tree of a screen or of one component; logs the moves for the file; Regenerate. |
-| `setup.js`, `tour.js` | First-run setup dialog; the welcome tour. |
+| `setup.js`, `tour.js` | First-run setup dialog; the welcome tour (`CARDS`: a card with `advanced` is left out in the simple view, `key` picks a simpler text from `TOUR_TEXT` in `role.js`; the text box takes the height of the longest text). When new cards should reach everybody, raise `TOUR_VERSION` in `src/main/tourVersion.mjs`: the tour then opens once more for those who closed an older one. |
 | `planView.js` (`renderTree`) | The tree section (diagram / outline switch, detail on click) is `renderTree(entry, ctx, opts)`, used by the chat card and by the plan card on the canvas. |
 | `sitemap.js`, `sitemapView.js` | The sitemap of a portal (pure model and edits by path; the map with the page editor). |
 | `siteStructure.js`, `sitePicker.js` | Sitemap from a link: the structure of a web site, a uuBookKit book or a uuManagementKit document as a tree to pick from (pure), and the dialog with the ticks. |
@@ -39,7 +39,7 @@
 ## Guide, comments, flow, variants
 
 - `guide.js` (pure: the types, `buildGuidePrompt`) and `guideDialog.js`: "Guide me…" on the dashboard; the result is put into the message field with `dashboard.fill(text, templateId)`.
-- `main/comments.mjs` (files `<screen>.comments.json`, `changeComments`), `commentsPanel.js` (the dialog, the toolbar badge, "Comment on this" in `propsPanel`); `main/handoff.mjs` assembles the specification (`gatherHandoff` + the pure `buildHandoff`); IPC `export:handoff`, `comments:*`.
+- `main/comments.mjs` (files `<screen>.comments.json`, `changeComments`), `commentsPanel.js` (the dialog, the toolbar badge, "Comment on this" in `propsPanel`; hidden while `COMMENTS` in `features.js` is false: `body.comments-off` hides the entry points, the files and the export stay); `main/handoff.mjs` assembles the specification (`gatherHandoff` + the pure `buildHandoff`); IPC `export:handoff`, `comments:*`.
 - `main/flow.mjs` (`findFlowEdges`: which screen names which file as a string) and `flowLayer.js`: an SVG in the canvas world, drawn from `canvas.rects()`; refreshed on `preview:changed` and when a project opens.
 - `variants.js` (pure `buildVariantsPrompt`) and `variantsDialog.js`: "Screen → Variants…" sends one request to the agent.
 

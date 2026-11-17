@@ -249,6 +249,24 @@ export function reviseMessage({ slug, sm, notes = [], body = "" }) {
   ].join("\n");
 }
 
+/**
+ * The map without the pages of a deleted screen: every node whose `file` is `file` goes; its sub-pages take its place. The root stays and only
+ * loses the link. -> { sitemap, removed: [{ title, where }] } (`where` = the titles of the path), the same sitemap when nothing names the file.
+ */
+export function dropScreen(sm, file) {
+  if (!sm?.root) return { sitemap: sm, removed: [] };
+  const name = String(file).toLowerCase(), removed = [];
+  const walk = (n, trail) => n.children.flatMap((c) => {
+    const kids = walk(c, [...trail, c.title]);
+    if (String(c.file ?? "").toLowerCase() !== name) return [{ ...c, children: kids }];
+    removed.push({ title: c.title, where: trail.join(" > ") });
+    return kids;
+  });
+  const root = { ...sm.root, children: walk(sm.root, [sm.root.title]) };
+  if (String(root.file ?? "").toLowerCase() === name) { delete root.file; removed.unshift({ title: root.title, where: "", root: true }); }
+  return removed.length ? { sitemap: { ...sm, root }, removed } : { sitemap: sm, removed };
+}
+
 // ---------------------------------------------------------------- the map and the screens that really exist
 /** file -> path of the node that names it. */
 export function fileNodes(sm) {

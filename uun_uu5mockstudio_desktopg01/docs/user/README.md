@@ -3,7 +3,7 @@
 This guide is for people who design screens with the app. It follows what you do, from the first start to sharing a result.
 
 1. [Getting started](01-getting-started.md): install, first start, setup of Claude Code and the plugins, the welcome tour.
-2. [Projects, screens and the canvas](02-projects-screens-canvas.md): where the files live, zoom and pan, device sizes, presenting, notes.
+2. [Projects, screens and the canvas](02-projects-screens-canvas.md): where the files live, zoom and pan, device sizes, presenting, notes, copying a screen into another project.
 3. [The chat and the agent](03-chat-and-agent.md): describe a screen, attach images, mention things with `@`, annotate screens and the sitemap, the Agent and Plan modes.
 4. [Plan mode](04-plan-mode.md): a plan with questions and a component tree you can rearrange, then build it.
 5. [The inspector](05-inspector.md): pick a component, change its props, edit lists of actions, undo and redo.

@@ -1,3 +1,4 @@
+import { COMMENTS } from "./features.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
 
@@ -111,13 +112,13 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
       if (box) { box.replaceChildren(Object.assign(document.createElement("img"), { src: img, alt: "", draggable: false })); box.classList.add("has"); }
     }
   }
-  const isWaiting = (p) => Boolean(p.plans || p.comments || p.mapComments || p.variants);
+  const isWaiting = (p) => Boolean(p.plans || (COMMENTS && p.comments) || p.mapComments || p.variants);
   /** Small pills for what waits in a project: a plan to approve, open comments. null when nothing does. */
   function badges(p, { all = true } = {}) {
     const row = el("span", "dc-tags"), tag = (text, cls = "") => row.append(el("span", `dc-tag ${cls}`.trim(), text)), n = (k, one, many) => (k === 1 ? one : `${k} ${many}`);
     if (p.plans) tag(n(p.plans, "Plan to approve", "plans to approve"), "plan");
     if (p.variants) tag(n(p.variants, "1 variant to choose", "variants to choose"), "plan");
-    if (p.comments) tag(`${p.comments} open comment${p.comments === 1 ? "" : "s"}`);
+    if (COMMENTS && p.comments) tag(`${p.comments} open comment${p.comments === 1 ? "" : "s"}`);
     if (p.mapComments) tag(`${p.mapComments} comment${p.mapComments === 1 ? "" : "s"} in the map`);
     if (all && p.notes) tag(`${p.notes} note${p.notes === 1 ? "" : "s"}`, "soft");
     return row.childElementCount ? row : null;
@@ -142,7 +143,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   function paint() {
     paintAttention();
     const q = search.value.trim().toLowerCase(), my = ++seq;
-    let shown = projects.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (filter === "all" || (filter === "plans" ? p.plans : filter === "variants" ? p.variants : (p.comments || 0) + (p.mapComments || 0)) > 0));
+    let shown = projects.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (filter === "all" || (filter === "plans" ? p.plans : filter === "variants" ? p.variants : (COMMENTS ? p.comments || 0 : 0) + (p.mapComments || 0)) > 0));
     if (section === "waiting") shown = shown.filter(isWaiting);
     shown = section === "all" ? shown.sort((a, b) => a.name.localeCompare(b.name, "en")) : shown.sort((a, b) => b.updated - a.updated).slice(0, q ? 100 : 24);
     const cards = shown.map((p) => {

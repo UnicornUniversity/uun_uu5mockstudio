@@ -16,6 +16,7 @@ import { createImageGenDialog } from "./imageGenDialog.js";
 import { createSettingsDialog } from "./settingsDialog.js";
 import { createGuideDialog } from "./guideDialog.js";
 import { createCommentsPanel } from "./commentsPanel.js";
+import { COMMENTS } from "./features.js";
 import { createFlowLayer } from "./flowLayer.js";
 import { createVariantLayer, groupVariants } from "./variantLayer.js";
 import { createVariantsDialog } from "./variantsDialog.js";
@@ -762,7 +763,7 @@ const canvas = createCanvas({
   onReady: (file, id) => window.studio.registerView(file, id),
   onDelete: (file) => deleteScreen(file),
   onFullscreen: (file) => toggleFullscreen(file),
-  onComments: (file) => comments.open({ screen: file }),
+  onComments: (file) => COMMENTS && comments.open({ screen: file }),
   onNavigate: (from, to) => { canvas.reload(from); canvas.focus(to); toast(`${from.replace(/\.html$/, "")} leads to ${to.replace(/\.html$/, "")}.`); }, // a link in a screen: show the screen it leads to, this one is put back
   onTemplate: (file) => saveAsTemplate(file),
   onRequestSize: askSize,
@@ -981,12 +982,12 @@ async function deletePlan(slug, title) {
 async function deleteScreen(file) {
   const name = file.replace(/\.html$/, "");
   const info = await window.studio.screenDeleteInfo(file).catch(() => null);
-  const also = info ? [info.rules ? `${info.rules} business rule${info.rules === 1 ? "" : "s"}` : "", info.description ? "its description" : "", info.notes ? `${info.notes} note${info.notes === 1 ? "" : "s"}` : ""].filter(Boolean) : [];
-  const ok = await askConfirm({ title: `Delete the screen “${name}”?`, detail: `The file ${file} will be removed from the project “${project}”. It is moved to the trash, so you can restore it.${also.length ? ` What belongs to the screen goes with it: ${also.join(", ")}. The rules and the description are copied to .studio/removed-screen-memory.md in the project, so they can be restored by hand.` : ""}`, ok: "Delete screen" });
+  const also = info ? [info.rules ? `${info.rules} business rule${info.rules === 1 ? "" : "s"}` : "", info.description ? "its description" : "", info.notes ? `${info.notes} note${info.notes === 1 ? "" : "s"}` : "", info.sitemap ? `${info.sitemap === 1 ? "its page" : `${info.sitemap} pages`} in the sitemap (sub-pages move up)` : ""].filter(Boolean) : [];
+  const ok = await askConfirm({ title: `Delete the screen “${name}”?`, detail: `The file ${file} will be removed from the project “${project}”. It is moved to the trash, so you can restore it.${also.length ? ` What belongs to the screen goes with it: ${also.join(", ")}. The rules and the description are copied to .studio/removed-screen-memory.md in the project, so they can be restored by hand.` : ""}${info?.sitemap ? " The sitemap as it was before is kept as its previous version." : ""}`, ok: "Delete screen" });
   if (!ok) return;
   const r = await window.studio.deleteScreen(file);
   if (r?.canceled) return;
-  if (r?.error) toast(r.error, { err: true }); else { toast(`The screen ${file.replace(".html", "")} was deleted (the file is in the trash${r?.rules ? `; ${r.rules} rule${r.rules === 1 ? "" : "s"} removed` : ""}).`); rules?.reload?.(); }
+  if (r?.error) toast(r.error, { err: true }); else { toast(`The screen ${file.replace(".html", "")} was deleted (the file is in the trash${r?.rules ? `; ${r.rules} rule${r.rules === 1 ? "" : "s"} removed` : ""}${r?.sitemap ? `; removed from the sitemap` : ""}).`); rules?.reload?.(); }
 }
 window.studio.onNavigated((file) => { if (canvas.get(file)) canvas.focus(file); });
 window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
@@ -1088,7 +1089,7 @@ const propsPanel = createPropsPanel({
   getScreens: () => canvas.files(),
   api: { markLevel: (file, i, item) => { const v = viewOfFile(file); if (v) inspector.markLevel(v, i, item); }, editList: (o) => actionListEditor.open(o), setText: window.studio.jsxSetText, pickIcon: (o) => iconPicker.pick(o), ensureIconFonts: (b) => iconPicker.ensureFonts(b), ensureBmlFonts: () => iconPicker.ensureBmlFonts(), setBranch: window.studio.jsxSetBranch, inspect: window.studio.jsxInspect, set: window.studio.jsxSet, remove: window.studio.jsxRemove, openExternal: window.studio.openExternal },
   onUse: (p) => { if (marked.length > 1) return useMarked(); addChip(p); $("prompt").focus(); },
-  onComment: (on) => comments.open({ on }),
+  onComment: (on) => COMMENTS && comments.open({ on }),
   onStructure: (p) => structureDialog.open(p.file, { ordinal: p.ordinal, name: p.name }),
   onDelete: (p) => copyRefused([p]) || deleteInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
   onDuplicate: (p) => copyRefused([p]) || duplicateInScreen({ file: p.file, items: [{ ordinal: p.ordinal, name: p.name, sub: p.sub ?? null }] }),
@@ -1674,7 +1675,10 @@ const REVEAL_LABEL = { darwin: "Show in Finder", win32: "Show in Explorer" }[win
 // the business rules: a dialog from the toolbar icon; the icon shows how many rules there are
 rules = createRulesPanel({
   api: window.studio, getScreens: () => canvas.files(),
-  onCount: (n) => { const b = $("rulesbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("pi-rulescount").textContent = n ? String(n) : ""; $("rulesbtn").title = n ? `Business rules of this project (${n})` : "Business rules of this project"; },
+  onCount: (n) => { const b = $("rulesbadge"); b.textContent = n > 99 ? "99+" : String(n); b.hidden = n === 0; $("pi-rulescount").textContent = n ? String(n) : ""; $("rulesbtn").title = n ? `Business rules of this project (${n})` : "Business rules of this project";
+    // the Project button carries the number (the rules are in its menu): the agent follows them, so it should be visible that there are some
+    const p = $("projrulesbadge"); p.textContent = n > 99 ? "99+" : String(n); p.hidden = n === 0;
+    $("projinfo").title = n ? `The project: its description and business rules (${n} rule${n === 1 ? "" : "s"} the agent follows)` : "The project: its description and business rules"; },
 });
 // brand guidelines: the manual is stored, the agent distills it into DESIGN_GUIDE.md (an ordinary chat request)
 const brand = createBrandDialog({
@@ -1715,6 +1719,7 @@ syncViewSw();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
 }
 // comments on the screens and their components: a dialog from the toolbar icon (the badge counts the open ones), "Comment on this" in the inspector
+document.body.classList.toggle("comments-off", !COMMENTS); // hidden for now (features.js): no toolbar icon, frame bubble, "Comment on this", dashboard filter
 const comments = createCommentsPanel({
   api: window.studio, getScreens: () => canvas.files(), getSelected: () => canvas.selected(), toast,
   onCounts: (map) => canvas.setCommentCounts(map),
@@ -1735,7 +1740,7 @@ async function keepVariant(file) {
   const group = groupVariants(files).find((g) => g.base === file);
   if (!v && !group) return toast(`${name(file)} has no variants (variants are named like room-list-a, room-list-b next to room-list).`, { err: true });
   const ok = await askConfirm(v
-    ? { title: `Use “${name(file)}” as “${name(v.base)}”?`, detail: `${v.base} is replaced by this variant (with its notes, comments and description). The old ${v.base}${v.others.length ? ` and the other variants (${v.others.map(name).join(", ")})` : ""} are moved to the trash, so you can restore them.`, ok: "Use this variant" }
+    ? { title: `Use “${name(file)}” as “${name(v.base)}”?`, detail: `${v.base} is replaced by this variant (with its notes and description). The old ${v.base}${v.others.length ? ` and the other variants (${v.others.map(name).join(", ")})` : ""} are moved to the trash, so you can restore them.`, ok: "Use this variant" }
     : { title: `Keep “${name(file)}” as it is?`, detail: `The variants (${group.members.slice(1).map((m) => name(m.file)).join(", ")}) are moved to the trash, so you can restore them. ${file} stays.`, ok: "Keep original" });
   if (!ok) return;
   const r = await window.studio.variantKeep(file);
@@ -1768,7 +1773,7 @@ const variantsDialog = createVariantsDialog({
     window.studio.send(buildVariantsPrompt({ file, count, aspect, custom }), sentModel || undefined, { plan: false, economy });
   },
 });
-$("cmtbtn").onclick = () => project && comments.open({ screen: canvas.selected() ?? undefined });
+$("cmtbtn").onclick = () => COMMENTS && project && comments.open({ screen: canvas.selected() ?? undefined });
 // the description of the project and of its screens (PROJECT.md): a strip above the canvas, a dialog of its own
 desc = createDescPanel({
   api: window.studio, getScreens: () => canvas.files(),
@@ -1807,11 +1812,57 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const simple = isSimple(); // the simple view keeps what is needed to look at, edit and share a design; the rest is under Advanced
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ...(simple ? [] : [["Add rule…", () => openRules(file)]]), ["Present", () => openFullscreen(file)], ["Fit screen", () => canvas.focus(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...(simple ? [] : mentionItems(name)),
-    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Copy screen", () => copyScreen(file)], ["Copy to project…", () => pickCopyTarget(file, clientX, clientY)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
 }
+// ---------- copy / paste of a screen, also between projects (the screen takes its pictures, notes, rules and description along) ----------
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const whatWent = (r) => [r.media ? plural(r.media, "picture") : "", r.rules ? plural(r.rules, "rule") : "", r.notes ? plural(r.notes, "note") : "", r.description ? "description" : ""].filter(Boolean);
+async function copyScreen(file) {
+  const r = await window.studio.copyScreen(file);
+  if (r?.error) return toast(r.error, { err: true });
+  const also = [r.media ? plural(r.media, "picture") : "", r.rules ? plural(r.rules, "rule") : "", r.notes ? "notes" : "", r.description ? "description" : ""].filter(Boolean);
+  toast(`Screen “${file.replace(/\.html$/, "")}” copied${also.length ? ` with ${also.join(", ")}` : ""}. Paste it with ${navigator.platform.startsWith("Mac") ? "⌘V" : "Ctrl+V"} on the canvas of any project.`);
+}
+/** After a paste: the new frame is shown when the watcher adds it; the toast says what came along and which links lead nowhere. */
+function reportPaste(r, { into } = {}) {
+  const name = r.file.replace(/\.html$/, ""), also = whatWent(r);
+  const parts = [`${into ? `Copied to “${into}” as` : "Pasted"} “${name}”${r.from && !into && r.from !== project ? ` from “${r.from}”` : ""}${also.length ? ` with ${also.join(", ")}` : ""}.`];
+  if (r.renamedFrom) parts.push(`${r.renamedFrom.replace(/\.html$/, "")} was taken.`);
+  if (r.mediaRenamed?.length) parts.push(`${plural(r.mediaRenamed.length, "picture")} renamed: a different file had the same name.`);
+  if (r.missingLinks?.length) parts.push(`It links to ${r.missingLinks.map((l) => l.replace(/\.html$/, "")).join(", ")}, not in ${into ? "that" : "this"} project.`);
+  toast(parts.join(" "), into ? { action: { label: "Open project", run: () => changeProject(() => window.studio.openProject(into)) } } : {});
+}
+async function pasteScreen({ quiet = false } = {}) {
+  if (!project) return quiet || toast("Open or create a project first.", { err: true });
+  const r = await window.studio.pasteScreen();
+  if (r?.error) return toast(r.error, { err: true });
+  if (r?.none) return quiet || toast("There is no screen on the clipboard: copy one first (⋯ › Copy screen).", { err: true });
+  rules?.reload?.();
+  for (let i = 0; i < 40 && !canvas.get(r.file); i++) await new Promise((ok) => setTimeout(ok, 100)); // the watcher adds the frame
+  if (canvas.get(r.file)) canvas.focus(r.file);
+  await new Promise((ok) => setTimeout(ok, 400)); reportPaste(r); // after the watcher's own "rules updated" toast, which would hide it
+}
+async function copyScreenTo(file, target) {
+  const r = await window.studio.copyScreenTo(file, target);
+  if (r?.error) toast(r.error, { err: true }); else reportPaste(r, { into: target });
+}
+/** The context menu turns into the list of the other projects. */
+async function pickCopyTarget(file, clientX, clientY) {
+  const others = (await window.studio.listProjects()).filter((p) => p.name !== project);
+  if (!others.length) return toast("There is no other project to copy the screen to.", { err: true });
+  const m = $("ctxmenu");
+  m.replaceChildren(Object.assign(document.createElement("div"), { className: "ctx-head", textContent: `Copy “${file.replace(/\.html$/, "")}” to` }),
+    ...others.map((p) => Object.assign(document.createElement("button"), { textContent: p.name, onclick: () => { m.hidden = true; copyScreenTo(file, p.name); } })));
+  m.style.left = Math.max(8, Math.min(clientX, innerWidth - 220)) + "px"; m.style.top = Math.max(8, Math.min(clientY, innerHeight - 34 * (others.length + 1) - 12)) + "px";
+  setTimeout(() => { m.hidden = false; }, 0); // the click that chose the item closes the menu first
+}
+// ⌘C / ⌘V outside text: the Edit menu's copy / paste fire these events on the page
+const canvasClipboard = (e) => !fsFile && !confirmOpen && project && !e.target.closest?.("input,textarea,select,[contenteditable],[contenteditable=true]") && !String(getSelection()?.toString() ?? "") && !MODALS.some((id) => $(id) && !$(id).hidden); // not while a dialog is open
+document.addEventListener("copy", (e) => { const f = canvas.selected(); if (f && !inspector.on && canvasClipboard(e)) { e.preventDefault(); copyScreen(f); } });
+document.addEventListener("paste", (e) => { if (canvasClipboard(e)) { e.preventDefault(); pasteScreen({ quiet: true }); } });
 const hideCtx = () => { $("ctxmenu").hidden = true; delete $("ctxmenu").dataset.from; $("morebtn").classList.remove("on"); };
 addEventListener("click", hideCtx);
 addEventListener("keydown", (e) => { if (e.key === "Escape") { hideCtx(); $("selmenu").hidden = true; updateSelbar(); } });
@@ -2385,6 +2436,7 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
   const needProject = (fn) => (project ? fn() : toast("Open or create a project first.", { err: true }));
   const onMenuAction = async (action) => {
     if (action.startsWith("project:open:")) return changeProject(() => window.studio.openProject(action.slice("project:open:".length)));
+    if (action.startsWith("screen:copyto:")) return withScreen((f) => copyScreenTo(f, action.slice("screen:copyto:".length)));
     if (action.startsWith("view:device:")) return canvas.setDeviceAll(action.slice("view:device:".length));
     if (action.startsWith("view:theme:")) { window.__theme.set(action.slice("view:theme:".length)); return syncTheme(); }
     switch (action) {
@@ -2430,6 +2482,8 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
       case "screen:mention": return withScreen((f) => (marked.length ? useMarked() : insertMention(f.replace(/\.html$/, ""))));
       case "screen:reveal": return withScreen((f) => window.studio.revealScreen(f));
       case "screen:delete": return withScreen((f) => deleteScreen(f));
+      case "screen:copy": return withScreen((f) => copyScreen(f));
+      case "screen:paste": return pasteScreen();
       case "repo:branch": return needProject(() => (repo ? $("rs-branch").click() : toast("No repository is linked.", { err: true })));
       case "repo:open": return needProject(() => (repo ? $("rs-main").click() : toast("No repository is linked.", { err: true })));
       case "repo:unlink": return needProject(() => (repo ? $("rs-unlink").click() : toast("No repository is linked.", { err: true })));

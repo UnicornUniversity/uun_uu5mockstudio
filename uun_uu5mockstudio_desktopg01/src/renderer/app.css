@@ -156,7 +156,7 @@ main{overflow:hidden}
 #chat.collapsed #repostrip,body[data-noproject] #repostrip{display:none}
 #ctxmenu{position:fixed;z-index:80;min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.4);display:flex;flex-direction:column}
 #ctxmenu[hidden]{display:none}#ctxmenu button{text-align:left;border:0;background:none;padding:7px 10px;border-radius:6px}#ctxmenu button:hover{background:var(--bg)}#ctxmenu button.danger{color:#ff7b7b}
-#ctxmenu hr{border:0;border-top:1px solid var(--line);margin:4px 2px;width:100%}
+#ctxmenu hr{border:0;border-top:1px solid var(--line);margin:4px 2px;width:100%}#ctxmenu .ctx-head{padding:6px 10px 4px;font-size:12px;opacity:.65}
 #branchmenu{position:fixed;z-index:31;width:300px;max-height:50vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column}
 #branchmenu[hidden]{display:none}
 #branchmenu button{text-align:left;border:0;background:none;padding:6px 10px;border-radius:6px;display:flex;justify-content:space-between;gap:10px;font:12px ui-monospace,Menlo,monospace}
@@ -504,13 +504,13 @@ body[data-chat="float"] #chat header .tools #chatmode .when-float{display:inline
 #tour[hidden]{display:none}
 #tour .card{width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px 18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 #tour h2{margin:6px 0 0;font-size:21px}#tour .tr-text{margin:0;line-height:1.55;color:var(--mute);min-height:7.4em}
-#tour .tr-art{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px}
+#tour .tr-art{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px}#tour .card{padding-top:46px}#tour .card > .dlg-x.corner{top:10px;right:12px}/* the cross has its own row above the picture, not on its border */
 #tour .tr-svg{display:block;width:100%;height:auto}
 #tour .t-card{fill:var(--panel);stroke:var(--line);stroke-width:1.5}#tour .t-sel{stroke:var(--acc);stroke-width:2.5}#tour .t-focus{stroke:var(--acc);stroke-width:2}
 #tour .t-line{fill:var(--fg);opacity:.75}#tour .t-line.s{opacity:.28}#tour .t-line.w{fill:#fff;opacity:.9}#tour .t-line.n{fill:#7a5b00;opacity:.55}
 #tour .t-fill{fill:var(--line);opacity:.9}#tour .t-accent{fill:var(--acc)}#tour .t-orange{fill:none;stroke:#e8590c;stroke-width:2.5}
 #tour .t-note{fill:#ffe98a;stroke:#d9bd4a;stroke-width:1.2}#tour .t-btn{fill:#fff;font:600 13px system-ui}#tour .t-text{fill:var(--fg);font:13px system-ui}
-#tour .t-arrow{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+#tour .t-arrow{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}#tour .t-num{fill:#e8590c}#tour .t-link{fill:none;stroke:var(--line);stroke-width:2}#tour .t-check{fill:none;stroke:#2f9e44;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 #tour .tr-dots{display:flex;gap:7px;justify-content:center;margin:4px 0 2px}#tour .tr-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}#tour .tr-dots i.on{background:var(--acc);width:20px;border-radius:4px}
 #tour .row{display:flex;gap:8px;align-items:center}#tour .grow{flex:1}#tour .tr-next{background:var(--acc);border-color:var(--acc);color:#fff;min-width:96px}
 
@@ -1081,7 +1081,8 @@ body.simple #modesw,body.simple #plansw,body.simple #model,body.simple #dash-mod
 #guidebox .row{display:flex;gap:8px;align-items:center}#guidebox .grow{flex:1}
 @media (max-width:560px){#guidebox .gd-checks,#guidebox .gd-row2{grid-template-columns:1fr}}
 
-/* comments */
+/* comments (hidden for now: features.js sets body.comments-off) */
+body.comments-off :is(#cmtbtn,#insp-comment,.fcmt,#dash-filters [data-filter="comments"]){display:none!important}
 #cmtbtn{position:relative}#cmtbadge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--acc);color:#fff;font-size:10px;line-height:16px;text-align:center;font-weight:600}
 #cmtbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:47}#cmtbox[hidden]{display:none}
 #cmtbox .card{width:min(640px,94vw);max-height:88vh;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
@@ -1575,7 +1576,7 @@ body[data-glass] #bar .tbgroup{background:var(--glass-thin);border-color:var(--g
 #bar #projinfomenu .pi-adv.on::after{background:var(--acc);box-shadow:none}
 #bar #projinfomenu .pi-adv.on::before{right:12px}
 #bar #projinfomenu .pi-adv.on{color:var(--fg)!important;background:transparent!important}
-body.simple #projinfomenu .pi-rules{display:none}
+body.simple #projinfomenu .pi-rules{display:none}#projinfo{position:relative}body.simple #projrulesbadge{display:none}
 #acctgrp #p4ubar:not([hidden]){display:inline-flex}
 #acctgrp #p4ubar .p4u-chip{border:0;background:transparent}
 #bar #acctgrp .acctbtn{width:30px;height:30px;padding:0}

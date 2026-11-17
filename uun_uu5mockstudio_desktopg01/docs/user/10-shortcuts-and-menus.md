@@ -20,6 +20,7 @@
 | I | Turn the inspector on or off |
 | Esc | Close the top dialog, leave the inspector or picking |
 | Delete | Delete the selected screen (asks first) |
+| ⌘C / ⌘V | Copy the selected screen, paste it on the canvas (also in another project) |
 | Enter, Shift+Enter | Send, new line in the message field |
 | ⌘ + scroll, pinch | Zoom the canvas |
 | ⌥ + scroll | Move the canvas while the pointer is over a screen |
@@ -29,7 +30,7 @@
 
 - **File**: New Project…, Switch Project…, Close Project, **Export** (screen as image, as HTML, as uu5String, project as ZIP), **Share** (screen image, HTML file, uu5String, project ZIP), Quit.
 - **Project**: Rename Project…, Project Description…, Business Rules…, **Git Repository** (link, Switch Branch…, Open Repository Folder, Unlink Repository), **Projects Folder** (show, Change…), Delete Project….
-- **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, Variants…, **Use This Variant…** (only when the screen is a variant or has variants), **Show Component Tree…**, Save as Template…, Add Rule…, Mention in Chat, Show in Finder, Delete Screen…. A change of the screen is undone with the standard **Edit → Undo / Redo** (⌘Z, ⇧⌘Z) outside a text field. The same entries are in the context menu (right click) of a screen.
+- **Screen** (acts on the selected screen): Present, Reload Screen, Add Note, Description…, Variants…, **Use This Variant…** (only when the screen is a variant or has variants), **Show Component Tree…**, Save as Template…, Add Rule…, Mention in Chat, **Copy Screen**, **Paste Screen**, **Copy to Project**, Show in Finder, Delete Screen…. A change of the screen is undone with the standard **Edit → Undo / Redo** (⌘Z, ⇧⌘Z) outside a text field. The same entries are in the context menu (right click) of a screen.
 - **Chat**: New Chat, Chat History…, Floating / Docked Chat.
 - **Edit**: Undo, Redo (typing or the last change of the screen), Cut, Copy, Paste, Select All.
 - **View**: Zoom In / Out, Show All Screens, Arrange Screens, Device for All Screens, Edit Components, Show / Hide Screen Flow.

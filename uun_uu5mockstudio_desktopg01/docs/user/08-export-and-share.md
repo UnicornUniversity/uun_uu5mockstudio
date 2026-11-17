@@ -21,7 +21,7 @@ The same is in the application menu: **File → Export** (Screen as Image, as HT
 
 **File → Export → Project Specification (Markdown)…** (or **Copy Project Specification**) writes one Markdown document for the developers: the overview (the project description), the linked repository, a table of the screens, the business rules, then for every screen its purpose, the **component structure** (the tree of the screen as an outline), the library components and the components defined in the screen, the notes and the comments (open and resolved), and at the end the components overall and the open questions. It is assembled from what the project already holds, so keep the descriptions, the rules and the comments up to date.
 
-The Project ZIP also contains the comments of the screens (`docs/<screen>.comments.json`).
+The Project ZIP also contains the comments a screen already has (`docs/<screen>.comments.json`; comments are hidden in the app since 0.31.0).
 
 ## uu5String (to paste into a document)
 

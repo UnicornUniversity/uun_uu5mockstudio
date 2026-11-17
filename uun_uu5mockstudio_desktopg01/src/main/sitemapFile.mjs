@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeSitemap, serializeSitemap } from "../renderer/sitemap.js";
+import { normalizeSitemap, serializeSitemap, dropScreen } from "../renderer/sitemap.js";
 
 /** The sitemap of a project (its pages and how they relate) is one file, <project>/sitemap.json; the one before the last replacement is kept in .studio/sitemap.prev.json. */
 export const SITEMAP_FILE = "sitemap.json";
@@ -38,4 +38,24 @@ export async function restoreSitemap(projectDir) {
   await fs.promises.writeFile(path.join(projectDir, SITEMAP_FILE), serializeSitemap(prev) + "\n");
   if (cur) await fs.promises.writeFile(path.join(projectDir, PREV), cur);
   return readSitemap(projectDir);
+}
+
+/** The pages of the sitemap that name a screen (shown before the screen is deleted). */
+export async function sitemapPagesOf(projectDir, file) {
+  const r = await readSitemap(projectDir);
+  return r ? dropScreen(r.sitemap, path.basename(String(file))).removed : [];
+}
+/**
+ * A deleted screen leaves the sitemap: its pages go (their sub-pages take their place, the root only loses the link). The sitemap before is
+ * kept as the previous version (it can be taken back) and the removed pages are noted in .studio/removed-screen-memory.md. -> the removed pages
+ */
+export async function forgetScreenInSitemap(projectDir, file) {
+  const r = await readSitemap(projectDir); if (!r) return [];
+  const name = path.basename(String(file)), { sitemap, removed } = dropScreen(r.sitemap, name);
+  if (!removed.length) return [];
+  await writeSitemap(projectDir, sitemap, { backup: true });
+  const lines = removed.map((p) => (p.root ? `- the root “${p.title}” no longer links ${name}` : `- “${p.title}”${p.where ? ` (under ${p.where})` : ""}`));
+  await fs.promises.mkdir(path.join(projectDir, ".studio"), { recursive: true });
+  await fs.promises.appendFile(path.join(projectDir, ".studio", "removed-screen-memory.md"), `\n## ${new Date().toISOString().slice(0, 10)} · screen ${name.replace(/\.html$/, "")} · sitemap\n\nPages removed from sitemap.json:\n${lines.join("\n")}\n`);
+  return removed;
 }

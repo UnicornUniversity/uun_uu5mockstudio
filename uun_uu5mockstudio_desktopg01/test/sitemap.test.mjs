@@ -390,3 +390,18 @@ test("the uu5string marks an approved node with a positive APPROVED badge", () =
   const [root] = u5parse(sitemapUu5String(sm));
   assert.ok(root.itemList[0].header.endsWith('<Uu5Bricks.Badge colorScheme="positive">APPROVED</Uu5Bricks.Badge>')); assert.ok(!root.itemList[1].header.includes("APPROVED"));
 });
+
+test("a deleted screen leaves the sitemap: its page goes, sub-pages take its place, the root only loses the link", async () => {
+  const { dropScreen } = await import("../src/renderer/sitemap.js");
+  const sm = normalizeSitemap({ root: { title: "Home", file: "home.html", children: [{ title: "Study", file: "study.html", children: [{ title: "Theses", file: "theses.html" }, { title: "Exams" }] }, { title: "Library", file: "library.html" }] } });
+  const a = dropScreen(sm, "study.html");
+  assert.deepEqual(a.sitemap.root.children.map((c) => c.title), ["Theses", "Exams", "Library"]);
+  assert.deepEqual(a.removed, [{ title: "Study", where: "Home" }]);
+  const b = dropScreen(sm, "Theses.html");
+  assert.deepEqual(b.removed, [{ title: "Theses", where: "Home > Study" }]);
+  assert.deepEqual(b.sitemap.root.children[0].children.map((c) => c.title), ["Exams"]);
+  const c = dropScreen(sm, "home.html");
+  assert.equal(c.sitemap.root.file, undefined); assert.equal(c.sitemap.root.children.length, 2); assert.ok(c.removed[0].root);
+  assert.equal(dropScreen(sm, "other.html").sitemap, sm);
+  assert.equal(sm.root.children[0].title, "Study"); // the original is not changed
+});

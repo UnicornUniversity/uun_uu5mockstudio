@@ -52,6 +52,12 @@ export const TOUR_TEXT = {
     simple: "Under each answer the agent says what it did. If a conversation gets very long, a bar offers a fresh one: your screens and notes stay. Eco (the leaf under the message box) keeps the agent brief and makes only the change you asked for; it is on for you, switch it off when you want a bigger redesign. Tokens, the model and Plan are under Advanced.",
   },
   inspector: {
-    simple: "Switch on the inspector (the crosshair) and click any part of the page to change its text, colour or icon without writing anything. Shift-click marks several parts to talk about them together in the chat.",
+    simple: "Select a screen and switch on Edit (the pencil on its bar, or I), then click any part of the page to change its text, colour or icon without writing anything. Double-click a text to rewrite it; ⌘Z undoes the change.",
+  },
+  chat: {
+    simple: "Paste or drop a screenshot or a sketch. Type @ to mention another screen. Paste a link (a web page, a uuBookKit book, a uuManagementKit document): its card offers it as a Reference for the design, or its pages as the input of a Sitemap.",
+  },
+  canvas: {
+    simple: "Zoom and pan, choose a device size, arrange the screens with one click, or present one. Sticky notes stay with their screen, and ⌘C / ⌘V copies a screen, with its notes and rules, into another project.",
   },
 };
