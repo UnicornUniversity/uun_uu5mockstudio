@@ -1182,11 +1182,11 @@ function renderChips() {
   chips.forEach((c) => {
     const label = describeAnnotation(c), note = isNote(c);
     const x = Object.assign(document.createElement("button"), { type: "button", title: note ? "Remove the annotation" : "Remove (and its link in the text)", textContent: "✕", onclick: (e) => { e.stopPropagation(); removeChip(c); } });
-    const chip = Object.assign(document.createElement("div"), { className: `chip showable anno${note ? "" : " link"}${c.gone ? " gone" : ""}`, onclick: () => (note ? editAnnotation(c) : showChip(c)) });
+    const chip = Object.assign(document.createElement("div"), { className: `chip showable anno${note ? "" : " link"}${c.gone ? " gone" : ""}`, onclick: () => (note ? editAnnotation(c) : c.kind === "sitemap" ? planCards.revealPage?.(c.scope, c.id) : showChip(c)) });
     const num = Object.assign(document.createElement("b"), { className: "anno-n", textContent: String(c.ref) });
     const body = Object.assign(document.createElement("span"), { className: "anno-body" });
     body.append(Object.assign(document.createElement("span"), { className: "anno-note", textContent: note ? c.note || "(no note)" : `[#${c.ref}] in your text` }), Object.assign(document.createElement("span"), { className: "anno-what", textContent: c.gone ? `${label} · not on the screen any more` : label }));
-    chip.title = note ? `${c.note}\n${label}\nClick to show it and edit the note` : `${label}\nLinked in your text as [#${c.ref}]. Click to show it in the screen`;
+    chip.title = note ? `${c.note}\n${label}\nClick to show it and edit the note` : `${label}\nLinked in your text as [#${c.ref}]. Click to show it in the ${c.kind === "sitemap" ? "map" : "screen"}`;
     chip.append(num, ...(c.thumb ? [Object.assign(document.createElement("img"), { src: c.thumb, alt: "" })] : []), body, x);
     box.append(chip);
   });
@@ -1258,8 +1258,6 @@ async function captureScreenPart(file, rect, view) {
     return { shot: { mime: "image/png", data: url.slice(url.indexOf(",") + 1) }, thumb: cv.toDataURL("image/png") };
   } catch { return {}; }
 }
-/** The notes of one place (a component of a screen, a page or a whole map), in their order. */
-const notesAt = (k) => chips.filter((x) => isNote(x) && chipKey(x) === k);
 /** The numbers of the notes of a component on its frame in the page ("1, 3"); without notes the frame goes. */
 function relabelScreen(a) {
   const v = viewOfFile(a.file); if (!v || !a.key || !annotating) return; // outside the Annotate mode the page shows no numbers
@@ -1335,18 +1333,31 @@ async function annotatePages({ scope, pages, anchor }) {
   if (other) return toast(`The message already has annotations of ${other.scope === "project" ? "the sitemap of the project" : `the map of ${other.scope}`}: send them first.`, { err: true });
   // one page lists the notes it has (a click edits one, the field adds another); several pages get the same new note each
   const pageKey = pages.length === 1 ? annotationKey({ kind: "sitemap", scope, id: pages[0].id }) : null;
-  let here = pageKey ? notesAt(pageKey) : [];
+  const at = () => (pageKey ? chips.filter((x) => chipKey(x) === pageKey) : []); // its notes and its link in the text
+  const list = () => at().map((x) => ({ ref: x.ref, note: x.note, linked: !isNote(x) }));
+  // nothing written: the page(s) are only linked in the text as [#n] (not a page that is linked already)
+  const linkable = () => pages.some((pg) => !chips.some((x) => !isNote(x) && chipKey(x) === annotationKey({ kind: "sitemap", scope, id: pg.id })));
   if (chips.length + pages.length > MAX_CHIPS) return toast(`At most ${MAX_CHIPS} components and annotations per message.`, { err: true });
   const title = pages.length === 1 && pages[0].id === MAP_WHOLE ? `Note on ${describeAnnotation({ kind: "sitemap", scope, id: MAP_WHOLE })}` : pages.length === 1 ? `${pages[0].title} (${pages[0].where})` : `${pages.length} pages: ${pages.map((x) => x.title).join(", ")}`;
-  let r = await annotatePopover.open({ anchor, title, others: here.map((x) => ({ ref: x.ref, note: x.note })) });
+  let r = await annotatePopover.open({ anchor, title, others: list(), link: linkable() });
   while (r && typeof r === "object" && r.remove != null) { // × of a note in the list: it goes, the window stays with the others
-    const x = here.find((y) => y.ref === r.remove); if (x) removeChip(x);
-    here = notesAt(pageKey); if (!here.length) return;
+    const x = at().find((y) => y.ref === r.remove); if (x) removeChip(x);
+    if (!at().length) return;
     await new Promise((res) => requestAnimationFrame(res)); // the map is drawn again: the anchor finds the page anew
-    r = await annotatePopover.open({ anchor, title, others: here.map((y) => ({ ref: y.ref, note: y.note })) });
+    r = await annotatePopover.open({ anchor, title, others: list(), link: linkable() });
   }
-  if (r && typeof r === "object") { const x = here.find((y) => y.ref === r.edit); return x && settleNote(x, await annotatePopover.open({ anchor, note: x.note, title: describeAnnotation(x) })); }
+  if (r && typeof r === "object" && r.edit != null) {
+    const x = at().find((y) => y.ref === r.edit); if (!x) return;
+    if (isNote(x)) return settleNote(x, await annotatePopover.open({ anchor, note: x.note, title: describeAnnotation(x) }));
+    const t = await annotatePopover.open({ anchor, title: `${title}: a note instead of the link [#${x.ref}]` }); // a link becomes an annotation when a note is written
+    if (t) { removeRef(x); x.note = t; renderChips(); planCards.repaint?.(); }
+    return;
+  }
   if (!r) return;
+  if (typeof r === "object" && r.link) { // only links in the text, at the cursor (a string has a .link method of its own)
+    for (const pg of pages) addChip({ kind: "sitemap", scope, ...pg }, { quiet: true });
+    planCards.repaint?.(); return $("prompt").focus();
+  }
   for (const pg of pages) addChip({ kind: "sitemap", scope, ...pg, note: r });
   planCards.repaint?.();
 }

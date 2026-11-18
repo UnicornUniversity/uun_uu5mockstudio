@@ -82,3 +82,12 @@ test("after a removal the places are numbered 1…n again and the links in the t
   assert.equal(renumberText("move [#3] under [#2], keep [#9] and #3", map), "move [#2] under [#1], keep [#9] and #3"); // all at once, only links
   assert.equal(renumberText("x", new Map()), "x");
 });
+
+test("a page of a sitemap can be only linked in the text: the agent reads it as a marker [#n] without a note", () => {
+  const ctx = annotationsContext([page({ ref: 1 })]);
+  assert.match(ctx, /annotated one place/);
+  assert.match(ctx, /Those without a note are written in the text of the request as markers \[#n\]/);
+  assert.match(ctx, /#1\) the page "Exams" \(type page, screen exams\.html\) at Portal > Study > Exams in the sitemap of the project/);
+  assert.doesNotMatch(ctx, /The user's note/);
+  assert.deepEqual(historyOf([page({ ref: 1 })]), [{ ref: 1, kind: "sitemap", label: "Exams (Portal > Study > Exams) in the sitemap", note: null }]);
+});

@@ -10,6 +10,9 @@ import { parseLink } from "./docLinks.js";
  * `kind` says what the map is: a web site (pages and their sections, the default, not written) or portals (documents of uuManagementKit: a portal is a node
  * of type page, it is made of sheets, a sheet of sections). A sheet has a screen of its own, as a page.
  * `source` is the address the page was taken from (a page of a book, a document, a web page): its content is read when the screen is built.
+ * `ref` (the id of another node) makes the node a link to that page shown at one more place of the map (a sheet or an external document that several portals
+ * use): it is the same page, so it has no children, file, note or flags of its own; its title and type are copies of the original's, kept in step.
+ * A link never points to another link, to the root or to a node above itself.
  * Everything here is pure; a node is addressed by its path (list of child indexes, the root is []).
  */
 export const NODE_TYPES = ["page", "sheet", "section", "group", "external"];
@@ -22,7 +25,7 @@ export const isLocked = (n, exists) => Boolean(n?.approved && n.file && exists(n
 /** The nodes of the subtree (the node included) that are approved and have a screen. */
 export function lockedIn(n, exists) { const out = []; const walk = (x) => { if (isLocked(x, exists)) out.push(x); x.children.forEach(walk); }; if (n) walk(n); return out; }
 /** How many pages are approved, of all the pages that count (not groups, external links or pages that are not solved here). */
-export function countApproved(sm) { let ok = 0, all = 0; const walk = (x) => { if (canFlag(x.type) && !x.notSolved) { all++; if (x.approved) ok++; } x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return { approved: ok, all }; }
+export function countApproved(sm) { let ok = 0, all = 0; const walk = (x) => { if (canFlag(x.type) && !x.notSolved && !x.ref) { all++; if (x.approved) ok++; } x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return { approved: ok, all }; }
 /** What the map is: a web site, or portals (documents of uuManagementKit made of sheets). */
 export const MAP_KINDS = ["web", "portal"];
 export const kindOf = (sm) => (sm?.kind === "portal" ? "portal" : "web");
@@ -44,7 +47,7 @@ export function typeLabels(kind = "web") {
 export const typeShort = (kind, t) => (({ page: kind === "portal" ? "Portal" : "Page", sheet: "Sheet", section: "Section", group: "Group", external: "Link" })[t] ?? t);
 /** The types the map offers: a map of a web site has no sheets (unless it has one already). */
 export const typesFor = (sm) => (kindOf(sm) === "portal" || countType(sm, (t) => t === "sheet") ? NODE_TYPES : NODE_TYPES.filter((t) => t !== "sheet"));
-const MAX_NODES = 200, MAX_DEPTH = 8, FILE = /^[A-Za-z0-9][\w.-]*\.html$/;
+const MAX_NODES = 200, MAX_LINKS = 200, MAX_DEPTH = 8, FILE = /^[A-Za-z0-9][\w.-]*\.html$/;
 /** Old review comments of a page (from before annotations) were kept in its one `comment` field, apart by this mark; they are only read to become annotations. */
 const CM_SEP = " ¦ ";
 const splitComments = (c) => String(c ?? "").split(CM_SEP).map((t) => t.trim()).filter(Boolean);
@@ -56,12 +59,15 @@ const sourceOf = (v) => { const d = typeof v === "string" && v.length <= 500 ? p
 export function normalizeSitemap(raw) {
   const src = raw?.root ?? (raw && (raw.title || raw.name) ? raw : null);
   if (!src || typeof src !== "object") return null;
-  const used = new Set(); let count = 0;
+  const used = new Set(), renamed = new Map(), links = []; let count = 0; // the pages count to MAX_NODES; links (small, no sub-pages) have a limit of their own
   const id = (want) => { let base = clip(want, 40).replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "") || "n", v = base; for (let i = 2; used.has(v); i++) v = `${base}-${i}`; used.add(v); return v; };
   const walk = (n, depth) => {
-    if (!n || typeof n !== "object" || count >= MAX_NODES) return null;
-    count++;
+    const isLink = typeof n?.ref === "string" && n.ref && depth > 0;
+    if (!n || typeof n !== "object" || (isLink ? links.length >= MAX_LINKS : count >= MAX_NODES)) return null;
+    if (!isLink) count++;
     const title = clip(n.title ?? n.name, 80) || "Page", myId = id(n.id ?? title); // the id before the children's: a parent keeps the plain one
+    if (n.id != null && !renamed.has(String(n.id))) renamed.set(String(n.id), myId);
+    if (isLink) { const link = { id: myId, ref: n.ref, title, type: typeOf(n.type) ?? "page", children: [] }; links.push(link); return link; } // a link: the rest comes from the original
     const kids = depth < MAX_DEPTH && Array.isArray(n.children) ? n.children.map((c) => walk(c, depth + 1)).filter(Boolean) : [];
     const file = FILE.test(String(n.file ?? "")) ? String(n.file) : undefined;
     const type = typeOf(n.type) ?? "page", note = clip(n.note, 240), comment = clip(n.comment, 1000), source = sourceOf(n.source);
@@ -69,14 +75,21 @@ export function normalizeSitemap(raw) {
     return { id: myId, title, type, ...(notSolved ? { notSolved } : {}), ...(approved ? { approved } : {}), ...(file ? { file } : {}), ...(note ? { note } : {}), ...(source ? { source } : {}), ...(comment ? { comment } : {}), children: kids };
   };
   const root = walk(src, 0), kind = raw?.kind === "portal" ? "portal" : null;
-  return root ? { ...(kind ? { kind } : {}), root } : null;
+  if (!root) return null;
+  for (const l of links) l.ref = renamed.get(l.ref) ?? l.ref; // the ids were made unique: the link follows its original
+  for (const l of badRefs(root)) delete l.ref; // a link to nothing (or to a link, or above itself) stays as a page of its own
+  syncRefs(root);
+  return { ...(kind ? { kind } : {}), root };
 }
 
 export const serializeSitemap = (sm) => JSON.stringify(sm, null, 2);
-/** All nodes of the map (the limit of its size). */
+/** The pages of the map without the links: what the limit of its size counts. */
+const countOwn = (sm) => { let n = 0; const walk = (x) => { if (!x.ref) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; };
+const countLinks = (sm) => { let n = 0; const walk = (x) => { if (x.ref) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; };
+/** All nodes of the map. */
 export const countNodes = (sm) => { let n = 0; const walk = (x) => { n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; };
-const countType = (sm, ok) => { let n = 0; const walk = (x) => { if (ok(x.type) && !x.notSolved) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; };
-/** The pages (their own screens): sections are parts of a page, groups only gather pages in the menu, external ones lead out; what is not solved here is not counted. */
+const countType = (sm, ok) => { let n = 0; const walk = (x) => { if (ok(x.type) && !x.notSolved && !x.ref) n++; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return n; };
+/** The pages (their own screens): sections are parts of a page, groups only gather pages in the menu, external ones lead out; what is not solved here is not counted, nor a link to a page counted already. */
 export const countPages = (sm) => countType(sm, (t) => t === "page");
 export const countSections = (sm) => countType(sm, (t) => t === "section");
 export const countSheets = (sm) => countType(sm, (t) => t === "sheet");
@@ -111,8 +124,96 @@ export function replaceSitemapBlock(body, sm) {
 const clone = (x) => JSON.parse(JSON.stringify(x));
 export const getNode = (sm, path) => path.reduce((n, i) => n?.children?.[i], sm?.root) ?? null;
 const parentOf = (sm, path) => getNode(sm, path.slice(0, -1));
+/** The path of a node object in the tree (null when it is not there). */
+const pathOfNode = (root, x, cur = root, path = []) => { if (cur === x) return path; for (let i = 0; i < cur.children.length; i++) { const r = pathOfNode(root, x, cur.children[i], [...path, i]); if (r) return r; } return null; };
+/** id -> node. */
+const nodeIndex = (root) => { const m = new Map(); const walk = (n) => { m.set(n.id, n); n.children.forEach(walk); }; walk(root); return m; };
+
+// ---------------------------------------------------------------- links: one page shown at several places of the map
+/** The links that cannot stay: to no node, to a link, to the root, to a node above the link, or a link with children. */
+function badRefs(root) {
+  const ids = nodeIndex(root), bad = [];
+  const walk = (n, up) => { if (n.ref) { const t = ids.get(n.ref); if (!t || t.ref || t === root || up.includes(n.ref) || n.children.length) bad.push(n); } n.children.forEach((c) => walk(c, [...up, n.id])); };
+  walk(root, []);
+  return bad;
+}
+/** The links take the title and the type of their originals again. */
+function syncRefs(root) { const ids = nodeIndex(root); const walk = (n) => { const t = n.ref && ids.get(n.ref); if (t) { n.title = t.title; n.type = t.type; } n.children.forEach(walk); }; walk(root); }
+/** The links whose original left the map go too. */
+function dropDangling(root) { const ids = nodeIndex(root); const walk = (n) => { n.children = n.children.filter((c) => !c.ref || ids.has(c.ref)); n.children.forEach(walk); }; walk(root); }
+/** The page a node stands for: the original of a link, else the node itself. */
+export function resolveNode(sm, n) { if (!n?.ref || !sm?.root) return n; return nodeIndex(sm.root).get(n.ref) ?? n; }
+/** The paths of the links to the node with this id (the other places where the page is shown). */
+export function refsTo(sm, id) { const out = []; const walk = (n, path) => { if (n.ref === id) out.push(path); n.children.forEach((c, i) => walk(c, [...path, i])); }; if (sm?.root && id) walk(sm.root, []); return out; }
+/** The path of the node with this id (null when it is not in the map). */
+export function pathOfId(sm, id) { const n = sm?.root && nodeIndex(sm.root).get(id); return n ? pathOfNode(sm.root, n) : null; }
+/**
+ * The page at `target` is shown also inside `parent` (as its last child, or at index `at`): a link to it. A link to a link links its original. Nothing changes when the page would be
+ * inside itself, when the parent is a link, when the parent shows the page already, or when the map is full. Returns { sitemap, path } with the path of the link.
+ */
+export function addRef(sm, target, parent, at) {
+  const none = { sitemap: sm, path: target };
+  const t0 = getNode(sm, target), orig = resolveNode(sm, t0), par = getNode(sm, parent);
+  if (!orig || !par || par.ref || orig === sm.root || countLinks(sm) >= MAX_LINKS || parent.length >= MAX_DEPTH) return none;
+  const op = pathOfNode(sm.root, orig); if (isPrefix(op, parent)) return none; // inside the page itself (or its subtree)
+  if (par.children.some((c) => c === orig || c.ref === orig.id)) return none;
+  const out = clone(sm), p = getNode(out, parent);
+  const i = Number.isInteger(at) ? Math.max(0, Math.min(at, p.children.length)) : p.children.length;
+  p.children.splice(i, 0, { id: uniqueId(out, `${orig.id}-link`), ref: orig.id, title: orig.title, type: orig.type, children: [] });
+  return { sitemap: out, path: [...parent, i] };
+}
+/**
+ * The agent sets links (the tool sitemap_links): `replace` = [{ node, original, dropSubPages? }] turns the node (a copy of the same page at another place) into a link
+ * to `original`, in its place; `add` = [{ original, under }] shows the original once more inside `under`; `primary` = [{ node, under }] moves the node
+ * into `under` (its primary place, e.g. the portal of internal regulations) and leaves a link to it at its old place. All ids. A change that cannot be made is skipped
+ * with the reason (an approved node, a node with sub-pages, a link that would point above itself, …). -> { sitemap, done: [text], skipped: [text] }
+ */
+export function applyLinks(sm, { replace = [], add = [], primary = [] } = {}) {
+  let out = clone(sm); const done = [], skipped = [];
+  const where = (m, id) => { const p = pathOfId(m, id); return p ? pathTitles(m, p) : id; };
+  for (const r of replace ?? []) {
+    const np = pathOfId(out, r?.node), n = np && getNode(out, np), o0 = pathOfId(out, r?.original), o = o0 && resolveNode(out, getNode(out, o0));
+    const why = !n ? `no node with the id "${r?.node}"` : !o ? `no node with the id "${r?.original}"` : !np.length ? "the root cannot be a link" : n === o ? "a node cannot link to itself" : n.ref === o.id ? "it is already a link to it" : n.children.length && !r.dropSubPages ? `it has ${n.children.length} sub-page(s): pass dropSubPages when they are the same as the original's, else move them first` : n.approved ? "it is approved by the user: ask the user to take the approval back first" : refsTo(out, n.id).length ? "other links point to it: link them to the original first" : "";
+    if (why) { skipped.push(`${n ? where(out, n.id) : r?.node}: ${why}`); continue; }
+    const next = clone(out), x = getNode(next, np);
+    for (const k of Object.keys(x)) if (k !== "id") delete x[k];
+    Object.assign(x, { ref: o.id, title: o.title, type: o.type, children: [] }); // its sub-pages (with dropSubPages) go: the original has them
+    dropDangling(next.root);
+    if (badRefs(next.root).length) { skipped.push(`${where(out, n.id)}: it would be a link to a page above it`); continue; }
+    done.push(`${where(out, n.id)} -> link to ${where(out, o.id)}`); out = next;
+  }
+  for (const m of primary ?? []) { // first, so that `replace` and `add` can point to the page at its new place
+    const np = pathOfId(out, m?.node), up = pathOfId(out, m?.under), n = np && getNode(out, np), u = up && getNode(out, up);
+    const why = !n ? `no node with the id "${m?.node}"` : !u ? `no node with the id "${m?.under}"` : !np.length ? "the root cannot move" : n.ref ? "it is a link: move its original instead" : u.ref ? "a link has no sub-pages" : n.approved ? "it is approved by the user: ask the user to take the approval back first" : isPrefix(np, up) ? "it cannot go inside itself" : isPrefix(up, np) && np.length === up.length + 1 ? "it is there already" : "";
+    if (why || countLinks(out) >= MAX_LINKS) { skipped.push(`${n ? where(out, n.id) : m?.node} into ${u ? where(out, u.id) : m?.under}: ${why || "the map has the most links it can have"}`); continue; }
+    const from = where(out, n.id), oldParent = getNode(out, np.slice(0, -1)), at = np[np.length - 1];
+    const moved = relocateNode(out, np, up, "inside"); if (moved.sitemap === out) { skipped.push(`${from} into ${where(out, u.id)}: the map would get too deep`); continue; }
+    const next = moved.sitemap, op = pathOfId(next, oldParent.id), par = getNode(next, op);
+    par.children.splice(Math.min(at, par.children.length), 0, { id: uniqueId(next, `${n.id}-link`), ref: n.id, title: n.title, type: n.type, children: [] });
+    if (badRefs(next.root).length) { skipped.push(`${from} into ${where(out, u.id)}: the link left behind would be inside the page`); continue; }
+    done.push(`${from} -> moved to ${where(next, n.id)}, a link to it stays at its old place`); out = next;
+  }
+  for (const a of add ?? []) {
+    const op = pathOfId(out, a?.original), up = pathOfId(out, a?.under);
+    if (!op || !up) { skipped.push(`${a?.original} under ${a?.under}: no such node`); continue; }
+    const r = addRef(out, op, up);
+    if (r.sitemap === out) { skipped.push(`${where(out, a.original)} under ${where(out, a.under)}: not possible (it is there already, it would be inside itself, under a link, or the map is full)`); continue; }
+    done.push(`${where(out, a.original)} -> also shown under ${where(out, a.under)}`); out = r.sitemap;
+  }
+  syncRefs(out.root);
+  return { sitemap: out, done, skipped };
+}
+/** The link becomes a page of its own: a copy of the original (title, type, note, source, the flag), without the screen file and sub-pages. */
+export function detachRef(sm, path) {
+  const n = getNode(sm, path); if (!n?.ref) return { sitemap: sm, path };
+  const o = resolveNode(sm, n), out = clone(sm), x = getNode(out, path);
+  delete x.ref; x.title = o.title; x.type = o.type;
+  if (o.notSolved) x.notSolved = true; if (o.note) x.note = o.note; if (o.source) x.source = o.source;
+  return { sitemap: out, path };
+}
 
 export function updateNode(sm, path, patch) {
+  const hit = getNode(sm, path); if (hit?.ref) { const op = pathOfId(sm, hit.ref); return op ? updateNode(sm, op, patch) : sm; } // a link: the page is its original
   const out = clone(sm), n = getNode(out, path); if (!n) return sm;
   for (const [k, v] of Object.entries(patch)) {
     if (k === "title") n.title = clip(v, 80) || n.title;
@@ -124,6 +225,7 @@ export function updateNode(sm, path, patch) {
     else if (k === "source") { const u = sourceOf(v); if (u) n.source = u; else delete n.source; }
     else if (k === "comment") { const t = clip(v, 1000); if (t) n.comment = t; else delete n.comment; }
   }
+  syncRefs(out.root);
   return out;
 }
 
@@ -138,28 +240,30 @@ const siblingType = (sm, node) => (kindOf(sm) === "portal" && ["page", "sheet", 
 
 /** A child at the end of the node; returns { sitemap, path } with the path of the new node. */
 export function addChild(sm, path, title) {
-  const out = clone(sm), n = getNode(out, path); if (!n || countNodes(out) >= MAX_NODES || path.length >= MAX_DEPTH) return { sitemap: sm, path };
+  const out = clone(sm), n = getNode(out, path); if (!n || n.ref || countOwn(out) >= MAX_NODES || path.length >= MAX_DEPTH) return { sitemap: sm, path };
   n.children.push(blank(out, title, childType(out, n))); return { sitemap: out, path: [...path, n.children.length - 1] };
 }
 /** A sibling right after the node (a child of the root for the root itself). */
 export function addSibling(sm, path, title) {
   if (!path.length) return addChild(sm, path, title);
-  const out = clone(sm), p = parentOf(out, path); if (!p || countNodes(out) >= MAX_NODES) return { sitemap: sm, path };
+  const out = clone(sm), p = parentOf(out, path); if (!p || countOwn(out) >= MAX_NODES) return { sitemap: sm, path };
   const at = path[path.length - 1] + 1; p.children.splice(at, 0, blank(out, title, siblingType(out, getNode(out, path)))); return { sitemap: out, path: [...path.slice(0, -1), at] };
 }
 /** A copy of a leaf right after it: the same type and note, the title with "(copy)"; the screen file and the comments stay with the original. Nothing changes for the root or a page with sub-pages. */
 export function duplicateNode(sm, path) {
-  const src = getNode(sm, path); if (!path.length || !src || src.children.length || countNodes(sm) >= MAX_NODES) return { sitemap: sm, path };
+  const src = getNode(sm, path); if (!path.length || !src || src.ref || src.children.length || countOwn(sm) >= MAX_NODES) return { sitemap: sm, path };
   const out = clone(sm), p = parentOf(out, path), at = path[path.length - 1] + 1, title = clip(`${src.title.slice(0, 73)} (copy)`, 80);
   p.children.splice(at, 0, { id: uniqueId(out, slugify(title)), title, type: src.type, ...(src.notSolved ? { notSolved: true } : {}), ...(src.note ? { note: src.note } : {}), children: [] });
   return { sitemap: out, path: [...path.slice(0, -1), at] };
 }
-/** Removes the node with its subtree (never the root); returns the path of the neighbour to select. */
+/** Removes the node with its subtree (never the root) and the links to the removed pages; returns the path of the neighbour to select. */
 export function removeNode(sm, path) {
   if (!path.length) return { sitemap: sm, path };
   const out = clone(sm), p = parentOf(out, path); if (!p) return { sitemap: sm, path };
   const i = path[path.length - 1]; p.children.splice(i, 1);
-  return { sitemap: out, path: p.children.length ? [...path.slice(0, -1), Math.min(i, p.children.length - 1)] : path.slice(0, -1) };
+  const next = p.children[Math.min(i, p.children.length - 1)] ?? p;
+  dropDangling(out.root); // the links to the removed pages go with them
+  return { sitemap: out, path: pathOfNode(out.root, next) ?? pathOfNode(out.root, p) ?? [] };
 }
 /** Moves the node by `dir` (-1 / +1) among its siblings. */
 export function moveNode(sm, path, dir) {
@@ -173,12 +277,15 @@ export function indentNode(sm, path) {
   const i = path[path.length - 1]; if (!path.length || !i) return { sitemap: sm, path };
   const out = clone(sm), p = parentOf(out, path), prev = p.children[i - 1];
   if (path.length >= MAX_DEPTH) return { sitemap: sm, path };
-  const [n] = p.children.splice(i, 1); prev.children.push(n); return { sitemap: out, path: [...path.slice(0, -1), i - 1, prev.children.length - 1] };
+  if (prev.ref) return { sitemap: sm, path }; // a link has no sub-pages
+  const [n] = p.children.splice(i, 1); prev.children.push(n); if (badRefs(out.root).length) return { sitemap: sm, path };
+  return { sitemap: out, path: [...path.slice(0, -1), i - 1, prev.children.length - 1] };
 }
 export function outdentNode(sm, path) {
   if (path.length < 2) return { sitemap: sm, path };
   const out = clone(sm), p = parentOf(out, path), gp = parentOf(out, path.slice(0, -1)), i = path[path.length - 1], pi = path[path.length - 2];
-  const [n] = p.children.splice(i, 1); gp.children.splice(pi + 1, 0, n); return { sitemap: out, path: [...path.slice(0, -2), pi + 1] };
+  const [n] = p.children.splice(i, 1); gp.children.splice(pi + 1, 0, n); if (badRefs(out.root).length) return { sitemap: sm, path };
+  return { sitemap: out, path: [...path.slice(0, -2), pi + 1] };
 }
 
 /**
@@ -190,12 +297,13 @@ export function relocateNode(sm, from, to, where) {
   if (!from.length || isPrefix(from, to)) return none;
   const out = clone(sm), n = getNode(out, from), target = getNode(out, to); if (!n || !target) return none;
   const height = (x) => 1 + Math.max(0, ...x.children.map(height));
-  const pathOf = (x, cur = out.root, path = []) => { if (cur === x) return path; for (let i = 0; i < cur.children.length; i++) { const r = pathOf(x, cur.children[i], [...path, i]); if (r) return r; } return null; };
+  const pathOf = (x) => pathOfNode(out.root, x);
   parentOf(out, from).children.splice(from[from.length - 1], 1);
   let at = where; if (!to.length) at = "inside"; // before / after the root: inside it
+  if (at === "inside" && target.ref) return none; // a link has no sub-pages
   if (at === "inside") target.children.push(n);
   else { const tp = pathOf(target), par = getNode(out, tp.slice(0, -1)); par.children.splice(tp[tp.length - 1] + (at === "after" ? 1 : 0), 0, n); }
-  const np = pathOf(n); if (!np || np.length + height(n) - 1 > MAX_DEPTH) return none;
+  const np = pathOf(n); if (!np || np.length + height(n) - 1 > MAX_DEPTH || badRefs(out.root).length) return none; // a link may not end up inside its own page
   return { sitemap: out, path: np };
 }
 
@@ -263,6 +371,7 @@ export function dropScreen(sm, file) {
     return kids;
   });
   const root = { ...sm.root, children: walk(sm.root, [sm.root.title]) };
+  if (removed.length) dropDangling(root); // the links to the removed pages go too
   if (String(root.file ?? "").toLowerCase() === name) { delete root.file; removed.unshift({ title: root.title, where: "", root: true }); }
   return removed.length ? { sitemap: { ...sm, root }, removed } : { sitemap: sm, removed };
 }
@@ -276,6 +385,13 @@ export function fileNodes(sm) {
   return m;
 }
 const isPrefix = (a, b) => a.length <= b.length && a.every((x, i) => x === b[i]);
+/** file -> every path where its page is shown (the original and its links). */
+function filePlaces(sm) {
+  const m = new Map(), ids = sm?.root ? nodeIndex(sm.root) : new Map();
+  const walk = (n, path) => { const f = n.ref ? ids.get(n.ref)?.file : n.file; if (f) m.set(f, [...(m.get(f) ?? []), path]); n.children.forEach((c, i) => walk(c, [...path, i])); };
+  if (sm?.root) walk(sm.root, []);
+  return m;
+}
 
 /**
  * What the screens do that the map does not say: `extra` = links between two pages of the map that are not in the map (the map shows no relation
@@ -283,10 +399,11 @@ const isPrefix = (a, b) => a.length <= b.length && a.every((x, i) => x === b[i])
  * `edges` = [{ from, to }] as the flow of the screens finds them.
  */
 export function linkDiff(sm, edges, screens = []) {
-  const where = fileNodes(sm), extra = [], seen = new Set();
+  const where = fileNodes(sm), places = filePlaces(sm), extra = [], seen = new Set();
+  const near = (a, b) => isPrefix(a, b) || isPrefix(b, a) || (a.length === b.length && a.slice(0, -1).join(".") === b.slice(0, -1).join("."));
   for (const e of edges ?? []) {
-    const a = where.get(e.from), b = where.get(e.to); if (!a || !b || e.from === e.to) continue;
-    const covered = isPrefix(a, b) || isPrefix(b, a) || (a.length === b.length && a.slice(0, -1).join(".") === b.slice(0, -1).join("."));
+    const a = places.get(e.from), b = places.get(e.to); if (!a || !b || e.from === e.to) continue;
+    const covered = a.some((x) => b.some((y) => near(x, y))); // a page shown at several places (links): any of them
     const key = `${e.from}>${e.to}`; if (!covered && !seen.has(key)) { seen.add(key); extra.push({ from: e.from, to: e.to }); }
   }
   return { extra, unmapped: screens.filter((f) => !where.has(f)), missing: [...where.keys()].filter((f) => !screens.includes(f)) };
@@ -355,19 +472,22 @@ const fold = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,
 export function searchNodes(sm, query) {
   const words = fold(query).split(/\s+/).filter(Boolean), hits = [], open = new Set();
   if (!words.length || !sm?.root) return { hits, open: [] };
-  const walk = (n, path, up) => {
+  const walk = (n, path, up) => { // a link is found as its original, not again
     const text = fold([n.title, n.file, n.note, n.comment].filter(Boolean).join(" "));
-    if (words.every((w) => text.includes(w))) { hits.push({ path, id: n.id }); up.forEach((id) => open.add(id)); }
+    if (!n.ref && words.every((w) => text.includes(w))) { hits.push({ path, id: n.id }); up.forEach((id) => open.add(id)); }
     n.children.forEach((c, i) => walk(c, [...path, i], [...up, n.id]));
   };
   walk(sm.root, [], []);
   return { hits, open: [...open] };
 }
 
-/** The map as indented lines for the agent: title, type, file, note and source of every node (what exists, what is planned). */
-export function sitemapOutline(sm, { limit = 6000 } = {}) {
-  const lines = [];
-  const walk = (n, d) => { lines.push(`${"  ".repeat(d)}- ${n.title}${n.type !== "page" ? ` [${n.type}]` : ""}${n.notSolved ? " [not solved here: no screen]" : ""}${n.approved ? " [APPROVED: keep as it is]" : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
+/** The map as indented lines for the agent: title, type, file, note and source of every node (what exists, what is planned); a link names the page it shows. */
+export function sitemapOutline(sm, { limit = 6000, ids = false } = {}) {
+  const lines = [], where = new Map();
+  const at = (n, t) => { const here = [...t, n.title]; where.set(n.id, here.join(" > ")); n.children.forEach((c) => at(c, here)); };
+  if (sm?.root) at(sm.root, []);
+  const id = (n) => (ids ? ` {id: ${n.id}}` : "");
+  const walk = (n, d) => { if (n.ref) { lines.push(`${"  ".repeat(d)}- ${n.title}${id(n)} [link: the same page as ${where.get(n.ref) ?? n.ref}${ids ? ` {id: ${n.ref}}` : ""}, shown here too]`); return; } lines.push(`${"  ".repeat(d)}- ${n.title}${id(n)}${n.type !== "page" ? ` [${n.type}]` : ""}${n.notSolved ? " [not solved here: no screen]" : ""}${n.approved ? " [APPROVED: keep as it is]" : ""}${n.file ? ` -> ${n.file}` : ""}${n.note ? ` (${n.note})` : ""}${n.source ? ` [source: ${n.source}]` : ""}`); n.children.forEach((c) => walk(c, d + 1)); };
   if (kindOf(sm) === "portal") lines.push("(a map of portals: [page] nodes are portals, documents of uuManagementKit; a [sheet] is a sheet of the portal above, with its own screen; a [section] is a part of the sheet above)");
   if (sm?.root) walk(sm.root, 0);
   const text = lines.join("\n");
@@ -389,21 +509,22 @@ export function svgLegend(kind = "web") {
     { key: "group", type: "group", label: "Group, only a menu item" },
     { key: "external", type: "external", label: portal ? "Link out of the portal" : "Link out of the site" },
     { key: "outside", type: "page", ns: true, label: "Not solved here, no screen is built" },
+    { key: "ref", type: "page", ref: true, label: `The same ${portal ? "sheet or document" : "page"} as elsewhere in the map` },
     { key: "folded", type: "page", label: "Folded branch, pages below" },
   ];
 }
 export const SVG_LEGEND = svgLegend("web");
 /** One node as SVG: the box, the accent bar, the mark (✔ ○ ↗ –), the title and, for a folded branch, the number below. */
-function nodeSvg({ x, y, w, h, type: t, ns = false, built, title = "", folded = 0, maxChars = 31 }) {
+function nodeSvg({ x, y, w, h, type: t, ns = false, built, title = "", folded = 0, maxChars = 31, ref = false }) {
   const grey = ns || t === "external"; // not solved here (an external link always): grey, whatever its type
   const out = [], accent = grey ? "#cdd3dd" : t === "page" ? "#2f6df6" : t === "sheet" ? "#14a3a3" : t === "group" ? "#98a2b3" : "#cdd3dd";
-  const dash = t === "group" ? ` stroke-dasharray="5 3"` : "";
+  const dash = t === "group" || ref ? ` stroke-dasharray="5 3"` : "";
   const sec = t === "section"; // a block of a page: a tinted pill in full colour, without the bar of a page (grey is for what is not solved here)
   const fill = grey ? "#f4f5f7" : sec ? "#eef3fe" : "#ffffff", ink = grey || t === "group" ? "#667085" : "#1d1f24";
   out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${sec ? h / 2 : 8}" fill="${fill}" stroke="${sec && !grey ? "#b9cdfb" : "#d6dbe4"}"${dash}/>`);
   if (!sec) out.push(`<rect x="${x}" y="${y + 6}" width="3" height="${h - 12}" rx="1.5" fill="${accent}"/>`);
   let mark = "", col = "#667085";
-  if (t === "external") mark = "↗"; else if (ns) mark = "–"; else if (isScreenType(t)) { mark = built ? "✔" : "○"; col = built ? "#2f8f49" : "#667085"; }
+  if (ref) mark = "↪"; else if (t === "external") mark = "↗"; else if (ns) mark = "–"; else if (isScreenType(t)) { mark = built ? "✔" : "○"; col = built ? "#2f8f49" : "#667085"; }
   if (mark) out.push(`<text x="${x + 14}" y="${y + h / 2 + 4.5}" fill="${col}">${mark}</text>`);
   if (title) out.push(`<text x="${x + (mark ? 32 : 14)}" y="${y + h / 2 + 4.5}" fill="${ink}"${sec ? ` font-size="12"` : ""}>${esc(cut(title, (mark ? maxChars - 3 : maxChars) - (folded ? 5 : 0)))}</text>`);
   if (folded) out.push(`<text x="${x + w - 12}" y="${y + h / 2 + 4}" text-anchor="end" fill="#667085" font-size="12">▸ ${folded}</text>`);
@@ -425,12 +546,14 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
     for (const k of kids) edges.push([box, k]); flat.push(box); return box;
   };
   lay(sm.root, 0);
+  const ids = nodeIndex(sm.root), orig = (n) => (n.ref ? ids.get(n.ref) ?? n : n);
   const mapHeight = PAD * 2 + Math.max(NH, cursor - GY);
   let width = PAD * 2 + (maxDepth + 1) * NW + maxDepth * GX;
   // ----- the legend: the kinds used by this map, as small nodes with a text, in rows as wide as the map
   const used = new Set();
   for (const { n, folded } of flat) {
     const b = n.file && isScreen(n.file);
+    if (n.ref) { used.add("ref"); continue; }
     used.add(n.notSolved ? "outside" : n.type === "page" ? (b ? "built" : "planned") : n.type === "sheet" ? (b ? "sheet-built" : "sheet-planned") : n.type);
     if (folded) used.add("folded");
   }
@@ -447,14 +570,14 @@ export function sitemapSvg(sm, { isScreen = () => false, collapsed = new Set(), 
   const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" font-size="13">`, `<rect width="100%" height="100%" fill="#ffffff"/>`];
   for (const [a, b] of edges) { const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, xm = x1 + GX / 2; out.push(`<path d="M${x1} ${y1}H${xm}V${y2}H${x2}" fill="none" stroke="#cdd3dd" stroke-width="1.5"/>`); }
-  for (const { n, x, y, folded } of flat) out.push(nodeSvg({ x, y, w: NW, h: NH, type: n.type, ns: Boolean(n.notSolved), built: Boolean(n.file && isScreen(n.file)), title: n.title, folded: folded ? descendants(n) : 0 }));
+  for (const { n, x, y, folded } of flat) { const o = orig(n); out.push(nodeSvg({ x, y, w: NW, h: NH, type: o.type, ns: Boolean(o.notSolved), built: Boolean(o.file && isScreen(o.file)), title: o.title, folded: folded ? descendants(n) : 0, ref: Boolean(n.ref) })); }
   if (placed.length) {
     const top = legendTop + 4;
     out.push(`<g class="legend"><line x1="${PAD}" y1="${top}" x2="${width - PAD}" y2="${top}" stroke="#e4e7ec"/>`);
     out.push(`<text x="${PAD}" y="${top + 24}" fill="#667085" font-size="11" font-weight="600" letter-spacing=".06em">LEGEND</text>`);
     for (const l of placed) {
       const y = top + 24 + 14 + l.y;
-      out.push(nodeSvg({ x: l.x, y, w: LW, h: LH, type: l.type, ns: Boolean(l.ns), built: l.key === "built" || l.key === "sheet-built", folded: l.key === "folded" ? "N" : 0 }));
+      out.push(nodeSvg({ x: l.x, y, w: LW, h: LH, type: l.type, ns: Boolean(l.ns), built: l.key === "built" || l.key === "sheet-built", folded: l.key === "folded" ? "N" : 0, ref: Boolean(l.ref) }));
       out.push(`<text x="${l.x + LW + LGAP}" y="${y + LH / 2 + 4}" fill="#344054" font-size="12">${esc(l.label)}</text>`);
     }
     out.push("</g>");
@@ -472,13 +595,14 @@ const u5Text = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "
  */
 export function sitemapUu5String(sm, { collapsed = new Set() } = {}) {
   if (!sm?.root) return "";
-  const kind = kindOf(sm);
-  const item = (n) => {
+  const kind = kindOf(sm), ids = nodeIndex(sm.root);
+  const item = (n0) => {
+    const n = n0.ref ? ids.get(n0.ref) ?? n0 : n0, link = Boolean(n0.ref); // a link shows its original, without its sub-pages
     const out = isOutside(n), scheme = out ? "neutral" : U5_SCHEME[n.type] ?? "neutral", label = typeShort(kind, n.type).toUpperCase();
     const badge = (s, text) => `<Uu5Bricks.Badge colorScheme="${s}">${text}</Uu5Bricks.Badge>`;
-    const it = { header: `<uu5string />${u5Text(n.title)} ${badge(scheme, label)}${n.notSolved ? ` ${badge("neutral", "NOT SOLVED")}` : ""}${n.approved ? ` ${badge("positive", "APPROVED")}` : ""}`, colorScheme: scheme };
-    if (out || n.type === "group") it.significance = "subdued";
-    if (n.children.length) { it.expanded = !collapsed.has(n.id); it.itemList = n.children.map(item); }
+    const it = { header: `<uu5string />${u5Text(n.title)} ${badge(scheme, label)}${n.notSolved ? ` ${badge("neutral", "NOT SOLVED")}` : ""}${n.approved ? ` ${badge("positive", "APPROVED")}` : ""}${link ? ` ${badge("neutral", "ALSO ELSEWHERE")}` : ""}`, colorScheme: scheme };
+    if (out || n.type === "group" || link) it.significance = "subdued";
+    if (!link && n.children.length) { it.expanded = !collapsed.has(n.id); it.itemList = n.children.map(item); }
     return it;
   };
   const json = JSON.stringify([item(sm.root)]).replace(/\\/g, "\\\\").replace(/"/g, '\\"');

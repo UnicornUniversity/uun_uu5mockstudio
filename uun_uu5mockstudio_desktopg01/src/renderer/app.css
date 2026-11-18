@@ -1748,3 +1748,16 @@ body[data-noproject] #projpick{display:none}
 /* the row of the map: the note on the whole map (content) on the left, the tools of the view on the right */
 .sm-review>.sm-mapnote{margin-right:auto}.sm-review>.pc-treetools{margin-left:auto}.sm-review>.sm-mapnote+.pc-treetools,.sm-review>.sm-mapnote~*:not(.pc-treetools)~.pc-treetools{margin-left:0}
 body.docview-on :is(#selbar,#selmenu){display:none!important} /* the bar of the selected screen belongs to the canvas: it is not over the sitemap or a plan */
+/* a link in the sitemap: the same page as elsewhere in the map, shown here too (dashed, ↪); ×N on a page shown at several places */
+.sm-node.ref{border-style:dashed;border-left-style:dashed;background:color-mix(in srgb,var(--panel) 70%,transparent)}
+.sm-node.ref .sm-title{font-style:italic}
+.sm-reficon{flex:none;font-size:12px;color:var(--acc)}
+.sm-shared{flex:none;font-size:10px;font-weight:600;line-height:1;padding:2px 5px;border-radius:999px;color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.sm-ghost.link{border-style:dashed;font-style:italic}
+.sm-parpick{width:320px;max-height:min(420px,70vh)}
+.sm-parpick input[type=search]{margin:4px 6px 6px;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.sm-parlist{overflow:auto;display:flex;flex-direction:column;min-height:0}
+.sm-parlist .sm-ci{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.sm-parlist .sm-ci small{white-space:nowrap}
+.sm-refnote{font-size:12.5px;line-height:1.45;color:var(--mute);margin:4px 0 10px}
+.sm-reflist{display:flex;flex-wrap:wrap;gap:4px;align-items:center}

@@ -3,7 +3,7 @@ import { parsePlan, serializePlan } from "./planDoc.js";
 import { extractPlan, replaceTreeBlock, removeTreeBlock } from "./planTree.js";
 import { renderTree, renderQuestions } from "./planView.js";
 import { replaceSitemapBlock, countScreens, mapSummary, kindOf, setKind, updateNode, takeComments, addScreenPage, sitemapFromScreens, fileFor, countBuilt, foldable, defaultCollapsed } from "./sitemap.js";
-import { renderSitemap, MAP_ID } from "./sitemapView.js";
+import { renderSitemap, MAP_ID, centerInMap } from "./sitemapView.js";
 
 const GAP = 120, W = 520, H = 640, SITEMAP_W = 840, SITEMAP_H = 920, MIN_W = 320, MIN_H = 240, TITLE_H = 34;
 const STATUS_TEXT = { draft: "draft", approved: "approved, building", built: "built", discarded: "discarded" };
@@ -228,6 +228,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
         c.sels = cur.some((p) => key(p) === key(path)) ? cur.filter((p) => key(p) !== key(path)) : [...cur, path];
         c.sel = c.sels.at(-1) ?? null; renderView(c);
       },
+      onReveal: (id) => { const p = pathOfId(sitemap, id); if (!p) return; c.sel = p; c.sels = [p]; revealPage(scope, id); }, // "Go to the original": selected, its branches unfolded, scrolled to and flashed
       onBulk: (sm) => io.write(sm),
       onChange: (sm, path, o) => { if (!o?.keepSelection) { c.sel = path; c.sels = [path]; } io.write(sm); },
       onCreateMany: (items) => {
@@ -513,7 +514,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     await new Promise((r) => requestAnimationFrame(r));
     const find = () => c.view.querySelector(`.sm-node[data-id="${CSS.escape(id)}"]`);
     const b = find(); if (!b) return null;
-    b.scrollIntoView({ block: "center", inline: "center" }); b.classList.add("sm-flash"); setTimeout(() => find()?.classList.remove("sm-flash"), 900);
+    centerInMap(b); b.classList.add("sm-flash"); // only the map scrolls (scrolling into view moved the view aside and showed the canvas) setTimeout(() => find()?.classList.remove("sm-flash"), 900);
     return () => { const x = find(); return x?.isConnected ? x.getBoundingClientRect() : null; };
   }
 

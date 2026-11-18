@@ -4,6 +4,7 @@ import path from "node:path";
 import { webContents, nativeImage } from "electron";
 import { captureWithFallback, shrinkScreenshot } from "./screenshot.mjs";
 import { clickIn } from "./mockClick.mjs";
+import { sitemapTools } from "./sitemapMcp.mjs";
 import { listWebImages, downloadWebImage, copySourcePicture, mergeImages, saveBlobPictures } from "./webImages.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,6 +75,7 @@ export function createStudioBrowser({ baseUrl, onNavigated, readStructure, proje
   };
 
   const tools = [
+    ...sitemapTools({ projectDir }), // the sitemap of the project: read it with ids, show one page at several places
     tool("browser_open", "Show a mockup (the .html file name in the project folder, e.g. 'user-form.html') on the app canvas, reload it, wait until uu5 has rendered, and report render status and console error count. The file must already exist.",
       { file: z.string().describe("File name of the .html screen in the project folder") },
       async ({ file }) => {

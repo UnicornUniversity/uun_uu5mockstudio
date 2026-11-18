@@ -1,4 +1,4 @@
-import { relocateNode, getNode, updateNode, updateNodes, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside, searchNodes, lockedIn, countApproved } from "./sitemap.js";
+import { relocateNode, getNode, updateNode, updateNodes, linkDiff, addScreenPage, descendants, fileNodes, addChild, addSibling, duplicateNode, removeNode, moveNode, indentNode, outdentNode, fileFor, pathTitles, kindOf, typeLabels, typeShort, typesFor, isScreenType, childType, canFlag, isOutside, searchNodes, lockedIn, countApproved, addRef, detachRef, resolveNode, refsTo, pathOfId } from "./sitemap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -16,6 +16,7 @@ const IC = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>', down: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
   indent: '<path d="M3 6h18M12 12h9M3 18h18M3 9l3 3-3 3"/>', outdent: '<path d="M3 6h18M12 12h9M3 18h18M6 9l-3 3 3 3"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   annotate: '<path d="M4 9V6a2 2 0 0 1 2-2h3"/><path d="M15 4h3a2 2 0 0 1 2 2v3"/><path d="M4 15v3a2 2 0 0 0 2 2h3"/><path d="M12.5 12.5l8 3.1-3.4 1.4-1.4 3.4z"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
@@ -23,6 +24,8 @@ const IC = {
 /**
  * The sitemap as a map: the root on the left, the pages to the right, and below it a small editor of the selected page.
  * `sm` = { root }; `opts` = { sel: path | null, isScreen(file), onSelect(path | null, multi) (Shift / ⌘ / Ctrl + click adds or removes a page; a click on the selected page or on the empty map deselects), sels (all selected pages), onBulk(sitemap) (a change to all selected pages), onChange(sitemap, path), onOpen(file), onCreate({ node, path, file, where }), onCreateMany([{ node, path, where }]) (the selected pages, at most 8), pins (Map: id of a page -> the numbers of its annotations, "1,3"; MAP_ID for the whole map), annotating (a click on a page annotates it, a click on the empty map annotates the whole map), onAnnotate([{ node, path, where }], anchor()) (a note on the page(s) for the next message), onAnnotateMap(anchor()) (a note on the whole map), collapsed (Set of ids of the folded pages), onToggle(id), links: { on, edges, screens, onToggle(), onAdd(file) } (the real links of the screens over the map) }.
+ * A node with `ref` is a link: the same page as its original, shown at one more place (dashed, ↪); it shows the original's name, type, screen and approval,
+ * and a change of them changes the original (sitemap.js updateNode). `onReveal(id)` shows a page: "Go to the original" unfolds the branches above it and scrolls to it. ⌥ + drag, or "Also show under…", puts a link to a page somewhere else.
  */
 // F2 renames the selected page: one listener for the document, because a click re-draws the map and the focus is gone with the old buttons
 let f2Rename = null;
@@ -32,12 +35,27 @@ if (typeof document !== "undefined") document.addEventListener("keydown", (e) =>
   e.preventDefault(); f2Rename();
 });
 
+/**
+ * Brings a page of the map into the middle of the map's own scroll box. Only that box scrolls: the browser's "scroll into view" would scroll every box above it too
+ * (also those with overflow hidden), which shifts the whole view of the map aside and uncovers the canvas behind it.
+ */
+export function centerInMap(b) {
+  const box = b?.closest?.(".sm-scroll"); if (!box) return;
+  const r = b.getBoundingClientRect(), br = box.getBoundingClientRect();
+  box.scrollLeft += r.left + r.width / 2 - (br.left + br.width / 2);
+  box.scrollTop += r.top + r.height / 2 - (br.top + br.height / 2);
+}
+
 export function renderSitemap(sm, opts) {
   const { sel, sels = sel ? [sel] : [], isScreen = () => false, onSelect, onChange, onBulk, onOpen, onCreate, onCreateMany, links, collapsed = new Set(), onToggle, pins = new Map(), annotating = false, onAnnotate, onAnnotateMap } = opts;
   const picked = (path) => sels.some((p) => same(p, path));
   const kind = kindOf(sm), TYPE_LABEL = typeLabels(kind), TYPES = typesFor(sm), portal = kind === "portal";
   const word = (t) => typeShort(kind, t).toLowerCase(); // "page", "portal", "sheet", "section"
   const root = el("div", { className: `sm${annotating ? " annotating" : ""}` });
+  /** "Go to the original" of a link (and the other places of a page): the card selects it, unfolds the branches above it and scrolls to it (without the card: only selected). */
+  const goToOriginal = (id) => (opts.onReveal ? opts.onReveal(id) : onSelect?.(pathOfId(sm, id), false));
+  const linkCount = new Map(); { const walk = (n) => { if (n.ref) linkCount.set(n.ref, (linkCount.get(n.ref) ?? 0) + 1); n.children.forEach(walk); }; walk(sm.root); } // id -> how many links show it elsewhere
+  const pinOf = (n) => pins.get(n.ref ?? n.id); // a link carries the annotations of its original
 
   const status = (n) => {
     if (n.type === "external") return el("span", { className: "sm-st ext", textContent: "↗", title: `Leads out of the ${portal ? "portal" : "site"}: not solved here` });
@@ -52,10 +70,48 @@ export function renderSitemap(sm, opts) {
     const names = hit.slice(0, 3).map((x) => `“${x.title}”`).join(", ") + (hit.length > 3 ? ` and ${hit.length - 3} more` : "");
     return confirm(`${names} ${hit.length === 1 ? "is" : "are"} approved and ${hit.length === 1 ? "has" : "have"} a screen. ${what} anyway?`);
   };
+  /** Deletes a page with its sub-pages and the links to it (asks when there are any); a link alone goes without asking: the original stays. */
+  const deleteNode = (n, path) => {
+    const kids = n.ref ? 0 : n.children.length, links = n.ref ? 0 : refsTo(sm, n.id).length;
+    const parts = [kids ? `its ${kids} sub-page(s)` : "", links ? `the ${links} link(s) to it elsewhere in the map` : ""].filter(Boolean);
+    if ((!parts.length || confirm(`Delete “${n.title}” with ${parts.join(" and ")}?`)) && okToChange([n], "Delete")) { const r = removeNode(sm, path); onChange?.(r.sitemap, r.path); }
+  };
+  /** "Also show under…": a list of the places where the page can be shown once more (a filter on top); the choice puts a link to it there. */
+  const parentPicker = (x, y, path) => {
+    document.querySelector(".sm-ctx")?.remove();
+    const n = getNode(sm, path), o = resolveNode(sm, n), places = [];
+    const walk = (m, p, d) => { if (!m.ref && addRef(sm, path, p).sitemap !== sm) places.push({ p, d, title: m.title, where: pathTitles(sm, p) }); m.children.forEach((c, i) => walk(c, [...p, i], d + 1)); };
+    walk(sm.root, [], 0);
+    const menu = el("div", { className: "sm-ctx sm-parpick", role: "dialog", "aria-label": `Also show ${o.title} under` });
+    const close = () => { menu.remove(); document.removeEventListener("pointerdown", away, true); };
+    const away = (e) => { if (!menu.contains(e.target)) close(); };
+    const list = el("div", { className: "sm-parlist", role: "listbox" });
+    const filter = el("input", { type: "search", placeholder: "Find the page to show it under…", spellcheck: false, "aria-label": "Find a page" });
+    const fold = (t) => String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const fill = () => {
+      const q = fold(filter.value.trim()); list.replaceChildren();
+      const hits = places.filter((pl) => !q || fold(pl.where).includes(q));
+      for (const pl of hits.slice(0, 80)) {
+        const b = el("button", { type: "button", role: "option", className: "sm-ci", title: pl.where }, el("span", { textContent: `${"  ".repeat(q ? 0 : pl.d)}${pl.title}` }));
+        if (q) b.append(el("small", { className: "mute", textContent: ` ${pl.where}` }));
+        b.onclick = () => { close(); const r = addRef(sm, path, pl.p); if (r.sitemap !== sm) onChange?.(r.sitemap, r.path); };
+        list.append(b);
+      }
+      if (!hits.length) list.append(el("p", { className: "mute sm-hint", textContent: places.length ? "No such page." : "There is no other place to show it." }));
+    };
+    filter.oninput = fill;
+    filter.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); close(); } else if (e.key === "Enter") { e.preventDefault(); list.querySelector("button")?.click(); } };
+    menu.append(el("div", { className: "sm-ch", textContent: `Also show “${o.title}” under` }), filter, list); fill();
+    document.body.append(menu);
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = `${Math.max(6, Math.min(x, innerWidth - w - 6))}px`; menu.style.top = `${Math.max(6, Math.min(y, innerHeight - h - 6))}px`;
+    document.addEventListener("pointerdown", away, true); filter.focus();
+  };
   /** The page(s) get a note for the next message; the popover stands at the (last) page, found again after a repaint of the map. */
   const annotate = (paths) => {
-    const list = paths.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) })).filter((x) => x.node); if (!list.length) return;
-    const id = list[list.length - 1].node.id;
+    // a link stands for its original: the note is on that page (its numbers show at every place where it is shown); each page once
+    const seen = new Set(), list = paths.map((p) => { const n = getNode(sm, p), o = resolveNode(sm, n), op = n?.ref ? pathOfId(sm, n.ref) ?? p : p; return { node: o, path: op, where: pathTitles(sm, op), at: n }; }).filter((x) => x.node && !seen.has(x.node.id) && seen.add(x.node.id)).map(({ node, path, where }) => ({ node, path, where })); if (!list.length) return;
+    const last = getNode(sm, paths[paths.length - 1]), id = last?.id ?? list[list.length - 1].node.id; // the popover stands at the place clicked
     onAnnotate?.(list, () => { const b = document.querySelector(`.sm-node[data-id="${CSS.escape(id)}"]`); return b?.isConnected ? b.getBoundingClientRect() : null; });
   };
   /** Rename on the spot: an input over the page; Enter or a click away keeps the name, Esc leaves it. */
@@ -98,8 +154,10 @@ export function renderSitemap(sm, opts) {
     const apNodes = many ? many.map((p) => getNode(sm, p)) : [n], allAp = apNodes.every((x) => x.approved);
     menu.append(...(flaggable.length ? [] : [el("hr")]), item(`${allAp ? "✓ " : ""}Approved`, () => (many ? onBulk?.(updateNodes(sm, many, { approved: !allAp })) : onChange?.(updateNode(sm, path, { approved: !allAp }), path)), { on: allAp }));
     const inside = word(childType(sm, n)), after = portal && ["page", "sheet", "section"].includes(n.type) ? word(n.type) : "page";
-    if (!many) menu.append(el("hr"), item(`Add ${inside} inside`, () => act(addChild(sm, path))), item(`Add ${after} after`, () => act(addSibling(sm, path)), { disabled: isRoot }), item("Duplicate", () => act(duplicateNode(sm, path)), { disabled: isRoot || n.children.length > 0 }),
-      el("hr"), item("Delete", () => { if ((!n.children.length || confirm(`Delete “${n.title}” with its ${n.children.length} sub-page(s)?`)) && okToChange([n], "Delete")) act(removeNode(sm, path)); }, { danger: true, disabled: isRoot }));
+    if (!many) menu.append(el("hr"), item(`Add ${inside} inside`, () => act(addChild(sm, path)), { disabled: Boolean(n.ref) }), item(`Add ${after} after`, () => act(addSibling(sm, path)), { disabled: isRoot }), item("Duplicate", () => act(duplicateNode(sm, path)), { disabled: isRoot || n.children.length > 0 || Boolean(n.ref) }),
+      item("Also show under…", () => parentPicker(x, y, path), { disabled: isRoot }),
+      ...(n.ref ? [item("Go to the original", () => goToOriginal(n.ref)), item("Make it a page of its own", () => act(detachRef(sm, path)))] : []),
+      el("hr"), item(n.ref ? "Remove the link" : "Delete", () => deleteNode(n, path), { danger: true, disabled: isRoot }));
     document.body.append(menu);
     const w = menu.offsetWidth, h = menu.offsetHeight;
     menu.style.left = `${Math.max(6, Math.min(x, innerWidth - w - 6))}px`; menu.style.top = `${Math.max(6, Math.min(y, innerHeight - h - 6))}px`;
@@ -110,7 +168,9 @@ export function renderSitemap(sm, opts) {
   const clearDrop = () => root.querySelectorAll(".drop-before,.drop-after,.drop-inside").forEach((x) => x.classList.remove("drop-before", "drop-after", "drop-inside"));
   const dropWhere = (b, y) => { const r = b.getBoundingClientRect(), f = (y - r.top) / (r.height || 1); return f < 0.28 ? "before" : f > 0.72 ? "after" : "inside"; };
   function startDrag(e, b, n, path) {
-    const sx = e.clientX, sy = e.clientY; let ghost = null, target = null, where = null, cancelled = false;
+    const sx = e.clientX, sy = e.clientY; let ghost = null, target = null, where = null, cancelled = false, linking = false;
+    /** ⌥ + drag: a link to the page goes to the place (the page stays where it is); without ⌥ the page moves. */
+    const linkAt = (tp, w) => (w === "inside" ? addRef(sm, path, tp) : tp.length ? addRef(sm, path, tp.slice(0, -1), tp[tp.length - 1] + (w === "after" ? 1 : 0)) : { sitemap: sm });
     const scroller = root.querySelector(".sm-scroll");
     const move = (ev) => {
       if (!ghost) {
@@ -118,18 +178,19 @@ export function renderSitemap(sm, opts) {
         ghost = el("div", { className: "sm-ghost", textContent: n.title }); document.body.append(ghost); b.classList.add("dragging"); document.body.classList.add("sm-dragging");
       }
       ghost.style.left = `${ev.clientX + 12}px`; ghost.style.top = `${ev.clientY + 8}px`;
+      linking = ev.altKey; ghost.classList.toggle("link", linking); ghost.textContent = linking ? `↪ ${resolveNode(sm, n).title} (a link)` : n.title;
       clearDrop(); target = null;
       const t = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.(".sm-node");
       if (t && root.contains(t) && t.dataset.path) {
         const tp = JSON.parse(t.dataset.path), w = dropWhere(t, ev.clientY);
-        if (relocateNode(sm, path, tp, w).sitemap !== sm) { target = tp; where = w; t.classList.add(`drop-${w}`); }
+        if ((linking ? linkAt(tp, w) : relocateNode(sm, path, tp, w)).sitemap !== sm) { target = tp; where = w; t.classList.add(`drop-${w}`); }
       }
       if (scroller) { const r = scroller.getBoundingClientRect(); if (ev.clientY < r.top + 36) scroller.scrollTop -= 14; else if (ev.clientY > r.bottom - 36) scroller.scrollTop += 14; if (ev.clientX < r.left + 36) scroller.scrollLeft -= 14; else if (ev.clientX > r.right - 36) scroller.scrollLeft += 14; }
     };
     const end = (commit) => {
       document.removeEventListener("pointermove", move, true); document.removeEventListener("pointerup", up, true); document.removeEventListener("keydown", key, true);
       ghost?.remove(); b.classList.remove("dragging"); document.body.classList.remove("sm-dragging"); clearDrop();
-      if (ghost) { justDragged = true; setTimeout(() => { justDragged = false; }, 0); if (commit && target && !cancelled) { const r = relocateNode(sm, path, target, where); if (r.sitemap !== sm && okToChange([n], "Move")) onChange?.(r.sitemap, r.path); } }
+      if (ghost) { justDragged = true; setTimeout(() => { justDragged = false; }, 0); if (commit && target && !cancelled) { const r = linking ? linkAt(target, where) : relocateNode(sm, path, target, where); if (r.sitemap !== sm && (linking || okToChange([n], "Move"))) onChange?.(r.sitemap, r.path); } }
     };
     const up = () => end(true), key = (ev) => { if (ev.key === "Escape") { cancelled = true; ev.stopPropagation(); end(false); } };
     document.addEventListener("pointermove", move, true); document.addEventListener("pointerup", up, true); document.addEventListener("keydown", key, true);
@@ -148,7 +209,9 @@ export function renderSitemap(sm, opts) {
     return b;
   };
   const nodeEl = (n, path) => {
-    const b = el("button", { type: "button", className: `sm-node t-${n.type}${isOutside(n) ? " ns" : ""}${picked(path) ? " sel" : ""}${pins.has(n.id) ? " has-pin" : ""}${n.approved ? " ap" : ""}${n.approved && opts.dimApproved ? " apdim" : ""}${hitClass(n)}`, title: annotating ? `Annotate ${n.title}` : n.note || n.title }, pins.has(n.id) ? el("span", { className: "sm-pin", textContent: String(pins.get(n.id)), title: `Annotation #${pins.get(n.id)} of your next message`, "aria-label": `Annotation ${pins.get(n.id)}` }) : null, status(n), el("span", { className: "sm-title", textContent: n.title }), ["page", "sheet", "section"].includes(n.type) && (portal || n.type === "sheet") ? el("span", { className: `sm-kind k-${n.type}`, textContent: typeShort(kind, n.type), "aria-label": `Type: ${typeShort(kind, n.type)}` }) : null, approvalMark(n, path));
+    const o = resolveNode(sm, n), link = Boolean(n.ref), pin = pinOf(n), shown = linkCount.get(n.id) ?? 0; // a link shows its original
+    const tip = link ? `${o.title}: the same page as ${pathTitles(sm, pathOfId(sm, n.ref) ?? [])}, shown here too` : o.note || o.title;
+    const b = el("button", { type: "button", className: `sm-node t-${o.type}${isOutside(o) ? " ns" : ""}${link ? " ref" : ""}${picked(path) ? " sel" : ""}${pin ? " has-pin" : ""}${o.approved ? " ap" : ""}${o.approved && opts.dimApproved ? " apdim" : ""}${hitClass(n)}`, title: annotating ? `Annotate ${o.title}` : tip }, pin ? el("span", { className: "sm-pin", textContent: String(pin), title: `Annotation #${pin} of your next message`, "aria-label": `Annotation ${pin}` }) : null, status(o), link ? el("span", { className: "sm-reficon", textContent: "↪", "aria-label": "Link to a page shown elsewhere" }) : null, el("span", { className: "sm-title", textContent: o.title }), ["page", "sheet", "section"].includes(o.type) && (portal || o.type === "sheet") ? el("span", { className: `sm-kind k-${o.type}`, textContent: typeShort(kind, o.type), "aria-label": `Type: ${typeShort(kind, o.type)}` }) : null, shown ? el("span", { className: "sm-shared", textContent: `×${shown + 1}`, title: `Shown at ${shown + 1} places of the map (here and ${shown} link${shown === 1 ? "" : "s"})` }) : null, approvalMark(o, path));
     if (n.children.length) {
       const folded = collapsed.has(n.id), tgl = el("span", { className: "sm-tgl", role: "button", tabIndex: 0, textContent: folded ? `▸ ${descendants(n)}` : "▾", title: folded ? `Show the ${descendants(n)} pages below` : "Fold the branch" });
       tgl.setAttribute("aria-label", folded ? `Unfold ${n.title}` : `Fold ${n.title}`); tgl.setAttribute("aria-expanded", String(!folded));
@@ -156,8 +219,8 @@ export function renderSitemap(sm, opts) {
       b.append(tgl);
     }
     b.setAttribute("aria-pressed", String(picked(path)));
-    if (n.file) b.dataset.file = n.file;
-    b.dataset.id = n.id;
+    if (o.file && !link) b.dataset.file = o.file;
+    b.dataset.id = n.id; if (link) b.dataset.ref = n.ref;
     // drag and drop (with the pointer, not the HTML5 one that a button does not start reliably): the upper quarter of a page drops before it, the lower quarter after it, the middle inside it
     b.dataset.path = JSON.stringify(path);
     if (path.length && onChange && !annotating) b.onpointerdown = (e) => { if (e.button === 0 && !e.target.closest(".sm-tgl")) startDrag(e, b, n, path); };
@@ -263,7 +326,7 @@ export function renderSitemap(sm, opts) {
     root.searchBar = bar; // the card puts it on its toolbar (Fold all, Unfold all, Share); without a toolbar it floats over the map
     mapwrap.append(bar);
     if (opts.searchFocus) requestAnimationFrame(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); });
-    if (opts.searchScroll && curId) requestAnimationFrame(() => [...scroll.querySelectorAll(".sm-node.cur")][0]?.scrollIntoView({ block: "center", inline: "center" }));
+    if (opts.searchScroll && curId) requestAnimationFrame(() => centerInMap([...scroll.querySelectorAll(".sm-node.cur")][0])); // only the map scrolls
   }
   root.append(mapwrap);
 
@@ -295,7 +358,7 @@ export function renderSitemap(sm, opts) {
    */
   const annoButton = (paths) => {
     if (!onAnnotate) return null;
-    const refs = paths.map((p) => pins.get(getNode(sm, p)?.id)).filter(Boolean), many = paths.length > 1;
+    const refs = paths.map((p) => { const x = getNode(sm, p); return x && pinOf(x); }).filter(Boolean), many = paths.length > 1;
     const what = many ? `the ${paths.length} pages` : "this page";
     const b = el("button", { type: "button", className: `icon smside-anno${refs.length ? " on" : ""}`, title: refs.length ? `Annotations #${refs.join(", #").replace(/,(?=\d)/g, ", #")} of your next message: edit them or add another (A)` : `Annotate ${what}: write what should change; the note goes with your next message (A)`, innerHTML: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${IC.annotate}</svg>` });
     b.setAttribute("aria-label", refs.length ? `Annotations of ${what}` : `Annotate ${what}`);
@@ -337,7 +400,7 @@ export function renderSitemap(sm, opts) {
   }
   /** Several pages at once: the screens are created for the selected pages only, not for the whole map. */
   function createMany(paths) {
-    const pages = paths.filter((p) => { const x = getNode(sm, p); return isScreenType(x?.type) && !x.notSolved; }), tooMany = pages.length > 8;
+    const pages = paths.filter((p) => { const x = getNode(sm, p); return isScreenType(x?.type) && !x.notSolved && !x.ref; }), tooMany = pages.length > 8; // a link has the screen of its original
     return el("button", { type: "button", className: "primary", textContent: `Create the screens (${pages.length})`, disabled: !pages.length || tooMany, title: tooMany ? "Select at most 8 pages at a time" : pages.length ? "The agent builds a screen for each selected page (and for nothing else)" : portal ? "Select portals or sheets (not sections or groups)" : "Select pages (not sections or groups)", onclick: () => onCreateMany?.(pages.map((p) => ({ node: getNode(sm, p), path: p, where: pathTitles(sm, p) }))) });
   }
 
@@ -351,8 +414,33 @@ export function renderSitemap(sm, opts) {
   const act = (r) => onChange?.(r.sitemap, r.path);
   // a disabled button shows no tooltip (the browser sends it no mouse events), so it is only dimmed (aria-disabled) and its tooltip says why it does nothing
   const ibtn = (svgPath, title, fn, disabled = false, cls = "", why = "") => { const b = el("button", { type: "button", className: `sm-ib ${cls}${disabled ? " off" : ""}`.trim(), title: disabled && why ? `${title} (${why})` : title, innerHTML: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${svgPath}</svg>` }); b.setAttribute("aria-label", title); if (disabled) b.setAttribute("aria-disabled", "true"); b.onclick = () => { if (!disabled) fn(); }; return b; };
+  if (node.ref) { // a link: the page is edited at its original; here it can be moved, made a page of its own or removed
+    const o = resolveNode(sm, node), op = pathOfId(sm, node.ref) ?? [];
+    const inPanelL = sideTitle(o.title, true, [sel]);
+    out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Link to ${o.title}` },
+      el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Link to a page" })),
+      el("p", { className: "sm-refnote", textContent: `The same ${o.type === "external" ? "external document" : word(o.type)} as ${pathTitles(sm, op)}, shown here too. Its name, type, screen and note are the original's: a change of them (also a rename here) shows at every place.` }),
+      el("div", { className: "sm-acts" },
+        inPanelL ? null : annoButton([sel]),
+        el("div", { className: "sm-bar", role: "toolbar", "aria-label": "Actions on the link" },
+          ibtn(IC.up, "Move up among the pages of the same level", () => act(moveNode(sm, sel, -1)), !parent || i === 0, "", "it is the first one"), ibtn(IC.down, "Move down among the pages of the same level", () => act(moveNode(sm, sel, 1)), !parent || i === parent.children.length - 1, "", "it is the last one"),
+          ibtn(IC.outdent, "Move it one level up", () => act(outdentNode(sm, sel)), sel.length < 2, "", "it is already on the first level"), el("span", { className: "sm-bsep" }),
+          ibtn(IC.trash, "Remove the link (the original stays)", () => deleteNode(node, sel), false, "danger")),
+        btn("Make it a page of its own", () => act(detachRef(sm, sel)), { title: "A copy of the page here, no longer tied to the original" }),
+        btn("Go to the original", () => goToOriginal(node.ref), { cls: "primary" }))));
+    return root;
+  }
   const exists = node.file && isScreen(node.file);
   const where = pathTitles(sm, sel);
+  /** The other places where the page is shown (its links): a click selects one; and a button that adds one more. */
+  function refsField() {
+    const at = refsTo(sm, node.id), wrap = el("span", { className: "sm-reflist" });
+    for (const p of at) wrap.append(el("button", { type: "button", className: "pc-mini", textContent: pathTitles(sm, p.slice(0, -1)).split(" > ").pop(), title: `Shown also under ${pathTitles(sm, p.slice(0, -1))}: show the link`, onclick: () => goToOriginal(getNode(sm, p).id) })); // unfolded and scrolled to, like the original
+    const add = el("button", { type: "button", className: "pc-mini", title: "Show this page at one more place of the map (a link to it; also ⌥ + drag)", disabled: !sel.length }, "+ Also show under…");
+    add.onclick = () => { const r = add.getBoundingClientRect(); parentPicker(r.left, r.bottom + 4, sel); };
+    wrap.append(add);
+    return wrap;
+  }
   const screenBtn = isOutside(node) || node.type === "section" ? null : exists ? btn("Open the screen", () => onOpen?.(node.file), { cls: "primary" }) : btn("Create the screen", () => onCreate?.({ node, path: sel, file: node.file ?? fileFor(sm, node), where }), { title: "The agent builds this page as a screen", cls: "primary" });
   /** The file of the screen of the page: typed, or picked from the screens that exist (the ones no page names yet first), so an existing screen is linked to the page. */
   function screenField() {
@@ -386,7 +474,7 @@ export function renderSitemap(sm, opts) {
   const inPanel = sideTitle(node.title, true, [sel]);
   out.append(el("div", { className: "sm-edit", role: "group", "aria-label": `Page ${node.title}` },
     el("div", { className: "sm-chead sm-shead" }, el("b", { textContent: "Page settings" })),
-    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, node.type !== "external" ? approveField() : null, field("Screen file", screenField()), field("Note", text(node.note, "note", "What the page is for")), field("Source", sourceField())),
+    el("div", { className: "sm-fields" }, field("Name", text(node.title, "title")), field("Type", type), canFlag(node.type) ? flagField() : null, node.type !== "external" ? approveField() : null, field("Screen file", screenField()), field("Note", text(node.note, "note", "What the page is for")), field("Source", sourceField()), sel.length ? el("div", { className: "sm-f" }, el("span", { textContent: "Also shown" }), refsField()) : null),
     el("div", { className: "sm-acts" },
       opts.editorHost ? null : btn("Deselect", () => onSelect?.(null, false), { title: "Select no page (also a click on the empty map, or on the selected page)" }),
       inPanel ? null : annoButton([sel]), // on the card (no side panel) the action sits with the others
@@ -395,7 +483,7 @@ export function renderSitemap(sm, opts) {
         ibtn(IC.inside, `Add a ${word(childType(sm, node))} inside this one`, () => act(addChild(sm, sel))), ibtn(IC.after, `Add a ${portal && ["page", "sheet", "section"].includes(node.type) ? word(node.type) : "page"} after this one (next to it)`, () => act(addSibling(sm, sel))), ibtn(IC.copy, "Duplicate this page (a copy right after it)", () => act(duplicateNode(sm, sel)), !sel.length || node.children.length > 0, "", sel.length ? "only a page without sub-pages can be duplicated" : "the root cannot be duplicated"), el("span", { className: "sm-bsep" }),
         ibtn(IC.up, "Move up among the pages of the same level", () => okToChange([node], "Move") && act(moveNode(sm, sel, -1)), !parent || i === 0, "", "it is the first one"), ibtn(IC.down, "Move down among the pages of the same level", () => okToChange([node], "Move") && act(moveNode(sm, sel, 1)), !parent || i === parent.children.length - 1, "", "it is the last one"),
         ibtn(IC.indent, "Put it inside the page above (one level deeper)", () => okToChange([node], "Move") && act(indentNode(sm, sel)), !parent || i === 0, "", "there is no page above it to go into"), ibtn(IC.outdent, "Move it one level up", () => okToChange([node], "Move") && act(outdentNode(sm, sel)), sel.length < 2, "", "it is already on the first level"), el("span", { className: "sm-bsep" }),
-        ibtn(IC.trash, "Delete the page with its sub-pages", () => { if ((!node.children.length || confirm(`Delete “${node.title}” with its ${node.children.length} sub-page(s)?`)) && okToChange([node], "Delete")) act(removeNode(sm, sel)); }, !sel.length, "danger", "the root cannot be deleted")),
+        ibtn(IC.trash, "Delete the page with its sub-pages (and the links to it)", () => deleteNode(node, sel), !sel.length, "danger", "the root cannot be deleted")),
       screenBtn)));
   return root;
 }
