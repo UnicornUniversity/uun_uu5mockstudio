@@ -31,3 +31,29 @@ test("the tool that changes the map is not available while planning, and the age
   const prompt = memoryPrompt({ cwd: "/p", rules: "", sitemapBlock: "- R" });
   assert.match(prompt, /sitemap_read \(the map with the ids\) and sitemap_links/);
 });
+
+test("the agent restructures the map: a new group, pages moved into it, a rename and a removal; approved nodes stay", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "smedit-"));
+  const web = { root: { id: "r", title: "Web", children: [
+    { id: "firmy", title: "Nabídka firem" }, { id: "smlouvy", title: "Smlouvy a dokumenty", children: [{ id: "vzor", title: "Vzor" }] },
+    { id: "hodn", title: "Hodnocení praxe", approved: true }, { id: "old", title: "Staré", file: "old.html" },
+  ] } };
+  await fs.writeFile(path.join(dir, "sitemap.json"), JSON.stringify(web));
+  const tools = sitemapTools({ projectDir: () => dir });
+  const out = await run(tools, "sitemap_edit", { ops: [
+    { op: "add", title: "Odborná praxe", type: "group", id: "praxe", before: "firmy" },
+    { op: "move", node: "firmy", under: "praxe" }, { op: "move", node: "smlouvy", under: "praxe" }, { op: "move", node: "hodn", under: "praxe" },
+    { op: "update", node: "vzor", title: "Vzor smlouvy" }, { op: "remove", node: "old" }, { op: "remove", node: "nic" },
+  ] });
+  assert.match(out, /Done \(5\)/);
+  assert.match(out, /added Web > Odborná praxe \{id: praxe\} \[group\]/);
+  assert.match(out, /Hodnocení praxe.*approved by the user/);
+  assert.match(out, /old\.html stay in the project/);
+  assert.match(out, /no node with the id "nic"/);
+  const saved = JSON.parse(await fs.readFile(path.join(dir, "sitemap.json"), "utf8"));
+  assert.deepEqual(saved.root.children.map((c) => c.id), ["praxe", "hodn"]);
+  assert.deepEqual(saved.root.children[0].children.map((c) => c.id), ["firmy", "smlouvy"]);
+  assert.equal(saved.root.children[0].children[1].children[0].title, "Vzor smlouvy");
+  assert.ok(await fs.stat(path.join(dir, ".studio", "sitemap.prev.json")));
+  assert.ok(SITEMAP_WRITE_TOOLS.includes("mcp__studio-browser__sitemap_edit"));
+});

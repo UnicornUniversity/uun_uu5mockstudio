@@ -1239,7 +1239,7 @@ body[data-role="architect"] #dash-levels [data-level="web"],body[data-role="arch
 .sm-edit>.sm-f{margin-bottom:8px}
 .sm-multi{display:flex;flex-direction:column;gap:2px;margin-bottom:8px;font-size:12.5px}.sm-multi .mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* the map card: switch and review bar on top, the map scrolls by itself, the editor of the selected page stays at the bottom */
-.sm-treewrap{position:relative;display:inline-block;min-width:100%}
+.sm-treewrap{position:relative;display:inline-block;min-width:100%;box-sizing:border-box} /* the offset that centers a fitted map is inside it: no scroll for it */
 .sm-links{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .sm-link{fill:none;stroke:#e0912f;stroke-width:1.5;stroke-dasharray:5 4;opacity:.9}
 .sm-diff{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;color:#c97a14}

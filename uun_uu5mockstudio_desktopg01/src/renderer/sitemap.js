@@ -203,6 +203,73 @@ export function applyLinks(sm, { replace = [], add = [], primary = [] } = {}) {
   syncRefs(out.root);
   return { sitemap: out, done, skipped };
 }
+/**
+ * The agent changes the structure of the map (the tool sitemap_edit). `ops` run in order, each by ids, and a later one may use the id an `add` reported:
+ * { op: "add", title, type?, under?, before?, after?, id?, note?, file?, notSolved? } a new page (or group, sheet, section, external link) inside `under` (at its end)
+ * or right before / after a node; { op: "update", node, title?, type?, note?, file?, notSolved? }; { op: "move", node, under? | before? | after? } with its sub-pages;
+ * { op: "remove", node } with its sub-pages and the links to them (screen files stay in the project). A node approved by the user is not renamed, retyped, moved or
+ * removed (nor a subtree that holds one); a change that cannot be made is skipped with the reason. -> { sitemap, done: [text], skipped: [text] }
+ */
+export function applyEdits(sm, ops = []) {
+  let out = clone(sm); const done = [], skipped = [];
+  const where = (m, id) => { const p = pathOfId(m, id); return p ? pathTitles(m, p) : id; };
+  const anyApproved = (n) => Boolean(n.approved || n.children.some(anyApproved));
+  const placeOf = (o) => (o.under ? [o.under, "inside"] : o.before ? [o.before, "before"] : o.after ? [o.after, "after"] : [null, null]);
+  for (const o of Array.isArray(ops) ? ops : []) {
+    const op = o?.op, label = `${op ?? "?"} ${o?.node && pathOfId(out, o.node) ? where(out, o.node) : o?.node ?? o?.title ?? ""}`.trim();
+    const skip = (why) => skipped.push(`${label}: ${why}`);
+    if (op === "add") {
+      const [ref, how] = placeOf(o); if (!ref) { skip("say where: under, before or after"); continue; }
+      const tp = pathOfId(out, ref), t = tp && getNode(out, tp);
+      if (!t) { skip(`no node with the id "${ref}"`); continue; }
+      if (how === "inside" && t.ref) { skip("a link has no sub-pages: add it under its original"); continue; }
+      if (how !== "inside" && !tp.length) { skip("nothing goes before or after the root: use under"); continue; }
+      if (countOwn(out) >= MAX_NODES) { skip(`the map has the most pages it can have (${MAX_NODES})`); continue; }
+      const parentPath = how === "inside" ? tp : tp.slice(0, -1);
+      if (parentPath.length >= MAX_DEPTH) { skip("the map would get too deep"); continue; }
+      const next = clone(out), par = getNode(next, parentPath), title = clip(o.title, 80);
+      if (!title) { skip("a title is needed"); continue; }
+      const type = typeOf(o.type) ?? (how === "inside" ? childType(next, par) : siblingType(next, getNode(next, tp)));
+      const node = { id: uniqueId(next, slugify(o.id || title)), title, type, children: [] };
+      const at = how === "inside" ? par.children.length : tp[tp.length - 1] + (how === "after" ? 1 : 0);
+      par.children.splice(at, 0, node);
+      const np = [...parentPath, at], patched = updateNode(next, np, { ...(o.note != null ? { note: o.note } : {}), ...(o.file != null ? { file: o.file } : {}), ...(o.notSolved != null ? { notSolved: o.notSolved } : {}) });
+      done.push(`added ${where(patched, node.id)} {id: ${node.id}} [${type}]`); out = patched; continue;
+    }
+    const np = pathOfId(out, o?.node), n = np && getNode(out, np);
+    if (!n) { skip(`no node with the id "${o?.node}"`); continue; }
+    if (op === "update") {
+      const patch = {}; for (const k of ["title", "type", "note", "file", "notSolved"]) if (o[k] !== undefined) patch[k] = o[k];
+      if (!Object.keys(patch).length) { skip("nothing to change"); continue; }
+      const target = n.ref ? getNode(out, pathOfId(out, n.ref) ?? np) : n;
+      if (target.approved && (patch.title !== undefined || patch.type !== undefined || patch.file !== undefined)) { skip("it is approved by the user: its title, type and file stay; ask the user to take the approval back first"); continue; }
+      if (patch.type !== undefined && !typeOf(patch.type)) { skip(`unknown type "${patch.type}"`); continue; }
+      const next = updateNode(out, np, patch); if (next === out) { skip("nothing changed"); continue; }
+      done.push(`changed ${where(next, target.id)} (${Object.keys(patch).join(", ")})`); out = next; continue;
+    }
+    if (op === "move") {
+      const [ref, how] = placeOf(o); if (!ref) { skip("say where: under, before or after"); continue; }
+      const tp = pathOfId(out, ref);
+      if (!tp) { skip(`no node with the id "${ref}"`); continue; }
+      if (!np.length) { skip("the root cannot move"); continue; }
+      if (anyApproved(n)) { skip("it (or a page inside it) is approved by the user: ask the user to take the approval back first"); continue; }
+      if (isPrefix(np, tp)) { skip("it cannot go inside itself"); continue; }
+      const from = where(out, n.id), r = relocateNode(out, np, tp, how);
+      if (r.sitemap === out) { skip("not possible (under a link, or the map would get too deep, or a link would end up inside its own page)"); continue; }
+      done.push(`moved ${from} -> ${where(r.sitemap, n.id)}`); out = r.sitemap; continue;
+    }
+    if (op === "remove") {
+      if (!np.length) { skip("the root cannot be removed"); continue; }
+      if (anyApproved(n)) { skip("it (or a page inside it) is approved by the user: ask the user to take the approval back first"); continue; }
+      const from = where(out, n.id), files = []; const walk = (x) => { if (x.file) files.push(x.file); x.children.forEach(walk); }; walk(n);
+      out = removeNode(out, np).sitemap;
+      done.push(`removed ${from}${n.children.length ? ` with ${n.children.length} sub-page(s)` : ""}${files.length ? ` (the screen files ${files.join(", ")} stay in the project)` : ""}`); continue;
+    }
+    skip(`unknown op "${op}": use add, update, move or remove`);
+  }
+  syncRefs(out.root);
+  return { sitemap: out, done, skipped };
+}
 /** The link becomes a page of its own: a copy of the original (title, type, note, source, the flag), without the screen file and sub-pages. */
 export function detachRef(sm, path) {
   const n = getNode(sm, path); if (!n?.ref) return { sitemap: sm, path };

@@ -247,17 +247,19 @@ export function renderSitemap(sm, opts) {
     b.append(n ? "Note on the whole map" : "Note on the whole map…"); b.onclick = annotateMap;
     review.append(b);
   }
-  const diff = links?.on ? linkDiff(sm, links.edges ?? [], links.screens ?? []) : null;
-  if (links) {
+  if (links && !links.known) links.load?.(); // the links of the screens are read first: without them the button cannot know whether it has anything to show
+  const all = links?.known ? linkDiff(sm, links.edges ?? [], links.screens ?? []) : null;
+  const diff = links?.on ? all : null;
+  if (links && all && (all.extra.length || all.unmapped.length)) { // no link and no screen outside the map: no button
     const tog = el("button", { type: "button", className: `pc-mini${links.on ? " on" : ""}`, textContent: "Real links", title: "Show the links that the screens really have and the map does not say" });
     tog.setAttribute("aria-pressed", String(Boolean(links.on))); tog.onclick = () => links.onToggle?.();
     review.append(tog);
     if (diff) {
       const where = fileNodes(sm), gone = diff.missing.map((f) => `${getNode(sm, where.get(f))?.title ?? f} (${f})`);
-      const row = el("div", { className: "sm-diff" }, el("span", { textContent: `${diff.extra.length} link${diff.extra.length === 1 ? "" : "s"} between screens that the map does not show (orange)` }));
-      if (gone.length) row.append(el("span", { textContent: ` · ${gone.length === 1 ? "a page names" : `${gone.length} pages name`} a screen file that does not exist: ${gone.join(", ")}`, title: "The page has a Screen file, but there is no such screen in the project. Create the screen, or change or clear the file of the page." }));
+      const row = el("div", { className: "sm-diff" }, ...(diff.extra.length ? [el("span", { textContent: `${diff.extra.length} link${diff.extra.length === 1 ? "" : "s"} between screens that the map does not show (orange)` })] : []));
+      if (gone.length) row.append(el("span", { textContent: `${diff.extra.length ? " · " : ""}${gone.length === 1 ? "a page names" : `${gone.length} pages name`} a screen file that does not exist: ${gone.join(", ")}`, title: "The page has a Screen file, but there is no such screen in the project. Create the screen, or change or clear the file of the page." }));
       if (diff.unmapped.length) {
-        row.append(el("span", { className: "mute", textContent: " · screens not in the map: " }));
+        row.append(el("span", { className: "mute", textContent: `${diff.extra.length || gone.length ? " · " : ""}screens not in the map: ` }));
         for (const f of diff.unmapped) row.append(el("button", { type: "button", className: "pc-mini", textContent: `+ ${f.replace(/\.html$/, "")}`, title: `Add ${f} to the map${sel ? " under the selected page" : ""}`, onclick: () => links.onAdd?.(f) }));
       }
       root.append(row);
@@ -279,23 +281,40 @@ export function renderSitemap(sm, opts) {
   /** The scale of the card itself (it is scaled with the canvas when it lies on it). */
   const cardScale = () => scroll.getBoundingClientRect().width / (scroll.offsetWidth || 1) || 1;
   const applyZoom = () => { treewrap.style.zoom = String(zoom); };
+  // after Fit the map sits in the middle of the free space (a wide map has room above and below, a tall one at the sides); zooming by hand ends it
+  let centered = Boolean(opts.centered);
+  const center = () => {
+    if (!centered) { treewrap.style.paddingLeft = treewrap.style.paddingTop = ""; return; }
+    const rs = [...treewrap.querySelectorAll(".sm-node")].map((n) => n.getBoundingClientRect()).filter((r) => r.width); if (!rs.length) return;
+    const k = cardScale(), s = scroll.getBoundingClientRect(), cs = getComputedStyle(scroll), pad = (side) => parseFloat(cs[`padding${side}`]) || 0;
+    const L = Math.min(...rs.map((r) => r.left)), R = Math.max(...rs.map((r) => r.right)), T = Math.min(...rs.map((r) => r.top)), B = Math.max(...rs.map((r) => r.bottom));
+    const wantL = Math.max(0, (scroll.clientWidth - pad("Left") - pad("Right") - (R - L) / k) / 2), wantT = Math.max(0, (scroll.clientHeight - pad("Top") - pad("Bottom") - (B - T) / k) / 2);
+    const curL = (L - s.left) / k - pad("Left") + scroll.scrollLeft, curT = (T - s.top) / k - pad("Top") + scroll.scrollTop; // where the map is now in the box of the scroll
+    const pl = parseFloat(treewrap.style.paddingLeft) || 0, pt = parseFloat(treewrap.style.paddingTop) || 0; // in the units of the zoomed map
+    treewrap.style.paddingLeft = `${Math.max(0, pl + (wantL - curL) / zoom)}px`; treewrap.style.paddingTop = `${Math.max(0, pt + (wantT - curT) / zoom)}px`;
+    root.draw?.();
+  };
+  const ro = new ResizeObserver(() => { if (!scroll.isConnected) { ro.disconnect(); return; } if (centered) center(); }); // the first call comes once the map is laid out; a gone map stops it
+  ro.observe(scroll);
   const setZoom = (z, clientX, clientY) => {
     z = clampZoom(z); if (Math.abs(z - zoom) < 1e-4) return;
+    if (centered) { centered = false; center(); } // a zoom by hand: the map keeps its place at the top left again
     const r = scroll.getBoundingClientRect(), k = cardScale();
     const px = clientX == null ? scroll.clientWidth / 2 : (clientX - r.left) / k, py = clientY == null ? scroll.clientHeight / 2 : (clientY - r.top) / k; // the point that stays where it is
     const cx = (scroll.scrollLeft + px) / zoom, cy = (scroll.scrollTop + py) / zoom;
     zoom = z; applyZoom();
     scroll.scrollLeft = cx * zoom - px; scroll.scrollTop = cy * zoom - py;
-    root.draw?.(); opts.onZoom?.(zoom);
+    root.draw?.(); opts.onZoom?.(zoom, { centered });
   };
-  /** The whole map in sight (never larger than 100 %). */
+  /** The whole map in sight: a big map gets smaller, a small (or folded) one larger, up to ZOOM_MAX. */
   const fitZoom = () => {
     const nodes = [...treewrap.querySelectorAll(".sm-node")]; if (!nodes.length) return;
+    centered = false; center(); // measured without the offset of a previous fit
     const w = treewrap.getBoundingClientRect(), k = cardScale() * zoom;
     const right = Math.max(...nodes.map((n) => n.getBoundingClientRect().right)), bottom = Math.max(...nodes.map((n) => n.getBoundingClientRect().bottom));
     const cw = (right - w.left) / k + 24, ch = (bottom - w.top) / k + 24; // the size of the map at 100 %
-    const z = clampZoom(Math.min(1, (scroll.clientWidth - 24) / cw, (scroll.clientHeight - 16) / ch));
-    zoom = z; applyZoom(); scroll.scrollLeft = 0; scroll.scrollTop = 0; root.draw?.(); opts.onZoom?.(zoom);
+    const z = clampZoom(Math.min((scroll.clientWidth - 24) / cw, (scroll.clientHeight - 16) / ch));
+    zoom = z; applyZoom(); scroll.scrollLeft = 0; scroll.scrollTop = 0; centered = true; center(); root.draw?.(); opts.onZoom?.(zoom, { centered });
   };
   scroll.addEventListener("wheel", (e) => {
     if (!(e.ctrlKey || e.metaKey)) return; // a plain wheel scrolls the map

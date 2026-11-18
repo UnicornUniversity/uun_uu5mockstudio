@@ -209,7 +209,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     const take = (o, k) => { const v = o[k]; o[k] = false; return v; }; // focus and scroll of the search happen once, after the repaint it caused
     box.append(el("div", { className: "pc-mapbox" }, renderSitemap(sitemap, {
       editorHost: c.expanded ? sideHost(true) : undefined,
-      zoom: c.mapZoom ?? 1, onZoom: (z) => { c.mapZoom = z; if (c === viewCard) ctx.zoomChanged?.(); },
+      zoom: c.mapZoom ?? 1, centered: Boolean(c.mapCentered), onZoom: (z, o) => { c.mapZoom = z; c.mapCentered = Boolean(o?.centered); if (c === viewCard) ctx.zoomChanged?.(); },
       screens: ctx.screens?.() ?? [],
       query: c.query ?? "", hit: c.hit ?? 0, searchFocus: take(c, "searchFocus"), searchScroll: take(c, "searchScroll"),
       onSearch: (q, hit, open) => { c.query = q; c.hit = hit; c.searchFocus = true; c.searchScroll = Boolean(q.trim()); for (const id of open) c.collapsed.delete(id); renderView(c); },
@@ -239,7 +239,8 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       },
       onOpen: openScreen,
       links: ctx.flowEdges ? {
-        on: Boolean(c.linksOn), edges: c.edges ?? [], screens: ctx.screens?.() ?? [],
+        on: Boolean(c.linksOn), edges: c.edges ?? [], known: Array.isArray(c.edges), screens: ctx.screens?.() ?? [],
+        load: () => { if (c.edgesLoading) return; c.edgesLoading = true; ctx.flowEdges().then((e) => { c.edges = Array.isArray(e) ? e : []; }, () => { c.edges = []; }).finally(() => { c.edgesLoading = false; renderView(c); }); }, // read once: the button shows only when there is something to show
         onToggle: async () => { c.linksOn = !c.linksOn; if (c.linksOn) { c.edges = (await ctx.flowEdges()) ?? []; if (!Array.isArray(c.edges)) c.edges = []; } renderView(c); },
         onAdd: (f) => io.write(addScreenPage(sitemap, f, c.sel ?? [])),
       } : undefined,
@@ -315,9 +316,9 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     if (c.expanded && !sitemap) sideHost(false);
     c.sitemap = sitemap; c.hasTree = Boolean(tree); syncHead(c);
     const parts = [];
-    if (!sitemap && c.status !== "discarded" && ctx.askAgent && (ctx.sitemapOffered?.() ?? true)) { // only in a project of a web site or portal: a plan of one component needs no map
+    if (!sitemap && c.status === "draft" && ctx.askAgent && (ctx.sitemapOffered?.() ?? true)) { // only a proposal (not a plan approved, being built or done) and only in a project of a web site or portal: a plan of one component needs no map
       // at the top: below a long tree it would not be seen
-      const add = el("button", { type: "button", className: "pc-mini accent", textContent: tree || text.trim() ? "Make a sitemap from this plan" : "Add a sitemap", title: "The agent derives the tree of the pages (a map of the web site or portal) from this plan; you review it, then approve it as the sitemap of the project" });
+      const add = el("button", { type: "button", className: "pc-mini accent pc-mapadd", disabled: Boolean(ctx.isBusy?.()), textContent: tree || text.trim() ? "Make a sitemap from this plan" : "Add a sitemap", title: "The agent derives the tree of the pages (a map of the web site or portal) from this plan; you review it, then approve it as the sitemap of the project" });
       add.onclick = () => ctx.askAgent(c.slug, `Revise this plan, it is the file plans/${c.slug}.md (the user may have edited it, so start from this text). Make a SITEMAP from it: add the pages, groups and sections that this plan describes (or implies) as a \`uu5-sitemap\` block, the tree of the pages of the web site or portal. It is not a screen and not a component tree: a thing that is only a part of one page is a section of that page. Keep the rest of the plan as it is and answer with the whole plan.\n\n${c.body}`, "Make a sitemap from the plan.");
       parts.push(el("div", { className: "pc-bar" }, el("span", { textContent: "This plan has no sitemap (map of the pages) yet." }), el("span", { className: "pc-bar-acts" }, add)));
     }
@@ -382,6 +383,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
   function setHidden(c, hidden) {
     if (Boolean(c.hidden) === hidden) return;
     c.hidden = hidden; c.el.hidden = hidden;
+    if (hidden && viewCard === c) closeView(); // the card shown as the view leaves it too: back to the canvas, never an empty view
     if (!hidden && collides(c)) { const sp = spotFor(c); c.x = sp.x; c.y = sp.y; place(c); } // the place it left may be taken by now
     ctx.changed?.();
   }
@@ -537,7 +539,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
     /** Hide / show a card (the Plans menu). */
     setHidden: (slug, hidden) => { const c = cards.get(slug); if (c) setHidden(c, hidden); },
     /** The cards are drawn again (a screen was created or deleted: the pages of a map show whether theirs exists). */
-    refresh: async () => { for (const c of cards.values()) { if (c.linksOn && ctx.flowEdges) { const e = await ctx.flowEdges(); c.edges = Array.isArray(e) ? e : []; } renderView(c); } },
+    refresh: async () => { for (const c of cards.values()) { if ((c.linksOn || Array.isArray(c.edges)) && ctx.flowEdges) { const e = await ctx.flowEdges(); c.edges = Array.isArray(e) ? e : []; } renderView(c); } },
     has: (slug) => cards.has(slug),
     count: () => cards.size,
     isHidden: (slug) => Boolean(cards.get(slug)?.hidden),
