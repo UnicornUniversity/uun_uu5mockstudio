@@ -164,3 +164,10 @@ test("the list also counts notes, variants not chosen yet and comments in the si
   assert.equal(p.notes, 2);
   assert.equal(p.mapComments, 1);
 });
+
+test("a projects folder closed to the app lists no projects instead of failing the start", async () => {
+  const os = await import("node:os"), fs = await import("node:fs/promises");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "closed-")), root = path.join(dir, "projects");
+  await mkdir(root); await fs.chmod(root, 0o000);
+  try { assert.deepEqual(await createProjects(root, { trash: async () => {} }).list(), []); } finally { await fs.chmod(root, 0o755); }
+});

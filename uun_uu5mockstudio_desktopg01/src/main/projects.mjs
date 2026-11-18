@@ -45,9 +45,11 @@ export function createProjects(root, { trash }) {
   }
 
   async function list() {
-    await mkdir(root, { recursive: true });
+    let entries;
+    try { await mkdir(root, { recursive: true }); entries = await readdir(root, { withFileTypes: true }); }
+    catch (e) { if (["EPERM", "EACCES"].includes(e?.code)) return []; throw e; } // the folder is closed to the app (macOS privacy): no projects to show, the app says why
     const out = [];
-    for (const e of await readdir(root, { withFileTypes: true })) {
+    for (const e of entries) {
       if (!e.isDirectory() || e.name.startsWith(".")) continue;
       const htmls = await htmlIn(dirOf(e.name));
       let updated = (await stat(dirOf(e.name))).mtimeMs; // the newest screen tells when the work was last touched

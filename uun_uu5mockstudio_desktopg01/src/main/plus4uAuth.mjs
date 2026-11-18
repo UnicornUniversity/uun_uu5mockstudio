@@ -104,6 +104,46 @@ export function createPlus4uAuth({ file, safeStorage, BrowserWindow, session, pa
     });
   }
 
+  /**
+   * Opens a sign-in page of another client on this computer (the Plus4U MCP proxy, see signInRelay.mjs) in the sign-in window of the app,
+   * so that the user signs in once for both. The answer (the code) is handed to its loopback address as the browser would. `silent`: a hidden
+   * window that gives up when Plus4U asks the person to sign in; then the other client is told that the sign-in did not happen.
+   */
+  function relay(url, { silent = false } = {}) {
+    let redirectUri;
+    try { redirectUri = new URL(new URL(url).searchParams.get("redirect_uri")).toString(); } catch { return Promise.reject(new Error("Not a sign-in page.")); }
+    const hand = (u) => request(u, { redirect: "manual" }).catch(() => null); // the other client answers with a page or a redirect: not followed
+    return new Promise((resolve, reject) => {
+      let win = null, timer = null, done = false, handed = false;
+      const finish = (err) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (win && !win.isDestroyed()) win.destroy();
+        if (err) { hand(`${redirectUri}${redirectUri.includes("?") ? "&" : "?"}error=access_denied`); reject(err); } else resolve();
+      };
+      win = new BrowserWindow({ width: 520, height: 760, show: !silent, parent: silent ? undefined : parent?.(), title: "Sign in to Plus4U", autoHideMenuBar: true, webPreferences: { partition, sandbox: true, contextIsolation: true } });
+      win.webContents.on("page-title-updated", (e) => e.preventDefault());
+      const intercept = (e, u) => {
+        if (handed || !readCallback(u, redirectUri)) return;
+        e.preventDefault();
+        handed = true;
+        if (!win.isDestroyed()) win.hide();
+        hand(u).then(() => finish());
+      };
+      win.webContents.on("will-redirect", intercept);
+      win.webContents.on("will-navigate", intercept);
+      win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      if (silent) win.webContents.on("did-navigate", (_e, u) => {
+        let onLogin = false; try { onLogin = /\/login\b/.test(new URL(u).pathname); } catch { /* not a URL */ }
+        if (onLogin) setTimeout(() => { if (!handed) finish(Object.assign(new Error("No Plus4U sign-in to reuse."), { silentFailed: true })); }, SILENT_LOGIN_WAIT).unref?.();
+      });
+      win.on("closed", () => { if (!handed) finish(Object.assign(new Error("The sign-in was cancelled."), { cancelled: true })); });
+      timer = setTimeout(() => { if (!handed) finish(new Error("The sign-in took too long.")); }, silent ? SILENT_TIMEOUT : LOGIN_TIMEOUT);
+      win.loadURL(url).catch((e) => { if (!done && !handed && !/ERR_ABORTED/.test(String(e?.message))) finish(e); });
+    });
+  }
+
   /** A call of the token endpoint: { access, id, refresh } or throws (scopeRejected / grantRejected tell why). */
   async function tokenRequest(params) {
     const meta = await discovery();
@@ -232,5 +272,5 @@ export function createPlus4uAuth({ file, safeStorage, BrowserWindow, session, pa
     return { signedIn: false };
   }
 
-  return { login, logout, status, photo, tokenFor, peekToken };
+  return { login, logout, status, photo, tokenFor, peekToken, relay };
 }

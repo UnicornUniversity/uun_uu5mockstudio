@@ -29,7 +29,7 @@ import { SITEMAP_FILE, readSitemap, writeSitemap, restoreSitemap, sitemapPagesOf
 import { PLANS_DIR, listPlans, readPlan, writePlan, savePlan, removePlan, withStatus, STATUSES } from "./plans.mjs";
 import { readComments, changeComments, screensWithComments, defaultAuthor } from "./comments.mjs";
 import { findAssets, writeUu5Assets } from "./assets.mjs";
-import { resolveProjectsRoot } from "./paths.mjs";
+import { resolveProjectsRoot, isAccessDenied, accessDeniedMessage, FILES_AND_FOLDERS_SETTINGS } from "./paths.mjs";
 import { createThumbs } from "./thumbs.mjs";
 import { loadSource, loadPlugins, mergeSources, readTemplate, applyTemplate, LEVELS, LEVEL_LABELS, KINDS as TEMPLATE_KINDS, slugify, guessLevel, buildInstructions, saveTemplate, removeTemplate, readMine, mineDir } from "./templates.mjs";
 import { zipSync } from "fflate";
@@ -38,8 +38,10 @@ import { createProjects, readState, updateState, writeState, sanitizeName } from
 import * as chats from "./chats.mjs";
 import { saveAttachments, saveAssets } from "./attachments.mjs";
 import { GUIDE_TEMPLATE, GUIDE_FILE, readGuide, writeGuide, saveSources, listSources, removeSource, brandCss, injectBrand, distillPrompt, checkScreen, fixPrompt, parseTokens, importManual, sourceDir, sourceKind } from "./brand.mjs";
-import { createDocFetcher, adoptStaging, STAGING } from "./docFetcher.mjs";
+import { createDocFetcher, adoptStaging, STAGING, serverSpec } from "./docFetcher.mjs";
 import { createPlus4uAuth } from "./plus4uAuth.mjs";
+import { OIDC } from "./plus4uOidc.mjs";
+import { createSignInRelay } from "./signInRelay.mjs";
 import { createEbcClient } from "./ebcClient.mjs";
 import { parseArtifactUrl, readLink, linkProject, LINK_FILE } from "./mkArtifact.mjs";
 import { upload as uploadToArtifact, download as downloadFromArtifact, syncState, uploadedProjects, createFromArtifact } from "./mkSync.mjs";
@@ -85,8 +87,10 @@ const devIcon = !app.isPackaged && fs.existsSync(iconPath) ? iconPath : undefine
 app.whenReady().then(async () => {
   if (devIcon && process.platform === "darwin") app.dock?.setIcon(devIcon);
   const projects = createProjects(root, { trash: (p) => shell.trashItem(p) });
-  await projects.migrateLegacy(legacyDir);
-  await projects.flattenAll();
+  // the projects folder may be closed to the app (macOS privacy after an update): the window opens anyway and says what to do, it never stays hidden
+  let blocked = null;
+  try { await fs.promises.readdir(root); } catch (e) { if (isAccessDenied(e)) blocked = e; }
+  try { await projects.migrateLegacy(legacyDir); await projects.flattenAll(); } catch (e) { if (isAccessDenied(e)) blocked ??= e; else console.error(e); }
   // the app starts on the dashboard (no project open): the user writes a prompt there or picks a project
   let current = null;
   const dir = () => { if (!current) throw new Error("No project is open."); return projects.dirOf(current); };
@@ -606,8 +610,26 @@ app.whenReady().then(async () => {
   ipcMain.handle("attachments:save", guard((_e, items) => saveAttachments(dir(), items)));
   ipcMain.handle("assets:save", guard((_e, items) => saveAssets(dir(), items)));
   // Documents of Plus4U (uuBookKit pages, uuManagementKit ECC documents) pasted into the chat: read once through the MCP proxy, kept as a snapshot in the project
-  const docFetcher = createDocFetcher();
-  app.on("will-quit", () => { docFetcher.close(); });
+  // One Plus4U sign-in for the app and the proxy (signInRelay.mjs): the proxy's sign-in page opens in the app's sign-in window, so the
+  // sign-in of a document card signs the app in too, and a proxy without a token is signed in quietly while the app is signed in.
+  let proxyLoginSilent = false;
+  const appQuietLogin = () => plus4u.status().then((st) => (st.signedIn ? null : plus4u.login({ silent: true }))).catch(() => {});
+  const relayReady = createSignInRelay({
+    dir: path.join(app.getPath("userData"), "signin-relay"), issuer: OIDC.issuer,
+    onUrl: (url) => {
+      const silent = proxyLoginSilent;
+      plus4u.relay(url, { silent }).then(() => { if (!silent) appQuietLogin(); }, (e) => { if (!e.cancelled && !e.silentFailed) console.warn(`[plus4u] proxy sign-in: ${e.message}`); });
+    },
+  }).catch((e) => { console.warn(`[plus4u] no shared sign-in: ${e.message}`); return null; });
+  const docFetcher = createDocFetcher({
+    spec: async (kind) => { const s = await serverSpec(kind); const r = await relayReady; return s.error || !r ? s : { ...s, env: { ...s.env, ...r.env(s.env.PATH) } }; },
+    quietLogin: async (_kind, login) => {
+      if (!(await relayReady) || !(await plus4u.status()).signedIn) return false;
+      proxyLoginSilent = true;
+      try { return Boolean((await login())?.ok); } finally { proxyLoginSilent = false; }
+    },
+  });
+  app.on("will-quit", () => { docFetcher.close(); relayReady.then((r) => r?.close()); });
   /**
    * A picture of a rendered document (<project>/<rel>, served by the preview server): a hidden window 1280 px wide waits until the uu5
    * libraries have painted the text, then the whole page is captured. { full: JPEG for the agent and the preview, thumb: data URL for the card }.
@@ -679,7 +701,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("plus4u:pages", async (_e, url) => { try { return await listDocPages(dir(), mkTool, str(url)); } catch (e) { return loginCode(e); } });
   ipcMain.handle("plus4u:publishTargets", guard((_e, item) => publishTargets(dir(), { screen: str(item?.screen), sitemap: Boolean(item?.sitemap) })));
   ipcMain.handle("plus4u:publish", async (_e, o) => { try { return await publishToPage(dir(), mkTool, { screen: str(o?.screen), sitemap: Boolean(o?.sitemap), content: String(o?.content ?? ""), documentUrl: str(o?.documentUrl), documentName: str(o?.documentName), pageOid: str(o?.pageOid), newPageName: str(o?.newPageName), quick: Boolean(o?.quick) }); } catch (e) { return loginCode(e); } });
-  ipcMain.handle("plus4u:docsLogin", guard(async (_e, url) => { const u = str(url) ?? (await readLink(dir()))?.url; if (!u) throw new Error("Choose a document first."); return docFetcher.loginFor(u); }));
+  ipcMain.handle("plus4u:docsLogin", guard(async (_e, url) => { const u = str(url) ?? (await readLink(dir()))?.url; if (!u) throw new Error("Choose a document first."); const r = await docFetcher.loginFor(u); if (r?.ok) appQuietLogin(); return r; }));
   ipcMain.handle("plus4u:openPage", guard(async (_e, documentUrl, pageOid) => { const p = parseArtifactUrl(String(documentUrl ?? "")); if (!p) throw new Error("Unknown document."); await shell.openExternal(pageUrl(p.url, String(pageOid))); return true; }));
   ipcMain.handle("plus4u:openArtifact", guard(async () => { const l = await readLink(dir()); if (!l || !/^https:\/\//.test(l.url)) throw new Error("The project is not linked to a Plus4U artifact."); await shell.openExternal(l.url); return true; }));
   // debugging only: a POST uuCmd of the artifact at `url` with `dtoIn` exactly as given (used with an empty dtoIn to learn what a command needs)
@@ -1000,7 +1022,7 @@ app.whenReady().then(async () => {
       return await pictureOf(w.webContents);
     } finally { w.destroy(); }
   };
-  ipcMain.handle("docs:login", guard((_e, url) => docFetcher.loginFor(String(url ?? ""))));
+  ipcMain.handle("docs:login", guard(async (_e, url) => { const r = await docFetcher.loginFor(String(url ?? "")); if (r?.ok) appQuietLogin(); return r; }));
   // on the dashboard no project is open: the documents are read into a hidden staging folder and moved into the project made for them (docs:adopt)
   const docHome = () => (current ? { name: current, dir: projects.dirOf(current) } : { name: STAGING, dir: path.join(root, STAGING) });
   fs.promises.rm(path.join(root, STAGING), { recursive: true, force: true }).catch(() => {}); // what an earlier run left behind
@@ -1466,6 +1488,19 @@ app.whenReady().then(async () => {
   else if (app.isPackaged) setTimeout(() => checkAppUpdate({ manual: false }), 12_000); // a development run does not nag
 
   win.loadFile(path.join(here, "../renderer/index.html"));
+  if (blocked) win.webContents.once("did-finish-load", () => askForFolderAccess());
+  /** The projects folder is closed to the app: open the settings where it is allowed, or pick another folder. */
+  async function askForFolderAccess() {
+    const { message, detail } = accessDeniedMessage(root);
+    const mac = process.platform === "darwin", buttons = [...(mac ? ["Open System Settings"] : []), ...(rootLocked ? [] : ["Choose Another Folder…"]), "Later"];
+    const { response } = await dialog.showMessageBox(win, { type: "warning", message, detail, buttons, defaultId: 0, cancelId: buttons.length - 1 });
+    if (buttons[response] === "Open System Settings") shell.openExternal(FILES_AND_FOLDERS_SETTINGS);
+    else if (buttons[response] === "Choose Another Folder…") projectsFolder("pick");
+  }
+}).catch((e) => { // a failure while starting must not leave the app running without a window
+  console.error(e);
+  dialog.showErrorBox("uu5Mock Studio could not start", `${isAccessDenied(e) ? `${accessDeniedMessage(root).message}\n${accessDeniedMessage(root).detail}` : e?.stack ?? String(e)}`);
+  app.quit();
 });
 
 app.on("window-all-closed", () => app.quit());

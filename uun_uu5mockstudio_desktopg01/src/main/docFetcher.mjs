@@ -77,7 +77,7 @@ const isAuthError = (msg) => /authenticat|unauthori[sz]ed|\b401\b|login|token/i.
  * Reads documents of Plus4U for the chat: one MCP client per kind and server URL (the proxy process stays up while the app runs),
  * only the load tool, the tools that read the structure (the menu of a book, the pages of a document) and the status / login tools of the proxy are called. `spec(kind)` can be replaced in tests.
  */
-export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5mock-studio", version: "1" } } = {}) {
+export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5mock-studio", version: "1" }, quietLogin = null } = {}) {
   const clients = new Map(); // key -> Promise<{ client, transport }>
 
   async function connect(kind) {
@@ -111,6 +111,16 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
       const st = JSON.parse(textOf(await call(kind, STATUS_TOOL, {}, 30000)) || "{}");
       return { signedIn: Boolean(st?.token?.present) };
     } catch (e) { return { signedIn: false, error: e.code ?? String(e.message ?? e) }; }
+  }
+
+  /**
+   * `status`, but a proxy without a token first gets one without asking, when it can: `quietLogin(kind, login)` (the app signs it in with its
+   * own Plus4U sign-in, see signInRelay.mjs) returns whether it tried. Never shows a window.
+   */
+  async function signedIn(kind) {
+    let st = await status(kind);
+    if (!st.error && !st.signedIn && quietLogin && (await Promise.resolve(quietLogin(kind, () => login(kind))).catch(() => false))) st = await status(kind);
+    return st;
   }
 
   /**
@@ -196,7 +206,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     const k = KINDS[doc.kind];
     try {
       if (!allowLogin) {
-        const st = await status(doc.kind);
+        const st = await signedIn(doc.kind);
         if (st.error) return { error: st.error, kind: doc.kind };
         if (!st.signedIn) return { error: "login", kind: doc.kind };
       }
@@ -270,7 +280,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     const k = KINDS[doc.kind];
     try {
       if (!allowLogin) {
-        const st = await status(doc.kind);
+        const st = await signedIn(doc.kind);
         if (st.error) return { error: st.error, kind: doc.kind };
         if (!st.signedIn) return { error: "login", kind: doc.kind };
       }
@@ -325,7 +335,7 @@ export function createDocFetcher({ spec = serverSpec, clientInfo = { name: "uu5m
     const k = KINDS[kind];
     if (!k || ![...k.readTools, ...(k.writeTools ?? []), ...also].includes(name)) return { error: `The tool ${name} is not allowed.` };
     try {
-      const st = await status(kind);
+      const st = await signedIn(kind);
       if (st.error) return { error: st.error };
       if (!st.signedIn) return { error: "login" };
       const res = await call(kind, name, args, timeout);

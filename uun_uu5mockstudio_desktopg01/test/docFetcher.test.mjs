@@ -37,6 +37,18 @@ test("without a token the fetch reports login, and login then lets it through", 
   assert.equal((await f.fetchDoc(dir, BOOK)).ok, true);
 });
 
+test("a proxy without a token is signed in quietly when the app can, and reports login when it cannot", async (t) => {
+  const calls = [];
+  const f = createDocFetcher({ spec: spec(false), quietLogin: async (kind, login) => { calls.push(kind); return (await login()).ok; } });
+  t.after(() => f.close());
+  const dir = await makeProject({});
+  assert.equal((await f.fetchDoc(dir, BOOK)).ok, true);
+  assert.deepEqual(calls, ["bookkit"]);
+  const no = createDocFetcher({ spec: spec(false), quietLogin: async () => false });
+  t.after(() => no.close());
+  assert.deepEqual(await no.fetchDoc(dir, BOOK), { error: "login", kind: "bookkit" });
+});
+
 test("a missing territory and a foreign link are reported", async () => {
   const f = createDocFetcher({ spec: async () => ({ error: "territory" }) });
   assert.deepEqual(await f.fetchDoc("/nowhere", BOOK), { error: "territory", kind: "bookkit" });
