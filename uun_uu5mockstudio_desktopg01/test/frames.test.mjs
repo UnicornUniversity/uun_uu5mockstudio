@@ -55,6 +55,10 @@ test("the capture scripts are valid JavaScript", async () => {
   assert.doesNotThrow(() => new Function(`return ${EXTRACT}`));
   // several parts (Shift): the picker keeps a list of them and the extraction takes the rectangle around them all
   assert.match(PICKER, /e\.shiftKey/);
+  // the highlight starts at the suggested content area (what holds none of the page around it) and steps over wrappers of the same size
+  assert.match(PICKER, /const suggest = /);
+  assert.match(PICKER, /\[class\*=breadcrumb i\]/);
+  assert.match(PICKER, /same\(r, prev\)/);
   assert.match(EXTRACT, /querySelectorAll\("\[data-uu5mock-slot\]"\)/);
   assert.match(EXTRACT, /__uu5mockRects/);
 });

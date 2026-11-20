@@ -405,3 +405,13 @@ test("a deleted screen leaves the sitemap: its page goes, sub-pages take its pla
   assert.equal(dropScreen(sm, "other.html").sitemap, sm);
   assert.equal(sm.root.children[0].title, "Study"); // the original is not changed
 });
+
+test("reviseMessage direct: the map of the project is changed with the tools, no plan; a plan's map stays a plan", () => {
+  const sm = normalizeSitemap({ root: { title: "P", children: [{ title: "Terri" }] } });
+  const msg = reviseMessage({ slug: null, sm, notes: [{ where: "#1 P > Terri", note: "Too deep?" }], direct: true });
+  assert.match(msg, /Do NOT write a plan/);
+  assert.match(msg, /sitemap_edit/);
+  assert.match(msg, /#1 P > Terri: Too deep\?/);
+  assert.doesNotMatch(msg, /uu5-sitemap/);
+  assert.match(reviseMessage({ slug: "p", sm, body: "B", direct: true }), /answer with the whole plan/);
+});

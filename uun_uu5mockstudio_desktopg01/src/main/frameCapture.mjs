@@ -21,7 +21,7 @@ export const PICKER = `(() => {
   document.documentElement.append(box, bar);
   const $ = (id) => document.getElementById(id);
   // parts = what was chosen: { el } (an element) or { rect } (a drawn rectangle); the content area is the smallest rectangle around all of them
-  let pick = false, multi = false, hover = null, base = null, up = 0, drag = null, moved = false, dragged = false;
+  let pick = false, multi = false, hover = null, chain = [], idx = 0, star = -1, manual = false, drag = null, moved = false, dragged = false;
   const parts = [], marks = [];
   window.__uu5mockRect = null; window.__uu5mockRects = [];
   const mine = (el) => el && (el === box || bar.contains(el));
@@ -46,25 +46,60 @@ export const PICKER = `(() => {
     if (parts.length) console.log("${SLOT_MESSAGE}");
   };
   const lbl = document.createElement("div"); lbl.style.cssText = "position:fixed;z-index:2147483647;top:8px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:6px;background:#1b1b1b;color:#fff;font:12px/1.3 system-ui;pointer-events:none;display:none"; document.documentElement.append(lbl);
-  const show = (el) => { const r = el.getBoundingClientRect(); Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" }); const tag = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\\s+/)[0] : ""); lbl.textContent = tag + "  " + Math.round(r.width) + "×" + Math.round(r.height); lbl.style.display = pick ? "block" : "none"; };
-  // the element under the mouse, or its ancestor "up" levels higher (the whole white area under a header is rarely what lies directly under the pointer)
-  const current = () => { let el = base; for (let i = 0; i < up && el.parentElement && el.parentElement !== document.documentElement; i++) el = el.parentElement; return el; };
-  const move = (d) => { if (!base) return; up = Math.max(0, up + d); const el = current(); const cap = (() => { let e = base, n = 0; while (e.parentElement && e.parentElement !== document.documentElement) { e = e.parentElement; n++; } return n; })(); if (up > cap) up = cap; hover = current(); show(hover); };
+  const show = (el) => { const r = el.getBoundingClientRect(); Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" }); const tag = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\\s+/)[0] : ""); lbl.textContent = tag + "  " + Math.round(r.width) + "×" + Math.round(r.height) + "   level " + (chain.length - idx) + "/" + chain.length + (idx === star ? "   ★ suggested content area" : ""); lbl.style.display = pick ? "block" : "none"; };
+  // the parent across a shadow root too (the parts of a web component)
+  const parentOf = (e) => e.parentElement || (e.parentNode && e.parentNode.host) || null;
+  const within = (outer, el) => { for (let e = el; e; e = parentOf(e)) if (e === outer) return true; return false; };
+  // the element under the mouse and its ancestors, from it outwards; the wrappers that have (nearly) the same rectangle as the one inside them count once (as the outer one),
+  // so that each step of the wheel really changes the area
+  const same = (a, b) => Math.abs(a.left - b.left) <= 2 && Math.abs(a.top - b.top) <= 2 && Math.abs(a.right - b.right) <= 2 && Math.abs(a.bottom - b.bottom) <= 2;
+  const chainOf = (el) => { const out = []; let prev = null; for (let e = el; e && e !== document.documentElement; e = parentOf(e)) { const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) continue; if (prev && same(r, prev)) out[out.length - 1] = e; else out.push(e); prev = r; } return out; };
+  // the parts of the page around its content: the top bar, menus, side panels, breadcrumbs, the title of the page (its heading is the title of the document, or one part of it), what is fixed or sticky
+  const CHROME = "header,nav,aside,footer,[role=banner],[role=navigation],[role=complementary],[role=contentinfo],[role=menubar],[class*=breadcrumb i],[aria-label*=breadcrumb i],[class*=Breadcrumb]";
+  let chromeAt = 0, chromeList = [];
+  const chrome = () => {
+    if (Date.now() - chromeAt < 1500) return chromeList; chromeAt = Date.now();
+    const title = (document.title || "").replace(/\\s+/g, " ").trim().toLowerCase(), list = new Set();
+    const names = title.split(/\\s[-|–—·:]\\s/).map((x) => x.trim()); // "Page – App": the heading of the page is one whole part of it (a heading inside the content that is only a piece of the title is not)
+    const seen = (x) => { const r = x.getBoundingClientRect(); return r.width >= 4 && r.height >= 4 && r.bottom > 0 && r.top < innerHeight; };
+    for (const x of document.querySelectorAll(CHROME)) if (!mine(x) && seen(x)) list.add(x);
+    for (const h of document.querySelectorAll("h1,h2,[role=heading]")) { const t = h.textContent.replace(/\\s+/g, " ").trim().toLowerCase(); if (t && (t === title || names.includes(t)) && seen(h)) list.add(h); }
+    let k = 0; for (const x of document.body ? document.body.getElementsByTagName("*") : []) { if (k++ > 6000) break; if (mine(x) || x.classList.contains("__uu5mock_mark") || x === lbl) continue; const p = getComputedStyle(x).position; if ((p === "fixed" || p === "sticky") && seen(x)) { const r = x.getBoundingClientRect(); if (r.width * r.height > 2000) list.add(x); } }
+    return (chromeList = [...list]);
+  };
+  // the suggested content area: the largest of the ancestors that holds none of the page around the content (and is not the whole window)
+  const suggest = (ch) => {
+    const around = chrome().filter((c) => !within(c, ch[0])); // (what the pointer is in does not count against its own ancestors)
+    let best = -1;
+    for (let i = 0; i < ch.length; i++) { if (around.some((c) => within(ch[i], c))) break; best = i; }
+    if (best < 0) return -1;
+    const r = ch[best].getBoundingClientRect(), vis = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+    if (vis >= 0.9 * innerWidth * innerHeight) return -1; // the whole window: nothing around the content was recognised
+    if (r.width < innerWidth * 0.25 || r.height < 80) return -1; // a small part: not an area for content
+    return best;
+  };
+  const aim = (el) => { // the pointer is over el: stay on the area set with the wheel (or ▲ ▼) while the pointer is inside it, otherwise start at the suggested area (or at the element itself);
+    // only a size set by hand stays: an area that was only highlighted on the way (the whole page under the title) must not hold the pointer when it comes back to the content
+    const ch = chainOf(el); if (!ch.length) return;
+    const keep = manual && hover && within(hover, el) ? ch.findIndex((x) => x === hover || within(x, hover)) : -1;
+    if (keep < 0) manual = false; chain = ch; star = suggest(ch); idx = keep >= 0 ? keep : star >= 0 ? star : 0; hover = chain[idx]; show(hover);
+  };
+  const move = (d) => { if (!chain.length) return; manual = true; idx = Math.max(0, Math.min(chain.length - 1, idx + d)); hover = chain[idx]; show(hover); };
   function ui() {
     const chosen = parts.length > 0;
     for (const id of ["__uu5mock_up", "__uu5mock_down", "__uu5mock_use"]) $(id).style.display = pick ? "inline-block" : "none";
     $("__uu5mock_add").style.display = !pick && chosen ? "inline-block" : "none";
     $("__uu5mock_mode").textContent = pick ? "Back to browsing" : (chosen ? "Choose again" : "Choose content area");
-    $("__uu5mock_msg").textContent = pick ? "Click an element (wheel or ▲ ▼ make it larger or smaller; the label above shows its size), or drag a rectangle over the area where the content goes. Hold Shift to add more parts: the content area is the smallest rectangle around all of them" + (parts.length ? " (" + parts.length + " chosen so far; Enter or a click without Shift finishes)." : ".") : chosen ? (parts.length > 1 ? parts.length + " parts chosen: the content area is the rectangle around them all. Save it, add a part, or choose again." : "Content area chosen. Save it, add another part, or choose again.") : "Browse and sign in as needed. Open the page you want, then choose the content area.";
+    $("__uu5mock_msg").textContent = pick ? "Point at the content: the highlight starts at the suggested content area (★ in the label above). Click to choose it; the wheel or ▲ ▼ make it larger or smaller and the size stays while the pointer is inside. Or drag a rectangle over the area where the content goes. Hold Shift to add more parts: the content area is the smallest rectangle around all of them" + (parts.length ? " (" + parts.length + " chosen so far; Enter or a click without Shift finishes)." : ".") : chosen ? (parts.length > 1 ? parts.length + " parts chosen: the content area is the rectangle around them all. Save it, add a part, or choose again." : "Content area chosen. Save it, add another part, or choose again.") : "Browse and sign in as needed. Open the page you want, then choose the content area.";
     const ok = $("__uu5mock_ok"); ok.disabled = !chosen; ok.style.opacity = chosen ? "1" : ".5";
     if (!pick) { lbl.style.display = "none"; box.style.display = "none"; }
   }
-  $("__uu5mock_mode").onclick = () => { pick = !pick; if (pick) { multi = false; if (parts.length) { parts.length = 0; sync(); } } ui(); };
+  $("__uu5mock_mode").onclick = () => { pick = !pick; hover = null; chain = []; manual = false; if (pick) { multi = false; if (parts.length) { parts.length = 0; sync(); } } ui(); };
   $("__uu5mock_add").onclick = () => { pick = true; multi = true; ui(); };
   addEventListener("scroll", paint, true); addEventListener("resize", paint);
   addEventListener("mousemove", (e) => {
     if (pick && drag && e.buttons) { if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 8) moved = true; if (moved) { const l = Math.min(drag.x, e.clientX), t = Math.min(drag.y, e.clientY), w = Math.abs(e.clientX - drag.x), h = Math.abs(e.clientY - drag.y); Object.assign(box.style, { display: "block", left: l + "px", top: t + "px", width: w + "px", height: h + "px" }); lbl.textContent = "area  " + Math.round(w) + "×" + Math.round(h); lbl.style.display = "block"; } return; }
-    if (!pick) return; const el = document.elementFromPoint(e.clientX, e.clientY); if (el && !mine(el) && el !== base) { base = el; up = 0; hover = el; show(el); } }, true);
+    if (!pick) return; const el = document.elementFromPoint(e.clientX, e.clientY); /* (a web component as a whole: the extraction finds the chosen element in the document) */ if (el && !mine(el) && el !== chain[0]) aim(el); }, true);
   $("__uu5mock_up").onclick = () => move(1); $("__uu5mock_down").onclick = () => move(-1);
   addEventListener("wheel", (e) => { if (!pick || mine(e.target)) return; e.preventDefault(); e.stopPropagation(); move(e.deltaY < 0 ? 1 : -1); }, { capture: true, passive: false });
   // a part is chosen: with Shift it is added (or taken away again when it is there) and the choosing goes on; without Shift it ends the choosing

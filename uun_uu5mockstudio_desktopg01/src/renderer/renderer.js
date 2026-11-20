@@ -205,7 +205,15 @@ function setPlanMode(on) {
   $("mode-label").textContent = planMode ? "Plan" : "Agent";
   $("mode-ico").innerHTML = planMode ? '<path d="M9 4h6a2 2 0 0 1 2 2v14l-5-3-5 3V6a2 2 0 0 1 2-2z"/>' : '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>';
   updateBuildBtn();
-  $("prompt").placeholder = planMode ? "Describe what to plan…" : "Describe the screen you want to design…";
+  syncPlaceholder();
+}
+/** The hint in the message field follows what is in front of the user: no project, the sitemap, an open plan, or the canvas (Plan or Agent). */
+function syncPlaceholder() {
+  let key = null; try { key = planCards?.viewKey?.() ?? null; } catch { /* planCards not set up yet: the canvas */ }
+  $("prompt").placeholder = !project ? "Open or create a project first…"
+    : key === "@sitemap" ? "Describe what should change in the sitemap…"
+    : key ? "Describe what should change in this plan…"
+    : planMode ? "Describe what to plan…" : "Describe the screen you want to design…";
 }
 /** The last plan that waits for approval. */
 const proposedPlan = () => [...entries].reverse().find((e) => e.kind === "plan" && e.state === "proposed");
@@ -1715,7 +1723,7 @@ async function checkBrand(file) {
 const openRules = (screen) => project && rules.open({ screen: typeof screen === "string" ? screen : undefined });
 $("rulesbtn").onclick = openRules;
 // the toolbar, in groups: the view (Canvas | Sitemap | Plans), the project (its menu: description, rules, the Advanced view; comments), Plus4U and the account
-function syncViewSw() { const canvasOn = !planCards.viewKey(); document.body.classList.toggle("docview-on", !canvasOn); /* comments belong to the screens: their button shows only on the canvas */ $("canvasbtn").classList.toggle("on", canvasOn); $("canvasbtn").setAttribute("aria-pressed", String(canvasOn)); }
+function syncViewSw() { const canvasOn = !planCards.viewKey(); document.body.classList.toggle("docview-on", !canvasOn); /* comments belong to the screens: their button shows only on the canvas */ $("canvasbtn").classList.toggle("on", canvasOn); $("canvasbtn").setAttribute("aria-pressed", String(canvasOn)); syncPlaceholder(); }
 $("canvasbtn").onclick = () => { planCards.closeView(); syncViewSw(); };
 syncViewSw();
 {
@@ -2243,7 +2251,7 @@ function updateNoProject() {
   const none = !project;
   if (none) document.body.dataset.noproject = "1"; else delete document.body.dataset.noproject;
   $("prompt").disabled = none; $("send").disabled = none || !ready || busy;
-  $("prompt").placeholder = none ? "Open or create a project first…" : "Describe the screen you want to design…";
+  syncPlaceholder();
   if (none) { closeFullscreen(); $("dash-top").after($("updates")); dashboard.show(projectList, { plan: planMode }); } else { $("descstrip").after($("updates")); dashboard.hide(); } // the update notices follow the view
   updateGlassInset();
 }
@@ -2745,8 +2753,8 @@ $("form").onsubmit = async (e) => {
     annotationsContext(ctx),
     mapNotes.length && mapRevision(mapNotes),
   ].filter(Boolean);
-  // annotations of a sitemap are answered with a plan: the map changes only when the user approves it
-  const plan = planMode || mapNotes.length > 0;
+  // annotations of the map of a plan are answered with a revised plan; those of the map of the project in Agent mode change it at once (the previous map is kept, the user can take it back)
+  const plan = planMode || (mapNotes.length > 0 && !mapDirect(mapNotes));
   if (window.__plan?.dryRun) { window.__plan.lastSend = { message: extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, plan }; setBusy(false); clearChips(); if (chatPick) setInspect(false); return; } // the automated checks read the message instead of starting the agent
   sentModel = $("model").value;
   planPending = plan;
@@ -2754,9 +2762,11 @@ $("form").onsubmit = async (e) => {
   clearChips(); if (chatPick) setInspect(false);
 };
 /** The request to revise the sitemap the annotations are on: their notes, the rules of the map and the map (or the plan) as it is now. */
+/** Annotations of the map of the project in Agent mode are applied at once (sitemap_edit, the previous map is kept); the map of a plan, or Plan mode, is revised as a plan. */
+const mapDirect = (list) => !planMode && list.length > 0 && list[0].scope === "project";
 function mapRevision(list) {
   const scope = list[0].scope, m = planCards.mapOf?.(scope); if (!m?.sitemap) return null;
-  return reviseMessage({ slug: scope === "project" ? null : scope, sm: m.sitemap, body: m.body ?? "", notes: list.map((a) => ({ where: `#${a.ref} ${a.where}`, note: a.note })) });
+  return reviseMessage({ slug: scope === "project" ? null : scope, sm: m.sitemap, body: m.body ?? "", notes: list.map((a) => ({ where: `#${a.ref} ${a.where}`, note: a.note })), direct: mapDirect(list) });
 }
 $("prompt").onkeydown = (e) => {
   const box = $("mentions");

@@ -412,7 +412,14 @@ export function takeComments(sm) {
  * (several notes on one page, or one note on several pages, are listed as they are). The plan or the map as it is now goes along.
  */
 const hasApproved = (sm) => { let f = false; const walk = (x) => { if (x.approved) f = true; x.children.forEach(walk); }; if (sm?.root) walk(sm.root); return f; };
-export function reviseMessage({ slug, sm, notes = [], body = "" }) {
+export function reviseMessage({ slug, sm, notes = [], body = "", direct = false }) {
+  if (direct && !slug) return [ // Agent mode, the map of the project: the agent changes it at once with its tools (the app keeps the previous map, the user can take the change back), no plan
+    "The user annotated pages of the SITEMAP of this project (sitemap.json).",
+    ...(kindOf(sm) === "portal" ? ["", "It is a map of PORTALS (`\"kind\": \"portal\"`, keep it): a node of type `page` is a portal (a document of uuManagementKit), a `sheet` is a sheet of the portal above it with its own screen, a `section` is a part of the sheet above it."] : []),
+    ...(notes.length ? ["", "Resolve every annotation:", ...notes.map((n) => `- ${n.where}: ${n.note}`)] : []),
+    "", "Do NOT write a plan. When an annotation asks for a change (rename, move, merge, split, make a page a section or the other way round, add or remove pages), make it right away: read the map with sitemap_read (for the ids), then change it with sitemap_edit (or sitemap_links for a page shown at several places). When an annotation is a question, or you disagree, answer it in a few sentences and leave that part of the map as it is; ask back when it is unclear what to change. Finish with one or two sentences on what you changed.",
+    ...(hasApproved(sm) ? ["", "Nodes with `\"approved\": true` are approved by the user: do not rename, move, retype or remove them (sitemap_edit skips them); say so when an annotation asks for it."] : []),
+  ].join("\n");
   const head = slug ? `The user annotated pages of the SITEMAP of the plan plans/${slug}.md (the user may have edited it, so start from this text).` : "The user annotated pages of the SITEMAP of this project, the file sitemap.json (the user may have edited it, so start from the map below).";
   return [
     head,
