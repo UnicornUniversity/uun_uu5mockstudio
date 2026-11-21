@@ -152,6 +152,7 @@ main{overflow:hidden}
 #repostrip #rs-branch:hover{border-color:var(--acc)}
 #repostrip #rs-note{margin-left:auto;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #repostrip #rs-unlink{flex:none;padding:2px 7px;opacity:.7}#repostrip #rs-unlink:hover{color:#ff7b7b;opacity:1}
+#repostrip #rs-note.lock{flex:none;display:inline-flex;align-items:center;padding:2px 4px}#repostrip #rs-note.lock .ico{color:var(--mute)}
 #repostrip.err{color:#e0a030}#repostrip.err .ico{color:#e0a030}
 #chat.collapsed #repostrip,body[data-noproject] #repostrip{display:none}
 #ctxmenu{position:fixed;z-index:80;min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.4);display:flex;flex-direction:column}
@@ -217,6 +218,7 @@ a.mention{font-weight:600;text-decoration:underline;cursor:pointer;color:inherit
 #repostrip #rs-branch:hover{border-color:var(--acc)}
 #repostrip #rs-note{margin-left:auto;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #repostrip #rs-unlink{flex:none;padding:2px 7px;opacity:.7}#repostrip #rs-unlink:hover{color:#ff7b7b;opacity:1}
+#repostrip #rs-note.lock{flex:none;display:inline-flex;align-items:center;padding:2px 4px}#repostrip #rs-note.lock .ico{color:var(--mute)}
 #repostrip.err{color:#e0a030}#repostrip.err .ico{color:#e0a030}
 #chat.collapsed #repostrip,body[data-noproject] #repostrip{display:none}
 #ctxmenu{position:fixed;z-index:80;min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.4);display:flex;flex-direction:column}

@@ -12,7 +12,7 @@ const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.creat
 /** A component name from what the user typed: "course summary" → CourseSummary. */
 export const pascal = (s) => String(s ?? "").replace(/[^A-Za-z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : "")).replace(/^./, (c) => c.toUpperCase());
 
-export function openComponentStart({ api, attach, onStart, prepare = null, toast = () => {}, mode: initialMode = "extend" }) {
+export function openComponentStart({ api, attach, onStart, prepare = null, toast = () => {}, mode: initialMode = "extend", initial = {}, onCancel = null }) {
   let busy = false, mode = initialMode, repo = null; // repo: { path, name } when started from the dashboard
   const shots = [];
   const file = h("input", { spellcheck: false, placeholder: "src/bricks/…/component.js" });
@@ -63,14 +63,15 @@ export function openComponentStart({ api, attach, onStart, prepare = null, toast
       if (shots.length) await attach(shots);
       const r = await api.componentStart(file.value.trim(), mode === "new" ? { mode: "new", name: pascal(name.value), description: desc.value } : { mode: "extend" });
       if (!r || r.error) throw new Error(r?.error ?? "The component could not be read.");
-      close();
+      started = true; close();
       toast(r.mode === "new" ? `${r.ref} is the reference for ${r.name} (${r.nodes} components from ${r.files.length} file${r.files.length === 1 ? "" : "s"}); the agent designs the screen ${r.screen}.` : `“${r.name} (as is)” is saved among the plans (${r.nodes} components from ${r.files.length} file${r.files.length === 1 ? "" : "s"}); the agent builds the screen ${r.screen}.`);
       onStart(r);
     } catch (e) { err.textContent = String(e?.message ?? e); start.textContent = label; } finally { busy = false; check(); }
   };
   const start = h("button", { type: "button", className: "primary", textContent: "Build the screen", onclick: go });
   const check = () => { start.disabled = busy || !file.value.trim() || (prepare && !repo) || (mode === "new" && !pascal(name.value)); };
-  const close = () => ov.remove();
+  let started = false;
+  const close = () => { ov.remove(); if (!started) onCancel?.(); };
   const ov = h("div", { className: "tsdbox hodbox", onmousedown: (e) => { if (e.target === ov && !busy) close(); } },
     h("div", { className: "card", role: "dialog", "aria-label": "Start from an existing component" },
       h("div", { className: "dlg-head" }, h("h2", { textContent: "Start from an existing component" }), closeButton(() => { if (!busy) close(); })),
@@ -90,7 +91,8 @@ export function openComponentStart({ api, attach, onStart, prepare = null, toast
   drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("on"); addShots([...e.dataTransfer.files]); });
   document.body.append(ov);
   paintShots(); paintMode();
+  if (initial.file) file.value = initial.file; if (initial.name) { name.value = initial.name; nameTouched = true; } if (initial.description) desc.value = initial.description; check();
   if (prepare) { setRepo(null); api.repoRecent().then((r) => { if (r && !r.error) setRepo(r); }).catch(() => {}); }
-  file.focus();
+  (mode === "new" && initial.file && !name.value ? name : file).focus();
   return { close };
 }

@@ -1605,6 +1605,23 @@ function mentionedRepoFiles(text) {
   for (const m of text.matchAll(/(^|\s)@repo\/([^\s@]+)/g)) { const p = trimPunct(m[2]); if (p && !out.includes(p)) out.push(p); }
   return out;
 }
+/**
+ * A message that asks for a component made from an existing one – an @repo/<component file> plus words like "another / new / based on /
+ * extend / redesign" and "component / screen" – is the start of the "Start from an existing component" scenario. Returns { file, mode } or null.
+ * After the dialog is cancelled the next send goes as a plain message (plainOnce).
+ */
+let plainOnce = false;
+function componentIntent(text) {
+  if (plainOnce || !repo || repo.error || componentBrief || planMode) return null;
+  const file = mentionedRepoFiles(text).find((f) => /\.(jsx?|tsx?|mjs)$/.test(f)); if (!file) return null;
+  const t = text.toLowerCase();
+  if (!/(komponent|component|screen|obrazovk)/.test(t)) return null;
+  const isNew = /(další|dalsi|another|nov[áaouyé]\w*|new\b|based on|podle|po vzoru|podobn|z existuj|from (the )?existing|z komponent)/.test(t);
+  const isExtend = /(extend|redesign|rozšiř|rozsir|přepracuj|prepracuj|předělej|predelej|uprav)/.test(t);
+  if (!isNew && !isExtend) return null;
+  const name = text.replace(/@\S+/g, " ").match(/\b([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+)\b/)?.[1] ?? ""; // "new component CourseList …" → its name
+  return { file, mode: isNew ? "new" : "extend", name };
+}
 /** Library components mentioned as @Uu5Elements.Button (in order, unique); the main process keeps only those that the plugin documentation knows. */
 function mentionedComponents(text) {
   const out = [];
@@ -1722,7 +1739,10 @@ function showRepo(r) {
   $("rs-name").textContent = r.error ? `${r.name} (not available)` : r.name;
   const shown = r.view || r.branch; $("rs-branch").textContent = shown ? `${shown} ▾` : ""; $("rs-branch").hidden = !shown || Boolean(r.error);
   $("rs-branch").title = r.view ? `Claude reads a snapshot of branch ${r.view} (the checked-out branch is ${r.branch || "?"}). Click to change.` : "Claude reads the checked-out branch. Click to read another branch.";
-  $("rs-note").textContent = r.error ? "check the folder" : r.view ? "snapshot · read-only" : "read-only for Claude";
+  // read-only as a lock (the words do not fit the narrow chat); the words stay in the tooltip. An error keeps its short text.
+  const note = $("rs-note"); note.classList.toggle("lock", !r.error);
+  if (r.error) { note.textContent = "check the folder"; note.title = r.error; }
+  else { note.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'; note.title = r.view ? `Snapshot of ${r.view} · read-only for Claude` : "Read-only for Claude: it reads the repository, never writes to it"; note.setAttribute("aria-label", note.title); }
   $("rs-main").title = `${r.error ? `Linked git repository is not available: ${r.error}` : "Linked git repository (Claude reads it, never writes)"}\n${r.path}${r.branch ? `\nChecked out: ${r.branch}` : ""}\nClick to open the folder`;
 }
 $("rs-main").onclick = async () => { const r = repo && (await window.studio.repoOpen()); if (r?.error) toast(r.error, { err: true }); }; // opens the repository folder itself in the file manager
@@ -1818,7 +1838,8 @@ syncViewSw();
   let origin = null;
   const paintOrigin = async () => {
     origin = await window.studio.componentOrigin?.().catch(() => null) ?? null; if (origin?.error) origin = null;
-    const o = $("pi-origin"), offer = !origin && (!meta.role || meta.role === "architect" || meta.role === "uiux");
+    const o = $("pi-origin"), offer = !meta.role || meta.role === "architect" || meta.role === "uiux"; // also in a project made from a component: another one can follow
+    $("pi-fromcomp-t").textContent = origin ? "Another from an existing component…" : "From an existing component…";
     // Hand off for production: in the Advanced view, with a linked repository; its state from the projects list (ready / outdated / the last one)
     const hand = !isSimple() && Boolean(repo && !repo.error);
     $("pi-handoff").hidden = !hand;
@@ -2479,10 +2500,10 @@ const dashboard = createDashboard({
  * Start from an existing component of a repository: extend / redesign it, or a new component modelled on it (componentStartDialog.js).
  * From the dashboard (no project) a project is made and the chosen repository linked to it first; in a project without a repository it is linked.
  */
-function startFromComponent({ mode = "extend" } = {}) {
+function startFromComponent({ mode = "extend", initial, userText, onCancel } = {}) {
   const needsRepo = !project || !repo;
   openComponentStart({
-    api: window.studio, toast, mode, attach: (files) => addImages(files),
+    api: window.studio, toast, mode, initial, onCancel, attach: (files) => addImages(files),
     prepare: needsRepo ? async ({ repoPath }) => {
       if (!project) {
         if (!ready) return { error: NO_AI };
@@ -2497,7 +2518,7 @@ function startFromComponent({ mode = "extend" } = {}) {
     } : null,
     onStart: (r) => {
       componentBrief = r.brief; setPlanMode(false);
-      $("prompt").value = r.mode === "new" ? `Design the new component ${r.name} based on ${r.ref} (@repo/${r.files[0]}).` : `Make a screen of the existing component ${r.name} (@repo/${r.files[0]}) as it is now.`;
+      $("prompt").value = r.mode === "new" ? `Design the new component ${r.name} based on ${r.ref} (@repo/${r.files[0]}).` : `Make a screen of the existing component ${r.name} (@repo/${r.files[0]}) as it is now.${userText ? ` The user also asked: ${userText}` : ""}`;
       $("form").requestSubmit();
     },
   });
@@ -2886,6 +2907,12 @@ $("form").onsubmit = async (e) => {
   if (!prompt && !imgs.length && !docCards.count() && !notes.length) return;
   if (!prompt && notes.length) prompt = "Apply the annotations.";
   if (!prompt) prompt = docCards.count() ? "Use the attached document." : imgs.some((i) => i.asset) ? "Use the attached picture in the design." : "Attaching a screenshot, see the attachment.";
+  const comp = componentIntent(prompt);
+  if (comp) { // "another one from @repo/…": the same scenario as Start from an existing component, the dialog filled in from the message
+    startFromComponent({ mode: comp.mode, initial: { file: comp.file, name: comp.name, description: prompt }, userText: prompt, onCancel: () => { plainOnce = true; } });
+    return;
+  }
+  plainOnce = false;
   const docs = docCards.take(), pages = sitePick;
   // attached screenshots become files in the project (hidden folder) that the agent opens with Read
   let paths = [], assetPaths = [];
