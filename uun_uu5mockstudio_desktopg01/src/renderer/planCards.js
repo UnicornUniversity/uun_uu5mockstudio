@@ -339,7 +339,7 @@ export function createPlanCards({ root, world, canvas, api, ctx }) {
       return;
     }
     c.name.textContent = c.title; c.name.title = `plans/${c.slug}.md`;
-    c.stat.textContent = c.status === "approved" && !c.hasTree && (c.sitemap || /The sitemap of this plan was approved/.test(c.body)) ? "map approved" : STATUS_TEXT[c.status] ?? c.status; c.el.dataset.status = c.status;
+    c.stat.textContent = c.meta?.baseline ? "as is, the baseline" : c.meta?.reference ? "reference" : c.status === "approved" && !c.hasTree && (c.sitemap || /The sitemap of this plan was approved/.test(c.body)) ? "map approved" : STATUS_TEXT[c.status] ?? c.status; c.el.dataset.status = c.status;
     c.modeBtn.textContent = c.mode === "edit" ? "Done" : "Edit"; c.modeBtn.setAttribute("aria-pressed", String(c.mode === "edit"));
     c.modeBtn.title = c.mode === "edit" ? "Back to reading the plan (⌘E / Ctrl+E)" : "Edit the Markdown of the plan (⌘E / Ctrl+E)";
     c.buildBtn.hidden = c.status !== "draft";

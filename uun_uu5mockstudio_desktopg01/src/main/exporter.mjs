@@ -50,35 +50,51 @@ export async function exportHtml(projectDir, file, dest) {
   return dest;
 }
 
-export async function exportZip(projectDir, dest) {
+/**
+ * The mockups with the pictures they use, as files of a folder where the screens lie side by side with assets/:
+ * { files, entries: { "<screen>.html" | "<asset path>": Uint8Array }, assets }. Shared by the ZIP export and the handoff package.
+ */
+export async function mockupEntries(projectDir) {
   const files = await listMockups(projectDir);
+  const entries = {}, texts = {};
+  for (const f of files) texts[f] = await readFile(path.join(projectDir, f), "utf8");
+  // pictures and videos the screens use: those the user put into the design (logo...) live in assets/, others are found by their
+  // references (also the pictures of read documents, .studio/sources/assets)
+  const used = await findAssets(projectDir, Object.values(texts));
+  // a reference that would not work from the copy (an absolute path of the preview server) is rewritten to the file's place in it
+  const rewrite = used.filter((a) => a.ref !== a.zipPath && (a.ref.startsWith("/") || a.rel.startsWith(".studio/")));
+  for (const f of files) {
+    let t = texts[f];
+    for (const a of rewrite) t = t.split(a.ref).join(a.zipPath);
+    entries[f] = strToU8(t);
+  }
+  for (const a of used) entries[a.zipPath] = await zipEntry(a.file);
+  const assets = path.join(projectDir, "assets");
+  for (const f of await readdir(assets).catch(() => [])) {
+    if (f.startsWith(".") || entries[`assets/${f}`]) continue;
+    const e = await zipEntry(path.join(assets, f)).catch(() => null); // a sub-folder is not a file
+    if (e) entries[`assets/${f}`] = e;
+  }
+  return { files, entries, assets: used.length };
+}
+
+/** The project memory that travels with the mocks: description, business rules and the notes and comments of the screens: { name: Uint8Array }. */
+export async function docEntries(projectDir) {
+  const out = {};
+  for (const f of (await readdir(projectDir)).filter((n) => n === "BUSINESS_RULES.md" || n === "PROJECT.md" || n.endsWith(".notes.md") || n.endsWith(".comments.json"))) out[f] = new Uint8Array(await readFile(path.join(projectDir, f)));
+  return out;
+}
+
+export async function exportZip(projectDir, dest) {
+  const { files, entries: mocks, assets } = await mockupEntries(projectDir);
   if (!files.length) throw new Error("There is no mockup to export.");
   const entries = {
     "README.md": strToU8(readme(files)),
     "serve.mjs": strToU8(SERVE),
     "index.html": strToU8(indexHtml(files)),
   };
-  const texts = {};
-  for (const f of files) texts[f] = await readFile(path.join(projectDir, f), "utf8");
-  // pictures and videos the screens use: those the user put into the design (logo...) live in assets/, others are found by their
-  // references (also the pictures of read documents, .studio/sources/assets). The mockups sit in mockups/, so they go beside them.
-  const used = await findAssets(projectDir, Object.values(texts));
-  // a reference that would not work from the ZIP (an absolute path of the preview server) is rewritten to the file's place in it
-  const rewrite = used.filter((a) => a.ref !== a.zipPath && (a.ref.startsWith("/") || a.rel.startsWith(".studio/")));
-  for (const f of files) {
-    let t = texts[f];
-    for (const a of rewrite) t = t.split(a.ref).join(a.zipPath);
-    entries[`mockups/${f}`] = strToU8(t);
-  }
-  for (const a of used) entries[`mockups/${a.zipPath}`] = await zipEntry(a.file);
-  const assets = path.join(projectDir, "assets");
-  for (const f of await readdir(assets).catch(() => [])) {
-    if (f.startsWith(".")) continue;
-    entries[`mockups/assets/${f}`] ??= await zipEntry(path.join(assets, f)).catch(() => null) ?? undefined; // a sub-folder is not a file
-    if (entries[`mockups/assets/${f}`] === undefined) delete entries[`mockups/assets/${f}`];
-  }
-  // project memory travels with the mocks: description, business rules and the notes and comments of the screens
-  for (const f of (await readdir(projectDir)).filter((n) => n === "BUSINESS_RULES.md" || n === "PROJECT.md" || n.endsWith(".notes.md") || n.endsWith(".comments.json"))) entries[`docs/${f}`] = new Uint8Array(await readFile(path.join(projectDir, f)));
+  for (const [k, v] of Object.entries(mocks)) entries[`mockups/${k}`] = v; // the mockups sit in mockups/, the pictures beside them
+  for (const [k, v] of Object.entries(await docEntries(projectDir))) entries[`docs/${k}`] = v;
   await writeFile(dest, zipSync(entries, { level: 6 }));
-  return { dest, files: files.length, assets: used.length };
+  return { dest, files: files.length, assets };
 }

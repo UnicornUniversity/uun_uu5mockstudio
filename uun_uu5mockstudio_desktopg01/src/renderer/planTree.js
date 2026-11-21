@@ -7,15 +7,176 @@ import { extractSitemap, serializeSitemap } from "./sitemap.js";
  * A path is the list of child indexes from the root: [] is the root, [0, 2] its first child's third child.
  */
 export const KINDS = ["screen", "new", "library", "existing"];
+/** What a component is in the real decomposition: visual ones are in the mockup, the others (logic, data) only in the tree. */
+export const ROLES = ["visual", "component", "provider", "context", "hook", "data", "unknown"];
+/** Short labels of the roles on the tree's boxes (visual has none: it is the default). */
+export const ROLE_TAG = { component: "logic", provider: "provider", context: "context", hook: "hook", data: "data", unknown: "?" };
+/** Whether a node is not visual (it lives only in the tree, never in the mockup). */
+export const isNonVisual = (n) => Boolean(n?.role && n.role !== "visual");
 // Fields of the Unicorn decomposition notation (Jackson Structure Programming): relation "1:N" = the component is rendered once per item (iteration),
 // render = condition under which it is rendered (label R), disabled = condition under which it is disabled (label D), label = the data it shows (// label),
 // low = low importance (undecided or less important part), data = what it receives from its parent.
 const TEXT_FIELDS = { render: 160, disabled: 160, label: 80, data: 160 };
 export const CHANGES = ["add", "modify", "remove", "keep"];
-const MAX_NODES = 300, MAX_DEPTH = 12;
+const MAX_NODES = 600, MAX_DEPTH = 40; // the trees read from real code are deep (chains of providers and loaders)
 const FENCE = /```uu5-tree[^\n]*\n([\s\S]*?)```/;
 
 /** A tree from loose JSON: unknown keys dropped, texts clipped, the size limited. null when it is not a tree. */
+/** The props of a component to build (the interface the architect hands over): [{ name, type?, required?, default?, desc? }], at most 40. */
+export function normalizeProps(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [], seen = new Set();
+  for (const p of list) {
+    const name = typeof p?.name === "string" ? p.name.trim().slice(0, 60) : "";
+    if (!/^[A-Za-z_$][\w$]*$/.test(name) || seen.has(name)) continue;
+    seen.add(name);
+    const q = { name };
+    for (const [k, max] of [["type", 80], ["default", 80], ["desc", 240]]) if (typeof p[k] === "string" && p[k].trim()) q[k] = p[k].trim().slice(0, max);
+    if (p.required === true) q.required = true;
+    out.push(q);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+/** Where a component is built in the repository: a relative path without "..", or null. */
+export function normalizeTarget(t) {
+  const s = typeof t === "string" ? t.trim().replace(/\\/g, "/").replace(/^\.\//, "").slice(0, 200) : "";
+  return s && !s.startsWith("/") && !/^[A-Za-z]:/.test(s) && !s.split("/").includes("..") ? s : null;
+}
+/** Acceptance criteria: a list of short sentences (a text is split by lines), at most 12. */
+export function normalizeAccept(a) {
+  const list = Array.isArray(a) ? a : typeof a === "string" ? a.split(/\r?\n/) : [];
+  return list.map((x) => (typeof x === "string" ? x.replace(/^\s*[-*•]\s*/, "").trim().slice(0, 240) : "")).filter(Boolean).slice(0, 12);
+}
+
+/** Props as lines for the editor: `name*: type = default — description` (* = required). */
+export const propsToText = (props) => (props ?? []).map((p) => `${p.name}${p.required ? "*" : ""}${p.type ? `: ${p.type}` : ""}${p.default ? ` = ${p.default}` : ""}${p.desc ? ` — ${p.desc}` : ""}`).join("\n");
+/** The lines of the editor back to props (a line that does not start with a name is skipped). */
+export function propsFromText(text) {
+  const out = [];
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    let line = raw.trim(); if (!line) continue;
+    let desc = ""; const d = line.search(/\s(?:—|--)\s/); if (d >= 0) { desc = line.slice(d).replace(/^\s(?:—|--)\s/, "").trim(); line = line.slice(0, d).trim(); }
+    let def = ""; const e = line.indexOf("="); if (e >= 0) { def = line.slice(e + 1).trim(); line = line.slice(0, e).trim(); }
+    let type = ""; const c = line.indexOf(":"); if (c >= 0) { type = line.slice(c + 1).trim(); line = line.slice(0, c).trim(); }
+    const m = /^([A-Za-z_$][\w$]*)(\*)?$/.exec(line); if (!m) continue;
+    out.push({ name: m[1], ...(type ? { type } : {}), ...(m[2] ? { required: true } : {}), ...(def ? { default: def } : {}), ...(desc ? { desc } : {}) });
+  }
+  return normalizeProps(out);
+}
+
+/** Whether a component looks like a helper of the mockup only (a demo switch, simulated or fake data), by its name or its note. */
+export const looksMockOnly = (n) => /^(Demo|Mock|Fake|Simulated|Sim|Dummy|Sample)[A-Z]/.test(n?.name ?? "") || /^(Page|RouteBody|RouteShell|SimulatedTop|App|Root)$/.test(n?.name ?? "") /* the shell of a mockup screen */ || /(Mock|Fake)(Data)?$/.test(n?.name ?? "") /* the fake data of a screen made from an existing component */ || /\b(demo|mock|mockup|mocku|fake|dummy|simulated|simulace|simulovan|jen pro (demo|mock|uk[aá]zku)|only for the (demo|mock))/i.test(n?.note ?? "");
+/** Whether a component of kind "new" stays out of the handoff: the architect's choice, else the guess. */
+export const isMockOnly = (n) => (typeof n?.mockOnly === "boolean" ? n.mockOnly : looksMockOnly(n));
+
+/**
+ * The tree of the real component in a mockup screen, without what is there only for the mockup: it starts at the component the screen is
+ * about (`focus`: the names of its baseline, when it was made from an existing one), the demo switches and fake top bars are left out, and
+ * the page shell (Page, the AlertBus) and the wrapper with fake data (…MockData) are see-through (their children take their place).
+ * `helpers: true` gives the whole structure as it is. The nodes keep their ordinals, so they can still be rearranged in the file.
+ */
+export function componentView(tree, { focus = [], helpers = false } = {}) {
+  if (!tree || helpers) return tree;
+  const find = (n) => (focus.includes(n.name) ? n : (n.children ?? []).map(find).find(Boolean) ?? null);
+  const root = (focus.length && find(tree)) || tree;
+  const own = (n) => n.kind === "new" || n.kind === "existing";
+  const seeThrough = (n) => (own(n) && (/^(Page|RouteBody|RouteShell|App|Root)$/.test(n.name) || /(Mock|Fake)(Data)?$/.test(n.name))) || n.name === "Uu5Elements.AlertBus";
+  const drop = (n) => own(n) && !seeThrough(n) && (typeof n.mockOnly === "boolean" ? n.mockOnly : looksMockOnly(n));
+  const walk = (n) => (n.children ?? []).flatMap((c) => (drop(c) ? [] : seeThrough(c) ? walk(c) : [{ ...c, ...(c.children ? { children: walk(c) } : {}) }])).map((c) => { if (c.children && !c.children.length) delete c.children; return c; });
+  const kids = walk(root), out = { ...root };
+  if (kids.length) out.children = kids; else delete out.children;
+  return out;
+}
+
+/**
+ * The real structure of a component being redesigned: its tree read from the code (the baseline, with the non-visual parts) where every
+ * visual component that the screen shows gets its visual content from the screen – so the new parts appear in their real place (kind
+ * "new", change "add") – while its non-visual parts (hooks, providers, data loading) stay from the code. The root keeps the code's own
+ * children: what the mockup only simulates (states, demo switches) does not get in. `screen`: the screen's component view.
+ */
+export function realStructure(base, screen) {
+  if (!base) return null;
+  const onScreen = new Map(), inCode = new Map();
+  const own = (n) => n.kind === "new" || n.kind === "existing";
+  const idx = (map) => (n) => { if (own(n) && /^[A-Z]/.test(n.name) && !map.has(n.name)) map.set(n.name, n); (n.children ?? []).forEach(idx(map)); };
+  if (screen) idx(onScreen)(screen);
+  idx(inCode)(base);
+  const visual = (n) => n.kind === "existing" && (!n.role || n.role === "visual");
+  const used = new Set(); // the components of the code placed through the screen
+  /** A node of the screen: a component the code has takes the code's file, role and non-visual parts; one of the screen's own the code lacks is new. */
+  const fromScreen = (n) => {
+    const c = own(n) ? inCode.get(n.name) : null;
+    if (c && visual(c)) return withScreen(c, n);
+    const out = { ...n };
+    if (c) { out.kind = "existing"; if (c.source) out.source = c.source; if (c.role) out.role = c.role; used.add(c.name); }
+    else if (own(n)) { out.kind = "new"; out.change = "add"; }
+    const kids = (n.children ?? []).map(fromScreen); if (kids.length) out.children = kids; else delete out.children;
+    return out;
+  };
+  /**
+   * A component of the code that the screen shows: its content stays exactly as in the code (the screen draws library components of other
+   * libraries with stand-ins, e.g. ContentContainer as a Block – that is no change); only the components the screen adds inside it, which the
+   * code does not have, are put in, at the end of its content, as new.
+   */
+  const withScreen = (b, sn) => {
+    used.add(b.name);
+    const kids = (b.children ?? []).map((c) => merge(c, false));
+    const added = [];
+    const look = (n) => { for (const c of n.children ?? []) { if (own(c)) { if (!inCode.has(c.name) && !looksMockOnly(c)) added.push(fromScreen(c)); } else look(c); } }; // down to the next component of its own
+    look(sn);
+    const all = [...kids, ...added];
+    return { ...b, ...(Number.isInteger(sn.ordinal) ? { ordinal: sn.ordinal } : {}), ...(all.length ? { children: all } : {}) };
+  };
+  const merge = (b, root) => {
+    const sn = !root && visual(b) ? onScreen.get(b.name) : null;
+    if (sn) return withScreen(b, sn);
+    used.add(b.name);
+    const kids = (b.children ?? []).map((c) => merge(c, false));
+    const out = { ...b }; if (kids.length) out.children = kids; else delete out.children;
+    return out;
+  };
+  return merge(base, true);
+}
+
+/**
+ * Only what changes: the nodes marked add / modify / remove with all that is inside them, and the path from the root down to them
+ * (the parents keep only the children that lead to a change). null when nothing changes.
+ */
+export function changesOnly(tree, { squash = true } = {}) {
+  const changed = (n) => ["add", "modify", "remove"].includes(n.change);
+  const keep = (n) => {
+    if (changed(n)) return n; // a change with everything in it
+    const kids = (n.children ?? []).map(keep).filter(Boolean);
+    if (!kids.length) return null;
+    return { ...n, children: kids };
+  };
+  // the way down is often a long run of wrappers (loaders, providers, library containers): squashed into one node that names them
+  const wrapper = (n) => !changed(n) && (n.children?.length === 1) && (n.kind === "library" || (n.role && n.role !== "visual"));
+  const squashed = (n) => {
+    if (!n.children) return n;
+    if (wrapper(n)) {
+      const run = []; let x = n;
+      while (wrapper(x)) { run.push(x.name); x = x.children[0]; }
+      const rest = squashed(x);
+      return run.length < 2 ? { ...n, children: [rest] } : { name: `${run.length} wrappers`, kind: "library", note: run.join(" › "), children: [rest] };
+    }
+    return { ...n, children: n.children.map(squashed) };
+  };
+  const t = tree ? keep(tree) : null;
+  return t && squash ? squashed(t) : t;
+}
+
+/** The handover fields of one component (`spec`: { target?, props?, accept? }) put on every node of kind "new" with that name. */
+export function setComponentSpec(tree, name, spec) {
+  let t = tree;
+  const paths = [];
+  const walk = (n, p) => { if (n.kind === "new" && n.name === name) paths.push(p); (n.children ?? []).forEach((c, i) => walk(c, [...p, i])); };
+  if (tree) walk(tree, []);
+  for (const p of paths) t = updateNode(t, p, spec);
+  return t;
+}
+
 export function normalizeTree(obj) {
   let count = 0;
   const walk = (o, depth) => {
@@ -27,6 +188,13 @@ export function normalizeTree(obj) {
     if (Number.isInteger(o.ordinal) && o.ordinal >= 0) n.ordinal = o.ordinal; // the JSX element of a node read from a screen
     if (o.low === true) n.low = true;
     for (const [k, max] of Object.entries(TEXT_FIELDS)) if (typeof o[k] === "string" && o[k].trim()) n[k] = o[k].trim().slice(0, max);
+    // the handover of a component to build: its interface, where it goes in the repository, when it is done
+    const props = normalizeProps(o.props); if (props.length) n.props = props;
+    const target = normalizeTarget(o.target); if (target) n.target = target;
+    const source = normalizeTarget(o.source); if (source) n.source = source;
+    if (ROLES.includes(o.role)) n.role = o.role; // an existing component of the repository that this one changes (redesign)
+    const accept = normalizeAccept(o.accept); if (accept.length) n.accept = accept;
+    if (typeof o.mockOnly === "boolean") n.mockOnly = o.mockOnly; // true: exists only for the mockup (demo switch, fake data), never built; false: built even if it looks like a helper
     const kids = Array.isArray(o.children) ? o.children.map((c) => walk(c, depth + 1)).filter(Boolean) : [];
     if (kids.length) n.children = kids;
     return n;
@@ -144,6 +312,12 @@ export function updateNode(tree, path, patch) {
     else if (k === "note") { const s = String(v ?? "").trim().slice(0, 300); if (s) n.note = s; else delete n.note; }
     else if (k === "relation") { if (v === "1:N") n.relation = "1:N"; else delete n.relation; }
     else if (k === "low") { if (v) n.low = true; else delete n.low; }
+    else if (k === "props") { const p = typeof v === "string" ? propsFromText(v) : normalizeProps(v); if (p.length) n.props = p; else delete n.props; }
+    else if (k === "target") { const t = normalizeTarget(v); if (t) n.target = t; else delete n.target; }
+    else if (k === "role") { if (ROLES.includes(v)) n.role = v; else delete n.role; }
+    else if (k === "source") { const t = normalizeTarget(v); if (t) n.source = t; else delete n.source; }
+    else if (k === "mockOnly") { if (typeof v === "boolean") n.mockOnly = v; else delete n.mockOnly; }
+    else if (k === "accept") { const a = normalizeAccept(v); if (a.length) n.accept = a; else delete n.accept; }
     else if (k in TEXT_FIELDS) { const s = String(v ?? "").trim().slice(0, TEXT_FIELDS[k]); if (s) n[k] = s; else delete n[k]; }
   }
   return t;

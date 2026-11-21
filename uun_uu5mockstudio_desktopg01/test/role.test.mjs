@@ -42,3 +42,9 @@ test("the architect does not get the Web and Document levels, the others do", ()
   assert.deepEqual(ROLES.architect.hideLevels, ["web", "page"]);
   for (const id of ["uiux", "mkt", "other"]) assert.equal(ROLES[id].hideLevels, undefined, id);
 });
+
+test("the Solution architect works with the real decomposition and the repository", async () => {
+  const { roleOf, rolePrompt } = await import("../src/renderer/role.js");
+  assert.match(roleOf("architect").hint, /hand them off for production/);
+  assert.match(rolePrompt("architect"), /non-visual parts too/); assert.match(rolePrompt("architect"), /"mockOnly"/); assert.match(rolePrompt("architect"), /keep \/ modify \/ remove \/ add/);
+});

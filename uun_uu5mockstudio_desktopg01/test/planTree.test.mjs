@@ -18,9 +18,9 @@ test("a tree is read from the answer of the agent, cleaned, and the answer keeps
   assert.deepEqual(extractTree("no block here"), { text: "no block here", tree: null });
   assert.equal(extractTree("```uu5-tree\n{ not json\n```").tree, null);
   // the size is limited
-  let deep = { name: "x" }; for (let i = 0; i < 40; i++) deep = { name: "x", children: [deep] };
-  assert.ok(countNodes(normalizeTree(deep)) <= 13, "the depth is limited");
-  assert.ok(countNodes(normalizeTree({ name: "r", children: Array.from({ length: 500 }, (_, i) => ({ name: `n${i}` })) })) <= 300);
+  let deep = { name: "x" }; for (let i = 0; i < 60; i++) deep = { name: "x", children: [deep] };
+  assert.ok(countNodes(normalizeTree(deep)) <= 41, "the depth is limited");
+  assert.ok(countNodes(normalizeTree({ name: "r", children: Array.from({ length: 900 }, (_, i) => ({ name: `n${i}` })) })) <= 600);
 });
 
 test("editing nodes by path never changes the tree it was given", () => {

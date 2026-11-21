@@ -14,7 +14,7 @@ A Plan answer is Markdown with two fenced JSON blocks:
 ```
 ````
 
-**Tree node**: `name`, `kind` (`screen` | `new` | `library` | `existing`), optional `change` (`add` | `modify` | `remove` | `keep`), `note`, `children`, and the notation of the decomposition method: `relation: "1:N"` (rendered once per item), `render` (condition, label R), `disabled` (condition, label D), `label` (the data it shows, `// label`), `low: true` (low importance), `data` (what it receives from its parent), and, for trees read from a file, `ordinal`. `normalizeTree` drops unknown keys, clips texts, limits the size (300 nodes, depth 12).
+**Tree node**: `name`, `kind` (`screen` | `new` | `library` | `existing`), optional `change` (`add` | `modify` | `remove` | `keep`), `note`, `children`, and the notation of the decomposition method: `relation: "1:N"` (rendered once per item), `render` (condition, label R), `disabled` (condition, label D), `label` (the data it shows, `// label`), `low: true` (low importance), `data` (what it receives from its parent), and, for trees read from a file, `ordinal`. `normalizeTree` drops unknown keys, clips texts, limits the size (600 nodes, depth 40: trees read from real code are deep).
 
 **Questions**: up to 4, each with 2–6 options (`normalizeQuestions`).
 

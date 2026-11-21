@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rmdir, stat, readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { parsePlan } from "../renderer/planDoc.js";
@@ -22,15 +23,31 @@ export function createProjects(root, { trash }) {
 
   const htmlIn = async (d) => (await readdir(d)).filter((f) => f.endsWith(".html"));
 
+  /**
+   * Whether the project waits for a handoff to production: "outdated" (screens changed since the last handoff), "ready" (a linked repository,
+   * something to hand over and no handoff yet), or null.
+   */
+  async function handoffState(dir, htmls, handable) {
+    let st; try { st = JSON.parse(await readFile(path.join(dir, ".studio", "state.json"), "utf8")); } catch { return null; }
+    if (!st?.repo?.path || !htmls.length) return null;
+    const last = Array.isArray(st.handoffs) ? st.handoffs[0] : null;
+    if (!last) return handable ? "ready" : null;
+    const then = last.hashes ?? {}, mine = Array.isArray(last.screens) ? htmls.filter((f) => last.screens.includes(f)) : htmls; // a handoff of some screens: only they count
+    for (const f of mine) { let h; try { h = createHash("sha256").update(await readFile(path.join(dir, f))).digest("hex").slice(0, 16); } catch { continue; } if (then[f] !== h) return "outdated"; }
+    return Object.keys(then).some((f) => !mine.includes(f)) ? "outdated" : null;
+  }
+
   /** What waits for the user in a project: plans still in draft and open comments. Unreadable files count as nothing. */
   async function pending(dir, htmls = []) {
-    let plans = 0, comments = 0, notes = 0, mapComments = 0;
+    let plans = 0, comments = 0, notes = 0, mapComments = 0, handable = false;
     // variants not chosen yet: room-list-b.html next to room-list.html
     const variants = htmls.filter((f) => { const m = /^(.+)-([a-z])\.html$/.exec(f); return m && htmls.includes(`${m[1]}.html`); }).length;
     try {
       for (const f of await readdir(path.join(dir, "plans"))) {
         if (!f.endsWith(".md")) continue;
-        if ((parsePlan(await readFile(path.join(dir, "plans", f), "utf8")).meta.status ?? "draft") === "draft") plans++;
+        const meta = parsePlan(await readFile(path.join(dir, "plans", f), "utf8")).meta, st = meta.status ?? "draft";
+        if (st === "draft") plans++;
+        if (meta.baseline || (st === "approved" && !meta.reference)) handable = true; // something to hand over: a redesign against a baseline, or an approved plan
       }
     } catch { /* no plans */ }
     try {
@@ -41,7 +58,7 @@ export function createProjects(root, { trash }) {
       }
     } catch { /* no folder */ }
     try { const sm = normalizeSitemap(JSON.parse(await readFile(path.join(dir, "sitemap.json"), "utf8"))); if (sm) mapComments = commentsOf(sm).length; } catch { /* no sitemap */ }
-    return { plans, comments, mapComments, variants, notes };
+    return { plans, comments, mapComments, variants, notes, handoff: await handoffState(dir, htmls, handable) };
   }
 
   async function list() {

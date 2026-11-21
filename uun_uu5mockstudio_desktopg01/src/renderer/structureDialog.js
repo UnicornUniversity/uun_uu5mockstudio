@@ -1,4 +1,4 @@
-import { normalizeTree, countNodes, moveTo, getNode } from "./planTree.js";
+import { normalizeTree, countNodes, moveTo, getNode, componentView, realStructure, changesOnly } from "./planTree.js";
 import { renderDiagram } from "./planDiagram.js";
 
 const $ = (id) => document.getElementById(id);
@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
  */
 export function createStructureDialog({ api }) {
   const box = $("structbox"), body = $("st-body"), title = $("st-title"), note = $("st-note");
-  let file = null, entry = null, chosen = null, original = null, ops = [], whole = null; // whole: the component the structure is of (null: the whole screen) // ops: the moves made, as the file understands them
+  let file = null, entry = null, chosen = null, original = null, ops = [], whole = null, full = null, focus = [], base = null, view = "mockup"; // base: the baseline (the component read from the code); view: "real" | "mockup" // full: the structure as read; focus: the component the screen is about // whole: the component the structure is of (null: the whole screen) // ops: the moves made, as the file understands them
   const close = () => { box.hidden = true; file = null; entry = null; chosen = null; original = null; ops = []; whole = null; };
   const pick = $("st-pick");
   /** The strip under the diagram: what was clicked, and the way to the inspector (the dialog closes; the inspector has a way back). */
@@ -37,7 +37,7 @@ export function createStructureDialog({ api }) {
     buttons();
     body.replaceChildren(renderDiagram({
       entry, editable: true, checkNames: false,
-      onMove: move,
+      onMove: (...a) => { if (view === "mockup") move(...a); }, // the real structure is read from the code: it is changed through the screen or a plan, not by dragging
       onKey: (path, e) => {
         if (!e.altKey || !path.length) return;
         const i = path.at(-1), up = path.slice(0, -1);
@@ -51,6 +51,35 @@ export function createStructureDialog({ api }) {
   }
 
   $("st-x").onclick = close;
+  /**
+   * What the dialog shows: the real structure (a screen made from an existing component: the code's tree with the screen's new parts, the
+   * non-visual parts included) or the mockup's structure (without its helpers unless asked; this one can be rearranged).
+   */
+  function show() {
+    const real = view === "real" && base;
+    const screenTree = componentView(full, { focus, helpers: !real && $("st-helpers").checked });
+    const whole = real ? realStructure(base.tree, componentView(full, { focus })) : screenTree;
+    const onlyChanges = real && $("st-changes").checked, tree = onlyChanges ? changesOnly(whole) ?? { ...whole, children: [] } : whole; // the real structure narrowed to what changes and the way to it
+    original = JSON.parse(JSON.stringify(tree)); entry = { tree, sel: [], collapsed: [], view: null }; ops = []; chosen = null; bar();
+    let added = 0; const w = (n) => { if (n.change === "add") added++; (n.children ?? []).forEach(w); }; w(tree);
+    note.textContent = real ? (onlyChanges ? `${added} new, shown with the way to them (${countNodes(whole)} components in all)` : `${countNodes(tree)} components from the code${added ? `, ${added} new` : ""}`) : `${countNodes(tree)} components${countNodes(tree) < countNodes(full) ? ` (${countNodes(full) - countNodes(tree)} mockup helpers hidden)` : ""}`;
+    note.title = real ? `${base.name} as it is in ${base.file}, with what the screen adds; dashed = not visual (logic, providers, data loading)` : "In the order of rendering, top-down and left to right";
+    $("st-view").hidden = !base; for (const b of $("st-view").children) b.classList.toggle("on", b.dataset.view === view);
+    $("st-helpers").parentElement.hidden = Boolean(real); $("st-changes").parentElement.hidden = !real; $("st-reset").hidden = Boolean(real); $("st-regen").hidden = Boolean(real); $("st-reread").hidden = !real;
+    $("st-hint").title = real ? "The structure of the component as it is in the code, with the new parts of the screen in their place (new). It is not rearranged here: change the screen, or plan a change." : "Click a component to select it. Drag a box onto another to rearrange: left third = before, right third = after, middle = inside. Drag the background to move, Ctrl/⌘ + wheel to zoom.";
+    paint();
+  }
+  for (const b of $("st-view").children) b.onclick = () => { view = b.dataset.view; show(); };
+  // the mockup's helpers (page shell, demo switches, fake data): hidden by default, the tree is the component itself
+  $("st-helpers").onchange = () => { if (full) show(); };
+  $("st-changes").onchange = () => { if (full) { show(); setTimeout(() => [...body.querySelectorAll(".pd-bar button")].find((b) => b.textContent === "Fit")?.click(), 60); } }; // narrowed: fit it in the view
+  $("st-reread").onclick = async () => { // the code is read again (it changed, or it was read before the reading got better)
+    const b = $("st-reread"); b.disabled = true; b.textContent = "Reading…";
+    const r = await api.reread?.().catch((e) => ({ error: String(e?.message ?? e) }));
+    b.disabled = false; b.textContent = "Re-read the code";
+    if (!r || r.error) { note.textContent = r?.error ?? "The code could not be read."; return; }
+    base = { ...base, tree: normalizeTree(r.tree) }; show(); api.toast?.(`${r.name} was read again from ${r.file}: ${r.nodes} components from ${r.files} file${r.files === 1 ? "" : "s"}.`);
+  };
   $("st-reset").onclick = () => { if (!original) return; entry.tree = JSON.parse(JSON.stringify(original)); ops = []; entry.sel = []; entry.collapsed = []; chosen = null; bar(); paint(); };
   $("st-regen").onclick = () => { const f = file, o = original, t = entry?.tree, made = ops.slice(), part = whole; if (!f || !o || !t || !changes()) return; close(); api.regenerate(f, o, t, made, part); };
   $("st-plan").onclick = () => { const f = file; close(); if (f) api.plan(f); };
@@ -59,14 +88,16 @@ export function createStructureDialog({ api }) {
 
   return {
     async open(f, part = null) {
-      file = f; entry = null; chosen = null; ops = []; bar(); title.textContent = part ? `Component tree of ${String(part.name ?? "the component").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "")} in ${f.replace(/\.html$/, "")}` : `Component tree of ${f.replace(/\.html$/, "")}`; whole = part; body.replaceChildren(); note.textContent = "Reading the file…";
+      file = f; entry = null; chosen = null; ops = []; bar(); title.textContent = part ? `Component tree of ${String(part.name ?? "the component").replace(/^(Uu5|Plus4U5)[A-Za-z0-9]*\./, "")} in ${f.replace(/\.html$/, "")}` : `Component tree of ${f.replace(/\.html$/, "")}`; whole = part; body.replaceChildren(); note.textContent = "Reading the file…"; $("st-legend").hidden = true;
       box.hidden = false;
       const r = await api.structure(f, part?.ordinal ?? null).catch((e) => ({ error: String(e?.message ?? e) }));
-      const tree = r && !r.error ? normalizeTree(r) : null;
-      if (!tree) { note.textContent = r?.error ?? (part ? "This element has no structure of its own (it is an HTML element or it is not written in the file)." : "The screen has no components to show."); return; }
-      original = JSON.parse(JSON.stringify(tree)); entry = { tree, sel: [], collapsed: [], view: null };
-      note.textContent = `${countNodes(tree)} components, in the order of rendering. ×N = once per item, R = rendered when, D = disabled when. Click a component to select it, drag it to rearrange.`;
-      paint();
+      full = r && !r.error ? normalizeTree(r) : null;
+      focus = part ? [] : await (api.focus?.() ?? Promise.resolve([])).catch(() => []); // a screen made from an existing component starts at that component
+      if (!full) { note.textContent = r?.error ?? (part ? "This element has no structure of its own (it is an HTML element or it is not written in the file)." : "The screen has no components to show."); $("st-view").hidden = true; return; }
+      const b = !part && focus.length ? await (api.baseline?.() ?? Promise.resolve(null)).catch(() => null) : null; // a screen made from an existing component: its real structure first
+      base = b && !b.error && b.tree ? { ...b, tree: normalizeTree(b.tree) } : null; view = base ? "real" : "mockup";
+      $("st-legend").hidden = false;
+      show();
     },
     close, isOpen: () => !box.hidden,
   };

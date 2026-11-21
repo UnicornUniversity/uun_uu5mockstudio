@@ -42,20 +42,39 @@ export async function findClaude({ refresh = false } = {}) {
   return (cached = candidatePaths().find(existsSync));
 }
 
+/**
+ * How Claude Code signs in when ANTHROPIC_API_KEY is set on the computer (often for another app, even system-wide via launchctl, so an
+ * installed app gets it too): Claude Code would take the key and pay per token instead of the user's Claude subscription.
+ * "account" starts Claude Code without the variable (the subscription), "key" keeps it; "auto" = the account when one is signed in.
+ */
+let authPref = "auto", accountLogin = null; // accountLogin: Claude Code has a Claude account signed in apart from the key (null = not known yet)
+export const keyInEnv = (env = process.env) => Boolean(env.ANTHROPIC_API_KEY);
+/** Whether Claude Code is started with the key: no key = no question; else the choice, and "auto" uses the key only without an account. */
+export const usesKey = ({ pref = authPref, env = process.env, account = accountLogin } = {}) => keyInEnv(env) && (pref === "key" || (pref !== "account" && account === false));
+/** The environment of a Claude Code process: undefined = the app's own (the SDK and spawn default), or a copy without the key. */
+export function claudeChildEnv(env = process.env, o = {}) {
+  if (!keyInEnv(env) || usesKey({ env, ...o })) return undefined;
+  const { ANTHROPIC_API_KEY, ...rest } = env; // eslint-disable-line no-unused-vars
+  return rest;
+}
+/** For Settings: is the key there, what was chosen, what is used, is an account signed in. */
+export const claudeAuthInfo = () => ({ keyInEnv: keyInEnv(), pref: authPref, usesKey: usesKey(), accountLogin });
+export const setClaudeAuth = (pref) => { authPref = ["account", "key"].includes(pref) ? pref : "auto"; };
+
 export function requireClaude() {
   if (!cached) throw new Error("Claude Code was not found.");
   return cached;
 }
 
 let userDataDir = null; // where an optional prerequisites.json lives
-export const configure = (o = {}) => { if (o.userDataDir) userDataDir = o.userDataDir; };
+export const configure = (o = {}) => { if (o.userDataDir) userDataDir = o.userDataDir; if (o.claudeAuth !== undefined) setClaudeAuth(o.claudeAuth); };
 export const prerequisites = () => loadPrerequisites({ userDataDir });
 
 /** Runs `claude <args>`; resolves { code, stdout, stderr } and never rejects. */
 function runClaude(args, { timeout = 60000, onLine } = {}) {
   return new Promise((resolve) => {
     if (!cached) return resolve({ code: -1, stdout: "", stderr: "Claude Code was not found." });
-    const child = spawn(cached, args, { shell: isShim(cached), stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cached, args, { shell: isShim(cached), stdio: ["ignore", "pipe", "pipe"], env: claudeChildEnv() ?? process.env });
     let stdout = "", stderr = "", done = false;
     const finish = (code) => { if (!done) { done = true; clearTimeout(timer); resolve({ code, stdout, stderr }); } };
     const timer = setTimeout(() => { child.kill(); finish(-2); }, timeout);
@@ -84,8 +103,12 @@ export async function getStatus({ refresh = false } = {}) {
   if (!bin) return { state: "missing" };
   let version;
   try { version = (await run(bin, ["--version"], { timeout: 8000, shell: isShim(bin) })).stdout.trim(); } catch (e) { return { state: "missing", error: String(e.message) }; }
+  if (keyInEnv()) { // is a Claude account signed in apart from the key? (asked without the key)
+    const { ANTHROPIC_API_KEY, ...noKey } = process.env; // eslint-disable-line no-unused-vars
+    try { const a = JSON.parse((await run(bin, ["auth", "status"], { timeout: 10000, shell: isShim(bin), env: noKey })).stdout); accountLogin = Boolean(a.loggedIn && a.authMethod !== "api_key"); } catch { accountLogin = false; }
+  }
   try {
-    const { stdout } = await run(bin, ["auth", "status"], { timeout: 10000, shell: isShim(bin) });
+    const { stdout } = await run(bin, ["auth", "status"], { timeout: 10000, shell: isShim(bin), env: claudeChildEnv() ?? process.env });
     const s = JSON.parse(stdout);
     if (!s.loggedIn) return { state: "loggedOut", bin, version, plugins: [] };
     const info = await pluginInfo(), blocking = info.states.some((p) => p.kind === "required" && p.state !== "ok");
@@ -108,7 +131,7 @@ export function login({ method = "claudeai", email } = {}) {
     if (!cached) return resolve(-1);
     const args = ["auth", "login", ...(method === "console" ? ["--console"] : method === "sso" ? ["--sso"] : ["--claudeai"]), ...(email && /^[^\s@]+@[^\s@]+$/.test(email) ? ["--email", email] : [])];
     cancelLogin();
-    const child = (loginChild = spawn(cached, args, { stdio: "ignore", shell: isShim(cached) }));
+    const child = (loginChild = spawn(cached, args, { stdio: "ignore", shell: isShim(cached), env: claudeChildEnv(process.env, { pref: "account" }) ?? process.env })); // signing in is to the Claude account, whatever key is around
     child.on("exit", (code) => { if (loginChild === child) loginChild = null; resolve(code ?? -1); });
     child.on("error", () => resolve(-1));
   });

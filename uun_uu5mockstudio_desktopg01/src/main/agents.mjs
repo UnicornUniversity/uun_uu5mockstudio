@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { getStatus, requireClaude } from "./claudeEnv.mjs";
+import { getStatus, requireClaude, claudeChildEnv } from "./claudeEnv.mjs";
 import { codexStatus } from "./codexEnv.mjs";
 
 /**
@@ -41,7 +41,7 @@ export async function listClaudeModels({ timeout = 8000 } = {}) {
   const fallback = [{ value: "default", displayName: "Default" }, { value: "opus", displayName: "Opus" }, { value: "sonnet", displayName: "Sonnet" }, { value: "haiku", displayName: "Haiku" }];
   let q;
   try {
-    q = query({ prompt: (async function* () { await new Promise(() => {}); })(), options: { pathToClaudeCodeExecutable: requireClaude(), cwd: os.tmpdir(), settingSources: [] } });
+    q = query({ prompt: (async function* () { await new Promise(() => {}); })(), options: { pathToClaudeCodeExecutable: requireClaude(), ...(claudeChildEnv() ? { env: claudeChildEnv() } : {}), cwd: os.tmpdir(), settingSources: [] } });
     const rows = await Promise.race([q.supportedModels(), new Promise((_, r) => setTimeout(() => r(new Error("timeout")), timeout))]);
     return claudeModelOptions(rows.length ? rows : fallback);
   } catch { return claudeModelOptions(fallback); }

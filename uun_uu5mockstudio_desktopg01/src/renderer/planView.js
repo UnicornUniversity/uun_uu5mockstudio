@@ -1,4 +1,4 @@
-import { KINDS, CHANGES, getNode, updateNode, addChild, addSibling, removeNode, duplicateNode, moveNode, indentNode, outdentNode, moveTo, countNodes } from "./planTree.js";
+import { propsToText, ROLES, ROLE_TAG, KINDS, CHANGES, getNode, updateNode, addChild, addSibling, removeNode, duplicateNode, moveNode, indentNode, outdentNode, moveTo, countNodes } from "./planTree.js";
 import { markdown } from "./markdown.js";
 import { renderDiagram } from "./planDiagram.js";
 import { mapSummary } from "./sitemap.js";
@@ -99,10 +99,19 @@ export function renderPlan(entry, ctx) {
     const txt = (key, label, placeholder) => { const i = el("input", { type: "text", value: n[key] ?? "", spellcheck: false, placeholder, "aria-label": label }); i.onchange = () => touch(updateNode(entry.tree, path, { [key]: i.value })); i.onkeydown = (e) => { if (e.key === "Enter") i.blur(); }; return i; };
     const many = el("input", { type: "checkbox", checked: n.relation === "1:N", "aria-label": "Rendered once per item" }); many.onchange = () => touch(updateNode(entry.tree, path, { relation: many.checked ? "1:N" : "" }));
     const low = el("input", { type: "checkbox", checked: n.low === true, "aria-label": "Low importance" }); low.onchange = () => touch(updateNode(entry.tree, path, { low: low.checked }));
-    box.append(tools, field("Name", name, pick), field("Kind", kind), field("Change", change), field("Note", note),
+    const role = el("select", { "aria-label": "Role" }, ...ROLES.map((r) => el("option", { value: r, textContent: r === "component" ? "non-visual component" : r === "data" ? "data loading" : r })));
+    role.value = n.role ?? "visual"; role.onchange = () => touch(updateNode(entry.tree, path, { role: role.value === "visual" ? "" : role.value }));
+    box.append(tools, field("Name", name, pick), field("Kind", kind), field("Role", role, el("span", { className: "mute", textContent: "visual ones are in the mockup; the others only in the tree" })), field("Change", change), field("Note", note),
       field("Repeated", many, el("span", { className: "mute", textContent: "1:N, once per item" }), low, el("span", { className: "mute", textContent: "low importance" })),
       field("Data", txt("data", "Data from the parent", "What it receives from its parent")), field("// label", txt("label", "Label of the data", "header, text, onDelete…")),
       field("R", txt("render", "Render condition", "Rendered only when…")), field("D", txt("disabled", "Disable condition", "Disabled when…")));
+    if (n.kind === "new") { // a component to build for real: what is handed over to the repository (Project → Hand Off for Production)
+      const area = (key, label, value, placeholder, toValue = (x) => x) => { const t = el("textarea", { value, rows: Math.min(8, Math.max(2, value.split("\n").length + 1)), spellcheck: false, placeholder, "aria-label": label }); t.onchange = () => touch(updateNode(entry.tree, path, { [key]: toValue(t.value) })); return t; };
+      box.append(el("div", { className: "plan-handoff", textContent: "Handoff for production" }),
+        field("File", txt("target", "File in the repository", "src/bricks/…/component.js")),
+        field("Props", area("props", "Props", propsToText(n.props), "title*: string — the header text\nonSelect: func = undefined — called with the item")),
+        field("Accept", area("accept", "Acceptance criteria", (n.accept ?? []).join("\n"), "One criterion per line")));
+    }
     for (const i of [name, note]) i.onkeydown = (e) => { if (e.key === "Enter") i.blur(); };
     return box;
   }
@@ -206,12 +215,14 @@ export function renderTree(entry, ctx, o = {}) {
   function outline() {
     const node = (n, path) => {
       const k = pathKey(path), sel = editable && k === pathKey(entry.sel);
-      const unknown = n.kind === "library" && !known.has(n.name);
-      const card = el("div", { className: `pn k-${n.kind}${n.change ? ` c-${n.change}` : ""}${sel ? " sel" : ""}`, draggable: editable && path.length > 0 });
+      const unknown = n.kind === "library" && !n.role && !known.has(n.name); // hooks and data loading are not components of the docs
+      const card = el("div", { className: `pn k-${n.kind}${n.change ? ` c-${n.change}` : ""}${n.role && n.role !== "visual" ? ` nv r-${n.role}` : ""}${sel ? " sel" : ""}`, draggable: editable && path.length > 0 });
       card.append(el("span", { className: "pk", textContent: KIND_LABEL[n.kind] ?? n.kind }), el("code", { className: "pname", textContent: n.name }));
       if (n.change) card.append(el("span", { className: "pc", textContent: n.change }));
+      if (n.role && n.role !== "visual") card.append(el("span", { className: "pc role", textContent: ROLE_TAG[n.role] ?? n.role, title: "Not visual: only in the tree, not in the mockup" }));
+      if (n.source) card.append(el("span", { className: "pc", textContent: "repo", title: `Exists in the repository: ${n.source}` }));
       if (unknown) card.append(el("span", { className: "pu", title: "This name is not in the documentation of the uu5-development plugin: check it or mark it as new.", textContent: "not in the docs" }));
-      for (const [on, text, title] of [[n.relation, "×N", "Rendered once per item (1:N)"], [n.render, "R", `Rendered only when: ${n.render}`], [n.disabled, "D", `Disabled when: ${n.disabled}`], [n.label, `// ${n.label}`, "The data it shows"], [n.low, "low", "Low importance"]]) if (on) card.append(el("span", { className: "pc", textContent: text, title }));
+      for (const [on, text, title] of [[n.relation, "×N", "Rendered once per item (1:N)"], [n.render, "R", `Rendered only when: ${n.render}`], [n.disabled, "D", `Disabled when: ${n.disabled}`], [n.label, `// ${n.label}`, "The data it shows"], [n.low, "low", "Low importance"], [n.props?.length || n.accept?.length || n.target, "spec", `Handed over with ${n.props?.length ?? 0} props, ${n.accept?.length ?? 0} acceptance criteria${n.target ? `, into ${n.target}` : ""}`]]) if (on) card.append(el("span", { className: "pc", textContent: text, title }));
       if (n.data) card.append(el("span", { className: "pnote", textContent: `← ${n.data}` }));
       if (n.note) card.append(el("span", { className: "pnote", textContent: n.note }));
       if (editable) {

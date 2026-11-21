@@ -66,8 +66,9 @@ export function projectNameFromTitle(title, taken = []) {
 /**
  * The first view of the app: write what to design (a project is made for it and the chat goes on there) or open a project from the recent ones.
  * `api` = window.studio (projectThumb, projectsFolder); the callbacks do the work in the renderer.
+ * `images` = the pictures attached to the first message ({ add(files), count(), busy() }): pasted, dropped or picked with the clip.
  */
-export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, onNew, onNewFromDoc, onFolder, onDelete, onTemplates, onLevel, onScope }) {
+export function createDashboard({ api, docs, images, onPaint, toast = () => {}, onStart, onOpen, onNew, onNewFromDoc, onFolder, onDelete, onTemplates, onLevel, onScope }) {
   const root = $("dash"), prompt = $("dash-prompt"), grid = $("dash-grid"), search = $("dash-search");
   let projects = [], plan = false, seq = 0, section = "recents", view = "grid", templates = [], level = "component", selected = null, scope = "single", filter = "all";
   try { view = localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; const l = localStorage.getItem(LEVEL_KEY); if (LEVELS.some(([k]) => k === l)) level = l; if (localStorage.getItem(SCOPE_KEY) === "site") scope = "site"; } catch { /* default */ }
@@ -75,7 +76,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   const scopeNow = () => (SITE[level] ? scope : null);
   let wasSite = false;
 
-  const refreshSend = () => { $("dash-send").disabled = !prompt.value.trim() && !docs?.count(); };
+  const refreshSend = () => { $("dash-send").disabled = !prompt.value.trim() && !docs?.count() && !images?.count(); };
   function setPlan(on) {
     plan = on; paintMode();
   }
@@ -99,8 +100,9 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
     let text = prompt.value.trim();
     if (docs && (docs.scan(text) || docs.busy())) return toast("The documents are still loading, one moment.");
     if (docs?.blocked().length) return toast("A document could not be read yet: sign in, or remove its card.", { err: true });
-    if (!text && !docs?.count()) return;
-    if (!text) text = "Use the attached document.";
+    if (images?.busy()) return toast("The images are still loading, one moment.");
+    if (!text && !docs?.count() && !images?.count()) return;
+    if (!text && docs?.count()) text = "Use the attached document."; // with only pictures the chat words the message itself
     onStart({ docs: docs ? docs.takeCards() : [], text, plan: plan || scopeNow() === "site", level, scope: scopeNow(), model: $("dash-model").value, template: selected?.id ?? null, templateLevel: selected?.level ?? null });
   }
   async function loadThumbs(shown, my) {
@@ -112,12 +114,13 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
       if (box) { box.replaceChildren(Object.assign(document.createElement("img"), { src: img, alt: "", draggable: false })); box.classList.add("has"); }
     }
   }
-  const isWaiting = (p) => Boolean(p.plans || (COMMENTS && p.comments) || p.mapComments || p.variants);
+  const isWaiting = (p) => Boolean(p.plans || (COMMENTS && p.comments) || p.mapComments || p.variants || p.handoff);
   /** Small pills for what waits in a project: a plan to approve, open comments. null when nothing does. */
   function badges(p, { all = true } = {}) {
     const row = el("span", "dc-tags"), tag = (text, cls = "") => row.append(el("span", `dc-tag ${cls}`.trim(), text)), n = (k, one, many) => (k === 1 ? one : `${k} ${many}`);
     if (p.plans) tag(n(p.plans, "Plan to approve", "plans to approve"), "plan");
     if (p.variants) tag(n(p.variants, "1 variant to choose", "variants to choose"), "plan");
+    if (p.handoff === "outdated") tag("Handoff outdated", "handoff"); else if (p.handoff === "ready") tag("Ready to hand off", "handoff");
     if (COMMENTS && p.comments) tag(`${p.comments} open comment${p.comments === 1 ? "" : "s"}`);
     if (p.mapComments) tag(`${p.mapComments} comment${p.mapComments === 1 ? "" : "s"} in the map`);
     if (all && p.notes) tag(`${p.notes} note${p.notes === 1 ? "" : "s"}`, "soft");
@@ -168,7 +171,21 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   }
 
   prompt.addEventListener("input", () => { docs?.sync(prompt.value); refreshSend(); }); // a link deleted from the text takes its card away
-  prompt.addEventListener("paste", (e) => { docs?.scan(e.clipboardData?.getData("text") ?? ""); }); // a link to a uuBookKit / uuManagementKit document gets a card with its preview
+  prompt.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (files.length && images) { e.preventDefault(); images.add(files); return; } // a screenshot from the clipboard becomes an attachment
+    docs?.scan(e.clipboardData?.getData("text") ?? ""); // a link to a uuBookKit / uuManagementKit document gets a card with its preview
+  });
+  if (images) {
+    $("dash-attach").onclick = () => $("dash-attachfile").click();
+    $("dash-attachfile").onchange = (e) => { images.add(e.target.files); e.target.value = ""; };
+    const form = $("dash-form"), hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+    let depth = 0;
+    form.addEventListener("dragenter", (e) => { if (hasFiles(e)) { depth++; form.classList.add("drop"); } });
+    form.addEventListener("dragleave", (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; form.classList.remove("drop"); } });
+    form.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+    form.addEventListener("drop", (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth = 0; form.classList.remove("drop"); images.add(e.dataTransfer.files); });
+  } else $("dash-attach").hidden = true;
   prompt.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
   $("dash-form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
   for (const b of root.querySelectorAll("#dash-mode button")) b.onclick = () => setPlan(b.dataset.mode === "plan");
@@ -214,7 +231,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   }
   /** The template chips of the chosen level, the badge of the chosen template. */
   function paintTemplates() {
-    paintScope();
+    paintScope(); onPaint?.(level); // what else follows the level (the start from a component of the repository)
     for (const b of root.querySelectorAll("#dash-levels button")) { const on = b.dataset.level === level; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
     const chips = templates.filter((t) => t.level === level).map((t) => {
       const b = el("button", `idea${selected?.id === t.id ? " on" : ""}`); b.type = "button"; b.innerHTML = iconOf(t); b.append(t.title);
@@ -254,7 +271,7 @@ export function createDashboard({ api, docs, toast = () => {}, onStart, onOpen, 
   setPlan(false); refreshSend(); setView(view);
 
   return {
-    setPlus4u,
+    setPlus4u, refreshSend,
     show(list, { plan: p } = {}) { projects = list ?? []; root.hidden = false; loadTemplates(); if (typeof p === "boolean") setPlan(p); search.value = ""; showFolder(); setSection(section); },
     hide() { root.hidden = true; seq++; },
     reset() { prompt.value = ""; docs?.takeCards(); selected = null; refreshSend(); paintTemplates(); },

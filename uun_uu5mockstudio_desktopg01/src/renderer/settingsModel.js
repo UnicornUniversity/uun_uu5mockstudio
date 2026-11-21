@@ -9,7 +9,7 @@
  */
 
 /** `agents`: ids of the AI providers the user can use (null = not known yet, then Claude Code stays: that is where it is set up). */
-export function settingsSections({ platform = "darwin", agents = null } = {}) {
+export function settingsSections({ platform = "darwin", agents = null, claudeKey = false } = {}) {
   const claude = !agents || !agents.length || agents.includes("claude");
   const codex = Boolean(agents?.includes("codex"));
   const sections = [
@@ -23,6 +23,8 @@ export function settingsSections({ platform = "darwin", agents = null } = {}) {
     ] },
     { id: "ai", title: "AI providers", rows: [
       ...(claude ? [{ id: "claude", title: "Claude Code & Plugins", desc: "What is installed and signed in; installs or repairs it.", kind: "action", button: "Open…", action: "claude:setup" }] : []),
+      // ANTHROPIC_API_KEY on this computer (often for another app): Claude Code would pay per token with it instead of using the Claude subscription
+      ...(claude && claudeKey ? [{ id: "claudeAuth", title: "Claude Code signs in with", desc: "ANTHROPIC_API_KEY is set on this computer. Claude account: your subscription and its limits. API key: every request is paid per token.", kind: "choice", key: "claudeAuth", options: [["account", "Claude account"], ["key", "API key"]] }] : []),
       ...(codex ? [{ id: "codex", title: "Codex & Plugins", desc: "The same for Codex.", kind: "action", button: "Open…", action: "codex:plugins" }] : []),
     ] },
     { id: "integrations", title: "Integrations", rows: [

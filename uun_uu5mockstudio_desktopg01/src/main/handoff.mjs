@@ -29,13 +29,14 @@ export function localComponents(tree) {
   return [...out];
 }
 
-/** data: { project, date, description, rules, repo, screens: [{ file, description, outline, libraries, locals, notes, comments, error }] } */
+/** data: { project, date, description, rules, repo, sections?: [Markdown lines], screens: [{ file, description, outline, libraries, locals, notes, comments, error }] } */
 export function buildHandoff(data) {
   const L = [];
   const screens = data.screens ?? [];
   L.push(`# Handoff: ${data.project}`, "", `Specification assembled by uu5Mock Studio on ${data.date}. The screens are mockups: this document says what they show, which rules they follow and what is still open.`, "");
   if (data.description) L.push("## Overview", "", data.description, "");
   if (data.repo) L.push("## Repository", "", `The real components are built in ${data.repo}. The mockups only read it.`, "");
+  if (data.sections?.length) L.push(...data.sections); // the handoff package adds the components to build and the plan here
 
   L.push("## Screens", "");
   if (!screens.length) L.push("There is no screen yet.", "");
@@ -78,8 +79,8 @@ export function buildHandoff(data) {
 }
 
 /** Reads the project folder: description, rules, every screen's structure, notes and comments. */
-export async function gatherHandoff(projectDir, { project, repo = "", date = new Date().toISOString().slice(0, 10) } = {}) {
-  const files = fs.readdirSync(projectDir).filter((f) => f.endsWith(".html")).sort();
+export async function gatherHandoff(projectDir, { project, repo = "", date = new Date().toISOString().slice(0, 10), only = null } = {}) {
+  const files = fs.readdirSync(projectDir).filter((f) => f.endsWith(".html") && (!only || only.includes(f))).sort(); // `only`: the screens handed over
   const proj = await readProject(projectDir);
   const screens = [];
   for (const file of files) {

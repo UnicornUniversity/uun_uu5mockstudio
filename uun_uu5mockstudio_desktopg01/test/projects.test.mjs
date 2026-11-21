@@ -171,3 +171,21 @@ test("a projects folder closed to the app lists no projects instead of failing t
   await mkdir(root); await fs.chmod(root, 0o000);
   try { assert.deepEqual(await createProjects(root, { trash: async () => {} }).list(), []); } finally { await fs.chmod(root, 0o755); }
 });
+
+test("a project says when it waits for a handoff: ready (repo, something to hand over, none yet) or outdated (screens changed since)", async () => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path"), { createHash } = await import("node:crypto");
+  const { createProjects } = await import("../src/main/projects.mjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hof-")), dir = path.join(root, "P");
+  try {
+    fs.mkdirSync(path.join(dir, ".studio"), { recursive: true }); fs.mkdirSync(path.join(dir, "plans"));
+    fs.writeFileSync(path.join(dir, "a.html"), "<html>a</html>");
+    fs.writeFileSync(path.join(dir, "plans", "x.md"), "---\ntitle: X (as is)\nstatus: approved\nbaseline: src/x.js\n---\n# X\n");
+    const projects = createProjects(root, { trash: async () => {} });
+    const st = (o) => fs.writeFileSync(path.join(dir, ".studio", "state.json"), JSON.stringify(o));
+    st({}); assert.equal((await projects.list())[0].handoff, null); // no repository
+    st({ repo: { path: "/r" } }); assert.equal((await projects.list())[0].handoff, "ready");
+    const h = createHash("sha256").update("<html>a</html>").digest("hex").slice(0, 16);
+    st({ repo: { path: "/r" }, handoffs: [{ slug: "x", hashes: { "a.html": h } }] }); assert.equal((await projects.list())[0].handoff, null);
+    fs.writeFileSync(path.join(dir, "a.html"), "<html>changed</html>"); assert.equal((await projects.list())[0].handoff, "outdated");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

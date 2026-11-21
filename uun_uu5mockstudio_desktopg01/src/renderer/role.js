@@ -23,10 +23,10 @@ export const ROLES = {
   },
   architect: {
     label: "Solution architect",
-    hint: "Structure of an application, routes and components before they are built",
+    hint: "Structure of applications, routes and components; extend existing components from the repository and hand them off for production",
     level: "component", plan: false, eco: false, simple: false, share: "zip", hideLevels: ["web", "page"], // an architect designs applications, routes and components: no Web, no Document
     ideas: "applications, routes and components",
-    prompt: "The user is a software designer or solution architect. Name components exactly, mention the business rules a screen implies and ask the decisions that matter before building a large change; they may want a plan for it.",
+    prompt: "The user is a software designer or solution architect. Name components exactly, mention the business rules a screen implies and ask the decisions that matter before building a large change; they may want a plan for it. Think in the real decomposition, not only the visual one: in a plan's tree give the non-visual parts too (providers, contexts, hooks, data loading) with their \"role\", mark helpers that exist only for the mockup (demo switches, fake data) as \"mockOnly\", and when existing code of the repository is changed, propose the difference (keep / modify / remove / add), not a new design.",
   },
   other: {
     label: "Quick start",

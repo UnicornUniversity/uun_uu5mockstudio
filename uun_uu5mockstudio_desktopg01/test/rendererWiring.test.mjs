@@ -41,3 +41,15 @@ test("showing a page of the map scrolls only the map, never the boxes above it (
   assert.deepEqual([box.scrollLeft, box.scrollTop], [100 + 800 - 200, 50 + 920 - 150]);
   assert.doesNotThrow(() => centerInMap(null));
 });
+
+test("pictures attached on the dashboard go with the first message of the new project", async () => {
+  const src = await readFile(new URL("../src/renderer/renderer.js", import.meta.url), "utf8");
+  assert.match(src, /images: \{ add: \(files\) => addImages\(files, dashImgs\)/);
+  const start = src.slice(src.indexOf("onStart: async ("), src.indexOf("/** Write pending chat/canvas changes"));
+  assert.match(start, /const imgs = dashImgs\.list; dashImgs\.list = \[\]/);
+  assert.match(start, /if \(imgs\.length\) \{ pending = imgs; renderAttachments\(\); \}[\s\S]*\$\("form"\)\.requestSubmit\(\)/);
+  const dash = await readFile(new URL("../src/renderer/dashboard.js", import.meta.url), "utf8");
+  assert.match(dash, /if \(files\.length && images\) \{ e\.preventDefault\(\); images\.add\(files\); return; \}/); // ⌘V of a screenshot
+  assert.match(dash, /images\.add\(e\.dataTransfer\.files\)/); // drop
+  assert.match(dash, /!docs\?\.count\(\) && !images\?\.count\(\)/); // pictures alone can start a project
+});

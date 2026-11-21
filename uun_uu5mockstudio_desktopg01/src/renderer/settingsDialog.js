@@ -34,7 +34,7 @@ export function createSettingsDialog({ platform, getState, run, setValue }) {
     const inBody = body.contains(focus), idle = focus === document.body || !focus; // a dialog open above Settings keeps its focus
     const d = inBody ? focus.dataset : {};
     const same = d.action ? `[data-action="${d.action}"]` : d.key ? `[data-key="${d.key}"]${d.value ? `[data-value="${d.value}"]` : ""}` : null; // the control that had the focus
-    body.innerHTML = settingsSections({ platform, agents: state.agents }).map((s) => `<section><h3>${esc(s.title)}</h3>${s.rows.map((r) => {
+    body.innerHTML = settingsSections({ platform, agents: state.agents, claudeKey: Boolean(state.claudeAuthInfo?.keyInEnv) }).map((s) => `<section><h3>${esc(s.title)}</h3>${s.rows.map((r) => {
       const v = rowValue(r, state);
       return `<div class="st-row"><div class="st-text"><b>${esc(r.title)}</b>${v ? `<span class="st-val">${esc(v)}</span>` : ""}<small>${esc(r.desc)}</small></div>${control(r, state)}</div>`;
     }).join("")}</section>`).join("");

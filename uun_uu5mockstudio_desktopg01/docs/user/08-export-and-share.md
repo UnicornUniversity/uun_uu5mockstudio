@@ -23,6 +23,41 @@ The same is in the application menu: **File → Export** (Screen as Image, as HT
 
 The Project ZIP also contains the comments a screen already has (`docs/<screen>.comments.json`; comments are hidden in the app since 0.31.0).
 
+## Start from an existing component
+
+On the dashboard, under the message box: **Extend an existing component** or **New component based on one** (in a project: **Project ▾ → Start from an existing component…** or **Project → Git Repository**). From the dashboard a project is made for it and the repository you choose (the last one is offered) is linked. Choose the component's file (**Choose…** searches the files of the repository) and, if you have one, add a screenshot of it in the real application (paste, drop or choose). **Build the screen**:
+
+- reads the component and the files it imports and saves its real decomposition as the plan **“<Name> (as is)”**: its own components with their files and props, the library components, and what is not visual – providers, contexts, the repository's hooks and data loading (with its handlers and calls), lists (×N) and conditions,
+- sends the agent the task to build a mockup screen of it as it is now: the screen's components are named like the real visual ones (so the screen stays linked to the code), the non-visual parts are only faked with mock data.
+
+**New component based on one** takes the existing component as the pattern only: give the new component a name and say what it should do; the agent designs it following the existing one's decomposition (with its providers, hooks and data loading), look and conventions, and it is handed over as new.
+
+The component tree of such a screen (right click → Show component tree) shows the **Real structure** first: the component as it is in the code – with its providers, loaders, hooks and data loading (dashed) – and the screen's new parts in their real place (marked new); what the mockup only simulates (states, demo switches, fake data) is not in it. **Re-read the code** reads the component from the repository again. **Only changes** narrows it to the new and changed parts and the way to them (a run of wrappers – loaders, providers – becomes one node that names them). **Mockup** shows the screen's own structure, which can be rearranged (the page shell, demo switches and fake data are hidden; **Mockup helpers** shows them).
+
+Then you change it. In **Plan** mode the agent plans the redesign **against the baseline**: the tree keeps the existing parts with their files and marks each **keep**, **modify** or **remove**, and adds the new ones – also the non-visual ones (a new provider, hook or data loading), which are drawn dashed with their role (logic, provider, hook, data). The screen shows only the visual part. Without a new plan, the handoff compares the screen with the baseline (**Redesign of <Name>**, the default): the parts of the existing component are **Modify**, **Keep** or **Remove**, what the screen adds is **New**, the mockup's helpers are folded away as not built. With a plan, modified files (with the change of their props), new components (visual and non-visual) and the parts to remove; the unchanged ones are context only.
+
+## Hand off for production (into the git repository)
+
+When the design is approved, **Project → Git Repository → Hand Off for Production…** puts everything the developers need into a new branch **feature/<name>** of the linked repository, without touching your working copy:
+
+- the components to build: the components of kind **new** in the tree of the approved plan, with what you fill in for each of them right in the dialog (saved into the plan; while the agent's plan is still proposed you can fill the same in its tree): **File** – where it goes in the repository, **Props** – one per line, `name*: type = default — description`, `*` = required, and **Accept** – the acceptance criteria); in Plan mode the agent proposes them,
+- the specification (as above) with the plan and its tree, the mockups, pictures of the screens and the project's description and rules,
+- the task for the agent in plain words (PROMPT.md): which files change and how, which components are created, what is removed and what stays. After the branch is made, the dialog asks where to work on it: **In my working copy** (your project folder is switched to the branch with `git switch`; offered when it has no uncommitted changes) or **In a separate folder** (a git worktree next to your repository, your working copy stays as it is; it needs its own `npm install`). Then it says what to do in VS Code, in the Claude app or in a terminal; the task goes to Claude Code or Codex as it is. A later handoff to a branch that is checked out commits only the package files there; your own changes stay out of that commit.
+
+**Without a plan** (or with **What to hand over → The components of the screens**) the dialog lists the components your mockups define themselves. For each choose:
+
+- **New** – it is created (optionally say the file),
+- **Modify existing** – a redesign of a component that already is in the repository: pick its file (the dialog suggests files by the name). Its current props are read from it, the handoff lists what changes (props added, changed, removed) and the developer's agent modifies that file in place, keeping its decomposition,
+- **Mockup only** – a helper that exists only for the mockup (demo switches, simulated data, the page shell); it is listed as "do not build". The dialog guesses these by their names and notes.
+
+These choices are kept in the project (`.studio/links.json`); with a plan they are kept in the plan's tree.
+
+**From** is where the new branch starts: by default the branch the agent read the code from (the branch of the repository strip in the chat), else the checked-out one; the remote branches (origin/…) are offered too. **Fetch** brings them up to date and the dialog warns when the chosen local branch is behind its remote. The branch starts from the last commit (uncommitted changes are not in it) and does not track the branch it started from.
+
+To hand over **only one screen**, use **Hand off this screen…** in the menu of the screen (… in its bar, or a right click): the package then holds that screen and its components only, and is named after it.
+
+**Open in VS Code** opens the repository. Nothing is pushed: push the branch or open a pull request yourself. When the screens change, the dialog says so and **Update branch** adds a new commit.
+
 ## uu5String (to paste into a document)
 
 The uu5String is taken from the screen **as it is rendered now**: lists are expanded, texts computed, and the state is the current one (an open tab, a countdown at its current value). Components of uu5 libraries keep the props you set (defaults are left out); components defined in the screen disappear and leave what they render; plain HTML elements stay, and the rules of their CSS classes are written as an inline style.

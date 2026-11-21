@@ -14,6 +14,8 @@ import { createTour } from "./tour.js";
 import { createRoleDialog } from "./roleDialog.js";
 import { createImageGenDialog } from "./imageGenDialog.js";
 import { createSettingsDialog } from "./settingsDialog.js";
+import { openHandoffDialog } from "./handoffDialog.js";
+import { openComponentStart } from "./componentStartDialog.js";
 import { createGuideDialog } from "./guideDialog.js";
 import { createCommentsPanel } from "./commentsPanel.js";
 import { COMMENTS } from "./features.js";
@@ -37,6 +39,7 @@ import { renderPlan } from "./planView.js";
 import { createStructureDialog } from "./structureDialog.js";
 import { createPlanCards } from "./planCards.js";
 import { createPlansMenu } from "./plansMenu.js";
+import { providerOf, windowsFor, resetText, levelOf } from "./limits.js";
 import { parsePlan, serializePlan, slugify, withStatus } from "./planDoc.js";
 import { reviseMessage, takeComments, serializeSitemap, extractSitemap, normalizeSitemap, countScreens, kindOf, countBuilt, sitemapFromScreens, sitemapSvg, sitemapUu5String, sitemapOffered } from "./sitemap.js";
 import { extractPlan, approvalMessage, answersText, serializeTree, regenerateMessage, normalizeTree } from "./planTree.js";
@@ -140,10 +143,13 @@ const last = () => entries[entries.length - 1];
 /** The simple view shows the model in use as plain text (the select is hidden): both rows follow their select. */
 function syncModelNow() {
   for (const [sel, now] of [["model", "model-now"], ["dash-model", "dash-model-now"]]) { const s = $(sel), n = $(now); if (s && n) n.textContent = s.selectedOptions[0]?.textContent ?? ""; }
+  setTimeout(() => refreshLimits(), 0); // the meter of plan limits follows the model (its provider and its weekly window); later, the code below is not run yet at the first call
 }
 const DEFAULT_MODEL_KEY = "uu5studio.defaultModel";
 const prettyModel = (id) => { const m = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(id ?? ""); return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id; };
+let defaultModelId = ""; // what Claude's "Default" stands for: the meter shows that model's weekly window
 function showDefaultModel(id) {
+  defaultModelId = id ?? "";
   const opt = $("model").querySelector('option[value=""]');
   if (!opt) return; // no Claude among the usable providers
   opt.textContent = id ? `Default (${prettyModel(id)})` : "Default";
@@ -175,6 +181,62 @@ function renderModels(agents) {
   }
   try { showDefaultModel(localStorage.getItem(DEFAULT_MODEL_KEY)); } catch { showDefaultModel(null); }
 }
+// ---------- plan limits of the account (meter in the chat footer) ----------
+/** The last answer per provider ({ t, v }); asked again after a minute, after every request and every 5 minutes. */
+const limitsCache = {};
+let limitsSeq = 0, limitsRetry = null, limitsMiss = 0;
+async function refreshLimits(force = false) {
+  const model = $("model").value, provider = providerOf(model), my = ++limitsSeq, c = limitsCache[provider];
+  if (!force && c && Date.now() - c.t < 60000) return paintLimits(c.v, model);
+  const v = await window.studio.limits?.(provider, force).catch(() => null) ?? null;
+  limitsCache[provider] = { t: Date.now(), v };
+  if (my !== limitsSeq) return;
+  paintLimits(v, $("model").value);
+  // no answer (Claude Code still starting, the network): asked again after 20 s, 40 s, 80 s … up to the 5-minute round
+  clearTimeout(limitsRetry);
+  if (v) limitsMiss = 0; else limitsRetry = setTimeout(() => refreshLimits(true), Math.min(300000, 20000 * 2 ** limitsMiss++));
+}
+/** The ring shows the fullest window that applies to the model; a click opens every window with its reset. */
+function paintLimits(l, model) {
+  const sw = $("limsw"), ws = windowsFor(l, model, providerOf(model) === "claude" ? defaultModelId : "");
+  if (l?.noPlan && providerOf(model) === "claude") return paintNoPlan(l);
+  sw.hidden = !ws.length; if (!ws.length) { $("limtip").hidden = true; return; }
+  const top = ws.reduce((a, w) => (w.used > a.used ? w : a)), btn = $("limbtn"), el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
+  const name = l.provider === "codex" ? "Codex" : "Claude", plan = l.plan ? ` · ${l.plan[0].toUpperCase()}${l.plan.slice(1)} plan` : "";
+  btn.className = `lvl-${levelOf(top.used)}`;
+  btn.querySelector(".lim-fill").setAttribute("stroke-dasharray", `${Math.max(top.used > 0 ? 2 : 0, top.used)} 100`); // a sliver even at 1 %
+  btn.title = `${name}: ${top.label.toLowerCase()} ${Math.round(top.used)} % used`;
+  btn.setAttribute("aria-label", `Plan limits: ${ws.map((w) => `${w.label} ${Math.round(w.used)} % used`).join(", ")}`);
+  const tip = $("limtip");
+  tip.replaceChildren(el("b", "", `${name}${plan}`));
+  for (const w of ws) {
+    const row = el("div", `lim-row lvl-${levelOf(w.used)}`), bar = el("i"); bar.style.setProperty("--u", `${w.used}%`);
+    const when = resetText(w.resetsAt);
+    row.append(el("span", "", w.label), el("span", "lim-p", `${Math.round(w.used)} %`), bar, el("small", "", when ? `Resets ${when}` : ""));
+    tip.append(row);
+  }
+  tip.append(el("p", "", l.provider === "codex" ? `From the last run of Codex${l.at ? ` (${new Date(l.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })})` : ""}. Updated after every request.` : "The usage of your Claude plan, as in /usage of Claude Code. Updated after every request and every 5 minutes."));
+}
+/** Claude Code without plan limits (an API key): an empty grey ring, and the detail says why and how to use the subscription instead. */
+function paintNoPlan(l) {
+  const btn = $("limbtn"), tip = $("limtip"), el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls ?? "", textContent: text ?? "" });
+  $("limsw").hidden = false; btn.className = "lvl-none"; btn.querySelector(".lim-fill").setAttribute("stroke-dasharray", "0 100");
+  btn.title = "Claude Code uses an API key: no plan limits"; btn.setAttribute("aria-label", btn.title);
+  tip.replaceChildren(el("b", "", "Claude · API key"),
+    el("p", "lim-key", "Claude Code runs with an API key, so every request is paid per token and there are no plan limits to show."),
+    el("p", "", l.envKey ? "The key comes from ANTHROPIC_API_KEY set on this computer. To use your Claude subscription instead, choose Claude account in Settings → AI providers." : "To use your Claude subscription, sign in to Claude Code with your Claude account instead of the key."));
+}
+setInterval(() => { if (!document.hidden) refreshLimits(true); }, 5 * 60 * 1000);
+function showLimits(open) { $("limtip").hidden = !open; $("limbtn").setAttribute("aria-expanded", String(open)); }
+$("limbtn").onclick = (e) => {
+  e.stopPropagation();
+  const open = $("limtip").hidden; dismissMenus(); showLimits(open);
+  if (open) refreshLimits(true); // the detail shows fresh numbers
+};
+$("limtip").onclick = (e) => e.stopPropagation();
+document.addEventListener("click", () => { if (!$("limtip").hidden) showLimits(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("limtip").hidden) { showLimits(false); $("limbtn").focus(); e.stopPropagation(); } }, true);
+
 /** Chat works when Claude Code is ready or Codex is usable; without both only the chat is off, the rest of the app stays. */
 let claudeReady = false, codexUsable = false;
 function updateChatReady() {
@@ -300,7 +362,7 @@ async function revisePlanFromCard(message, label) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   push({ kind: "user", text: label });
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
-  setBusy(true); sentModel = $("model").value; planPending = true;
+  setBusy(true); sentModel = $("model").value; setPlanPending(true);
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
 }
 /** Where the map is: the file of the project, or the plan that proposes it. */
@@ -397,7 +459,7 @@ $("pv-keep").onclick = () => {
   setPlanMode(false);
   push({ kind: "user", text: `Rebuild ${p.name} with the rearranged structure${p.done ? " (the rest of the moves is done)" : ""}.` });
   if (window.__plan?.dryRun) { window.__plan.lastBuild = p.message; return; }
-  setBusy(true); sentModel = $("model").value; planPending = false;
+  setBusy(true); sentModel = $("model").value; setPlanPending(false);
   window.studio.send(p.message, sentModel || undefined, { plan: false, economy });
 };
 /** Undo / redo of the last change the app made to the screen. */
@@ -456,7 +518,7 @@ async function answerPlan(e) {
   push({ kind: "user", text: "Here are my answers, update the plan." });
   setPlanMode(true);
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
-  setBusy(true); sentModel = $("model").value; planPending = true;
+  setBusy(true); sentModel = $("model").value; setPlanPending(true);
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
 }
 const syncEmptyForCards = () => $("empty")?.classList.toggle("has-cards", planCards.visibleCount() > 0);
@@ -500,7 +562,7 @@ async function buildPlan(e) {
   window.studio.send(message, sentModel || undefined, { plan: false, economy });
 }
 /** For the automated checks: an answer of the agent in plan mode, without the agent. */
-window.__plan = { dryRun: false, lastBuild: null, lastAnswer: null, answer(text) { setPlanMode(true); push({ kind: "user", text: "(plan)" }); push({ kind: "ai", text, done: true }); planPending = true; convertPlan(); } };
+window.__plan = { dryRun: false, lastBuild: null, lastAnswer: null, answer(text) { setPlanMode(true); push({ kind: "user", text: "(plan)" }); push({ kind: "ai", text, done: true }); setPlanPending(true); convertPlan(); } };
 {
   const menu = $("modemenu"), btn = $("modebtn");
   const setOpen = (on) => { menu.hidden = !on; btn.setAttribute("aria-expanded", String(on)); };
@@ -562,9 +624,13 @@ function setBusy(b) {
     if (!was) { workStart = Date.now(); $("work-label").textContent = "Thinking…"; }
     tickWork(); workTimer = setInterval(tickWork, 1000);
   }
-  const empty = $("empty"); empty.classList.toggle("working", b);
-  $("empty-text").textContent = b ? "Preparing a screen…" : EMPTY_TEXT;
+  $("empty").classList.toggle("working", b);
+  paintEmpty();
 }
+/** The text in the middle of an empty canvas: what the agent is preparing (a plan in Plan mode, else a screen), or the invitation. */
+function paintEmpty() { $("empty-text").textContent = busy ? (planPending ? "Preparing the plan…" : "Preparing a screen…") : EMPTY_TEXT; }
+/** Whether the running request ends with a plan; the empty canvas says so. */
+function setPlanPending(v) { planPending = Boolean(v); paintEmpty(); }
 /** The answers of Plan mode that were hidden while they were written are shown as they are (when they did not become a plan). */
 function clearPlanning() { for (const e of entries) if (e.planning) { e.planning = false; paint(e); } }
 function finishSteps(status) { for (const e of entries) if (e.kind === "steps") { for (const s of e.steps) if (s.status === "run") s.status = status; paint(e); } }
@@ -622,13 +688,14 @@ const onAgentEvent = (m) => {
     }
     setWork("Thinking…");
   } else if (m.type === "result") {
-    finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { planPending = false; if (!m.isError) convertPlan(); } persist();
+    setTimeout(() => refreshLimits(true), 1500); // the request used some of the plan: the meter catches up
+    finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { setPlanPending(false); if (!m.isError) convertPlan(); } persist();
     if (m.isError) push({ kind: "err", text: `Error: ${m.text}` });
     pushUsage(m.usage); // below the answer, and below the card of a plan
   } else if (m.type === "stopped") {
-    planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
+    setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
-    planPending = false; finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
+    setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }
 };
 window.studio.onEvent(onAgentEvent);
@@ -652,7 +719,7 @@ async function askAgentToMove({ file, name, ordinal, target, position, reason })
   const desc = (e, fallback) => (e ? `${e.name} (in the JSX: ${e.snippet})` : fallback);
   const message = `In ${file}, move the component ${desc(from, name ?? "the dragged one")} ${position} the component ${desc(to, "the target")}. The user dragged it there on the screen (the app could not do it itself: ${reason}). Keep its props and content, make it work in the new place and change nothing else.`;
   push({ kind: "user", text: `Move ${name ?? "the component"} ${position} ${to?.name ?? "the other component"} in ${file}.` });
-  setBusy(true); sentModel = $("model").value; planPending = false;
+  setBusy(true); sentModel = $("model").value; setPlanPending(false);
   window.studio.send(message, sentModel || undefined, { plan: false, economy });
 }
 // a component dragged to another place of its screen while the inspector is on (inspector.js): moved in the file like a move in the structure dialog
@@ -733,7 +800,7 @@ async function askAgentToEditText({ file, ordinal, old, value, reason }) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
   push({ kind: "user", text: `Change the text “${old}” to “${value}” in ${file}.` });
-  setBusy(true); sentModel = $("model").value; planPending = false;
+  setBusy(true); sentModel = $("model").value; setPlanPending(false);
   window.studio.send(`In ${file}, the component ${e ? `${e.name} (in the JSX: ${e.snippet})` : "the user edited"} shows the text “${old}”. The user changed it on the screen to “${value}” (the app could not do it itself: ${reason}). Change it where it comes from, in every language that has it if it is an LSI, and change nothing else.`, sentModel || undefined, { plan: false, economy });
 }
 /** Escape in the edit mode: first the marks go, then the mode. */
@@ -764,7 +831,7 @@ async function askAgentToDelete({ file, name, ordinal, reason }) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
   const e = (await window.studio.jsxInspect(file, [ordinal]).catch(() => null))?.element;
   push({ kind: "user", text: `Remove ${name ?? "the component"} from ${file}.` });
-  setBusy(true); sentModel = $("model").value; planPending = false;
+  setBusy(true); sentModel = $("model").value; setPlanPending(false);
   window.studio.send(`In ${file}, remove the component ${e ? `${e.name} (in the JSX: ${e.snippet})` : name ?? "the user marked"} from the screen. The user deleted it on the screen (the app could not do it itself: ${reason}). Remove it cleanly, together with code that only it used, and change nothing else.`, sentModel || undefined, { plan: false, economy });
 }
 const inspector = createInspector({ onPick: showPick, onEscape: () => escapeEdit(), onMove: moveInScreen, onDelete: deleteInScreen, onDuplicate: duplicateInScreen, onText: editTextInScreen, onItemMove: moveItemInScreen });
@@ -1109,6 +1176,8 @@ const propsPanel = createPropsPanel({
 let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
 const structureDialog = createStructureDialog({ api: {
   structure: window.studio.jsxStructure,
+  focus: () => window.studio.componentFocus(), // a screen made from an existing component: its tree starts at that component
+  baseline: () => window.studio.componentBaseline(), reread: () => window.studio.componentReread(), toast: (t) => toast(t),
   show: (file, ordinal, part) => { structFrom = { file, part: part ?? null }; $("insp-back").hidden = false; if (!$("inspect").classList.contains("on")) $("inspect").click(); propsPanel.show({ file, chain: [ordinal] }); },
   /**
    * The moves the file can take safely are done in the file at once, so the screen on the canvas is the preview; the bar asks to keep or to undo them.
@@ -1591,7 +1660,7 @@ async function askAgentToAdd({ file, name, ordinal, zone, reason }) {
   const libBlock = (await window.studio.docsDescribe([name]).catch(() => null))?.text ?? "";
   const message = [`In ${file}, add the library component ${name} ${where}. It was dropped there from the catalogue, so put it exactly at that place in the JSX and give it sensible props and content (the app could not do it itself: ${reason}). Change nothing else.`, libBlock].filter(Boolean).join("\n\n");
   push({ kind: "user", text: `Add ${name} ${ZONE_TEXT[zone]} ${target?.element?.name ?? "a component"} in ${file}.` });
-  setBusy(true); sentModel = $("model").value; planPending = false;
+  setBusy(true); sentModel = $("model").value; setPlanPending(false);
   window.studio.send(message, sentModel || undefined, { plan: false, economy });
 }
 const catalogDrag = createCatalogDrag({
@@ -1633,8 +1702,11 @@ $("prompt").addEventListener("blur", () => setTimeout(() => ($("mentions").hidde
 // ---------- project memory: linked repository, business rules, notes of a screen ----------
 let repo = null; // { path, name, branch } | { path, name, error } | null
 /** Always-visible line under the chat header: the git repository the project is linked to, the branch Claude reads and Unlink. */
+/** The Hand off button of the top bar: for the Solution architect, in a project with a linked repository. */
+function syncHandoffBtn() { const b = $("handoffbtn"); if (!b) return; try { b.hidden = !(meta.role === "architect" && project && repo && !repo.error); } catch { b.hidden = true; /* the role is not read yet */ } }
+window.addEventListener("studio:repo", (e) => { if (e.detail && !e.detail.error) showRepo(e.detail); }); // the handoff switched the working copy to its branch
 function showRepo(r) {
-  repo = r;
+  repo = r; syncHandoffBtn();
   const strip = $("repostrip"); strip.hidden = !r; strip.classList.toggle("err", Boolean(r?.error)); $("branchmenu").hidden = true;
   if (!r) return;
   $("rs-name").textContent = r.error ? `${r.name} (not available)` : r.name;
@@ -1704,7 +1776,7 @@ rules = createRulesPanel({
 // brand guidelines: the manual is stored, the agent distills it into DESIGN_GUIDE.md (an ordinary chat request)
 const brand = createBrandDialog({
   api: window.studio, toast, onChanged: () => refreshBrandFlag(),
-  askAgent: (prompt, label = "Improve the design guide from the brand manual.") => { push({ kind: "user", text: label }); setBusy(true); sentModel = $("model").value; planPending = false; window.studio.send(prompt, sentModel || undefined, { plan: false, economy }); },
+  askAgent: (prompt, label = "Improve the design guide from the brand manual.") => { push({ kind: "user", text: label }); setBusy(true); sentModel = $("model").value; setPlanPending(false); window.studio.send(prompt, sentModel || undefined, { plan: false, economy }); },
 });
 // does the project have a design guide with colours or fonts? Only then the screen menu offers the check
 let brandReady = false;
@@ -1729,12 +1801,34 @@ syncViewSw();
 {
   const menu = $("projinfomenu"), btn = $("projinfo");
   const setOpen = (on) => { menu.hidden = !on; btn.setAttribute("aria-expanded", String(on)); btn.classList.toggle("open", on); };
-  btn.onclick = (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); setOpen(willOpen); };
+  /**
+   * The component part of the menu: a project made from an existing component shows where it comes from (and opens that "as is" or reference
+   * plan); another one offers to start from one, for the roles that work with the code (Solution architect, UI/UX designer, no role).
+   */
+  let origin = null;
+  const paintOrigin = async () => {
+    origin = await window.studio.componentOrigin?.().catch(() => null) ?? null; if (origin?.error) origin = null;
+    const o = $("pi-origin"), offer = !origin && (!meta.role || meta.role === "architect" || meta.role === "uiux");
+    // Hand off for production: in the Advanced view, with a linked repository; its state from the projects list (ready / outdated / the last one)
+    const hand = !isSimple() && Boolean(repo && !repo.error);
+    $("pi-handoff").hidden = !hand;
+    if (hand) { const p = (await window.studio.listProjects().catch(() => [])).find((x) => x.name === project); $("pi-handoffstate").textContent = p?.handoff === "outdated" ? "outdated" : p?.handoff === "ready" ? "ready" : ""; $("pi-handoffstate").className = p?.handoff ? "pi-hstate" : ""; }
+    o.hidden = !origin; $("pi-fromcomp").hidden = !offer; $("pi-compsep").hidden = !origin && !offer && !hand;
+    if (origin) { o.replaceChildren(document.createTextNode(origin.kind === "baseline" ? `Redesign of ${origin.name}` : `${origin.name}, based on ${origin.ref}`), Object.assign(document.createElement("small"), { textContent: origin.file.split("/").pop() })); o.title = `${origin.kind === "baseline" ? "The existing component this project changes" : "The existing component the new one follows"}: ${origin.file}. ${origin.kind === "baseline" ? "Click to see its real structure: the code's tree with what the screen adds." : "Click to see its tree read from the code."}`; }
+  };
+  btn.onclick = async (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); if (willOpen) await paintOrigin(); setOpen(willOpen); };
   menu.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     if (b.classList.contains("viewtog")) return; // the Advanced view switches in place (its own handler); the menu stays open to show the new state
     setOpen(false);
-    if (b.dataset.pi === "desc") openDesc(null); else if (b.dataset.pi === "rules") openRules();
+    if (b.dataset.pi === "desc") openDesc(null); else if (b.dataset.pi === "rules") openRules(); else if (b.dataset.pi === "fromcomp") startFromComponent(); else if (b.dataset.pi === "handoff") window.__menuAction("repo:handoff");
+    else if (b.dataset.pi === "origin" && origin) {
+      // a redesign: the real structure of its screen (the code's tree with the screen's new parts); a reference: its tree read from the code (the plan)
+      const files = canvas.files(), kebab = origin.name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+      const screen = files.find((f) => f === `${kebab}.html`) ?? canvas.selected() ?? files[0];
+      if (origin.kind === "baseline" && screen) structureDialog.open(screen);
+      else { if (isSimple()) setView("advanced"); if (!planCards.openView(origin.plan)) toast(`Open the plan file plans/${origin.plan}.md.`, { err: true }); }
+    }
   });
   document.addEventListener("click", (e) => { if (!menu.hidden && !e.target.closest("#projinfow")) setOpen(false); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { setOpen(false); e.stopPropagation(); } }, true);
@@ -1790,7 +1884,7 @@ const variantsDialog = createVariantsDialog({
   onDone: ({ file, count, aspect, custom }) => {
     if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
     push({ kind: "user", text: `Make ${count} variants of ${file.replace(/\.html$/, "")}: ${variantNames(file, count).join(", ")}.` });
-    setBusy(true); sentModel = $("model").value; planPending = false;
+    setBusy(true); sentModel = $("model").value; setPlanPending(false);
     window.studio.send(buildVariantsPrompt({ file, count, aspect, custom }), sentModel || undefined, { plan: false, economy });
   },
 });
@@ -1833,7 +1927,7 @@ function showContextMenu({ file, clientX, clientY, at }) {
   const simple = isSimple(); // the simple view keeps what is needed to look at, edit and share a design; the rest is under Advanced
   const items = [
     [at ? "Add note here" : "Add note", () => addNote(file, at)], ...(simple ? [] : [["Add rule…", () => openRules(file)]]), ["Present", () => openFullscreen(file)], ["Fit screen", () => canvas.focus(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...(simple ? [] : mentionItems(name)),
-    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Copy screen", () => copyScreen(file)], ["Copy to project…", () => pickCopyTarget(file, clientX, clientY)], null, ["Delete screen…", () => deleteScreen(file), true],
+    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], ...(repo && !repo.error ? [["Hand off this screen…", () => openHandoffDialog({ api: window.studio, toast, screens: [file], onLinkRepo: () => linkRepoFlow(), onOpenPlan: (slug) => { if (!planCards.openView(slug)) toast(`Open the plan file plans/${slug}.md.`, { err: true }); } })]] : []), [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Copy screen", () => copyScreen(file)], ["Copy to project…", () => pickCopyTarget(file, clientX, clientY)], null, ["Delete screen…", () => deleteScreen(file), true],
   ];
   m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
   m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
@@ -2308,14 +2402,40 @@ const templatesDialog = createTemplatesDialog({
 let autoNamed = null, autoLevel = null; // a project started from the dashboard keeps its first, rough name until the first screen exists
 /** The pages picked from a link on the dashboard, before the project exists: { sitemap, … } (written into the new project) or { outline, … } (goes to the agent with the first message). */
 let dashPick = null;
+/** The pictures attached on the dashboard (pasted, dropped, picked): they become the attachments of the first message in the new project. */
+const dashImgs = { list: [], preparing: 0 };
 function renderDashAttachments() {
-  const box = $("dash-attachments"); box.replaceChildren(); dashDocs.renderInto(box);
+  const box = $("dash-attachments"); box.replaceChildren();
+  box.append(...imageCards(dashImgs.list, renderDashAttachments));
+  if (dashImgs.preparing) box.append(Object.assign(document.createElement("div"), { className: "att busy", textContent: "…" }));
+  dashDocs.renderInto(box);
   if (dashPick) box.append(sitePickCard(dashPick, () => { dashPick = null; renderDashAttachments(); }));
-  box.hidden = !dashDocs.count() && !dashPick; $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count();
+  box.hidden = !dashDocs.count() && !dashPick && !dashImgs.list.length && !dashImgs.preparing; $("dash-send").disabled = !$("dash-prompt").value.trim() && !dashDocs.count() && !dashImgs.list.length;
 }
 const dashDocs = createDocCards({ onChange: () => renderDashAttachments(), toast, structure: (card) => openSitePicker({ toast, url: card.url, onUse: (pick) => { dashPick = pick; renderDashAttachments(); }, onAgent: (pick) => { dashDocs.setPick(card.url, pick); toast(`${pick.count} page${pick.count === 1 ? "" : "s"} of “${pick.title}” go to the agent with your first message.`); } }), offerStructure: () => dashboard.scope() === "site" }); // Plus4U documents pasted on the dashboard
+/**
+ * The start from a component of the repository on the dashboard: only where a component can be the starting point (Application, Route,
+ * Component) and for the roles that work with the code (Solution architect, UI/UX designer, or no role chosen). The architect gets it as an
+ * equal way to start, with the repository last used.
+ */
+let dashRepo = null;
+function paintDashFrom(level) {
+  const role = meta.role, box = $("dash-from");
+  const show = ["component", "route", "app"].includes(level) && (!role || role === "architect" || role === "uiux");
+  box.hidden = !show;
+  const main = show && role === "architect";
+  box.classList.toggle("primary", main);
+  $("dash-from-h").textContent = main ? `Start from your repository${dashRepo ? `: ${dashRepo.name}` : ""}` : "or start from a component of your repository:";
+  $("dash-extend-t").textContent = main ? "Extend a component from the repository" : "Extend an existing component";
+  $("dash-extend-s").textContent = main ? "read its real structure, change it, hand off the difference" : "redesign it, add to it";
+  $("dash-newfrom-t").textContent = main ? "New component based on an existing one" : "New component based on one";
+  $("dash-newfrom-s").textContent = main ? "its decomposition, style and conventions" : "its structure and style";
+  if (main && !dashRepo) window.studio.repoRecent?.().then((r) => { if (r && !r.error) { dashRepo = r; paintDashFrom(level); } }).catch(() => {});
+}
 const dashboard = createDashboard({
   api: window.studio, docs: dashDocs, toast,
+  onPaint: (level) => { try { paintDashFrom(level); } catch { /* the role is not read yet: the first paint after it */ } },
+  images: { add: (files) => addImages(files, dashImgs), count: () => dashImgs.list.length, busy: () => dashImgs.preparing > 0 },
   onOpen: (name) => changeProject(() => window.studio.openProject(name)),
   onNew: () => newProjectFlow(),
   onNewFromDoc: () => newProjectFromDocFlow(),
@@ -2329,6 +2449,7 @@ const dashboard = createDashboard({
   onScope: (s) => { if (s !== "site") dashPick = null; renderDashAttachments(); },
   onStart: async ({ text, plan, model, template, templateLevel, level, scope, docs = [] }) => {
     if (!ready) return toast(NO_AI, { err: true });
+    const imgs = dashImgs.list; dashImgs.list = []; renderDashAttachments(); // the pictures go with the first message of the new project
     const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
     if (!project || r?.error) return;
     if (template) { const a = await window.studio.templatesApply(template); if (a?.error) toast(a.error, { err: true }); else { projectLevel = a.level ?? null; defaultEnv = a.environment ?? null; } }
@@ -2339,10 +2460,41 @@ const dashboard = createDashboard({
     const pick = dashPick; dashPick = null; // the pages picked from a link: the sitemap of the new project, or the input of its first plan
     if (pick?.sitemap) { const w = await window.studio.sitemapWrite(pick.sitemap).catch((e) => ({ error: String(e?.message ?? e) })); if (!w || w.error) toast(w?.error ?? "The sitemap could not be saved.", { err: true }); else setProjectSitemap(w); }
     else if (pick?.outline) sitePick = pick;
+    if (imgs.length) { pending = imgs; renderAttachments(); }
     dashboard.reset(); setPlanMode(plan); $("model").value = model; $("prompt").value = text;
     $("form").requestSubmit();
   },
 });
+/**
+ * Start from an existing component of a repository: extend / redesign it, or a new component modelled on it (componentStartDialog.js).
+ * From the dashboard (no project) a project is made and the chosen repository linked to it first; in a project without a repository it is linked.
+ */
+function startFromComponent({ mode = "extend" } = {}) {
+  const needsRepo = !project || !repo;
+  openComponentStart({
+    api: window.studio, toast, mode, attach: (files) => addImages(files),
+    prepare: needsRepo ? async ({ repoPath }) => {
+      if (!project) {
+        if (!ready) return { error: NO_AI };
+        const r = await changeProject(() => window.studio.createProject(newProjectName(projectList.map((p) => p.name))));
+        if (!project || r?.error) return { error: r?.error ?? "The project could not be made." };
+        autoNamed = project; // renamed after its first screen, as a project started from the dashboard
+        await window.studio.projectSetKind({ level: "component", scope: null }).catch(() => null);
+      }
+      const l = await window.studio.repoLink(repoPath);
+      if (l?.error) return l;
+      showRepo(l); return { ok: true };
+    } : null,
+    onStart: (r) => {
+      componentBrief = r.brief; setPlanMode(false);
+      $("prompt").value = r.mode === "new" ? `Design the new component ${r.name} based on ${r.ref} (@repo/${r.files[0]}).` : `Make a screen of the existing component ${r.name} (@repo/${r.files[0]}) as it is now.`;
+      $("form").requestSubmit();
+    },
+  });
+}
+$("handoffbtn").onclick = () => window.__menuAction("repo:handoff");
+$("dash-extend").onclick = () => startFromComponent({ mode: "extend" });
+$("dash-newfrom").onclick = () => startFromComponent({ mode: "new" });
 /** Write pending chat/canvas changes of the current project before the workspace is swapped. */
 async function flushSaves() {
   clearTimeout(saveTimer); clearTimeout(saveLayoutTimer);
@@ -2508,6 +2660,8 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
       case "repo:branch": return needProject(() => (repo ? $("rs-branch").click() : toast("No repository is linked.", { err: true })));
       case "repo:open": return needProject(() => (repo ? $("rs-main").click() : toast("No repository is linked.", { err: true })));
       case "repo:unlink": return needProject(() => (repo ? $("rs-unlink").click() : toast("No repository is linked.", { err: true })));
+      case "repo:component": return startFromComponent();
+      case "repo:handoff": return needProject(() => openHandoffDialog({ api: window.studio, toast, onLinkRepo: () => linkRepoFlow(), onOpenPlan: (slug) => { if (isSimple()) setView("advanced"); if (!planCards.openView(slug)) toast(`Open the plan file plans/${slug}.md.`, { err: true }); } }));
       case "view:inspector": return needProject(() => $("inspect").click());
       case "view:chatmode": return $("chatmode").click();
       case "app:about": return openAbout();
@@ -2556,6 +2710,7 @@ function applyRole(role, { preset = true } = {}) {
   document.body.dataset.role = meta.role ?? "";
   if (meta.role && roleOf(meta.role).hideLevels?.includes(dashboard.level?.())) dashboard.setLevel(roleOf(meta.role).level); // a saved level that this role does not offer
   $("dash-role").textContent = meta.role ? roleOf(meta.role).label : "Choose role…";
+  paintDashFrom(dashboard.level?.()); syncHandoffBtn();
   if (!meta.role || !preset) return;
   const r = roleOf(role);
   setView(r.simple ? "simple" : "advanced");
@@ -2576,12 +2731,14 @@ const settingsDialog = createSettingsDialog({
   getState: async () => ({
     theme: window.__theme.get(), glass: Boolean(document.body.dataset.glass), offline: Boolean((await window.studio.cdnStatus())?.offline),
     roleLabel: meta.role ? roleOf(meta.role).label : "", images: await window.studio.imageGenStatus(), agents: await window.studio.usableAgents(),
+    ...(await window.studio.claudeAuth().then((a) => ({ claudeAuthInfo: a, claudeAuth: a?.usesKey ? "key" : "account" })).catch(() => ({}))),
   }),
   run: (action) => (action === "folder:projects-change" ? window.studio.projectsFolder("change").then((r) => { if (r?.error) toast(r.error, { err: true }); }) : window.__menuAction(action)),
   setValue: async (key, value) => {
     if (key === "theme") { window.__theme.set(value); syncTheme(); }
     else if (key === "glass") { if (Boolean(document.body.dataset.glass) !== value) await window.studio.toggleGlass(); }
     else if (key === "offline") { const on = Boolean((await window.studio.cdnStatus())?.offline); if (on !== value) await cdnActions.offline(); }
+    else if (key === "claudeAuth") { const r = await window.studio.claudeAuth(value); if (r?.error) toast(r.error, { err: true }); else { toast(value === "key" ? "Claude Code now uses the API key: every request is paid per token." : "Claude Code now uses your Claude account and its plan."); checkClaude(true); refreshLimits(true); } }
   },
 });
 const roleDialog = createRoleDialog({
@@ -2621,6 +2778,7 @@ const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgen
 // ---------- attached screenshots ----------
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]
+let componentBrief = null; // the task for the agent after Start from an Existing Component, sent with the next message
 let preparing = 0;
 const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true, card.tree), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
@@ -2638,20 +2796,24 @@ async function prepareImage(file) {
   t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
   return { id: crypto.randomUUID(), name: file.name || "screenshot.png", mime, data: await blobToBase64(blob), thumb: t.toDataURL("image/jpeg", 0.75) };
 }
-function renderAttachments() {
-  const box = $("attachments"); box.replaceChildren();
-  for (const im of pending) {
+/** The cards of attached pictures (in the chat or on the dashboard): each a Reference / In design switch and ✕. */
+function imageCards(list, rerender) {
+  return list.map((im) => {
     const d = Object.assign(document.createElement("div"), { className: `att${im.asset ? " asset" : ""}`, title: im.name });
     d.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name }));
     // two modes: a reference (the agent only looks at it) or a picture that goes into the design itself (logo...)
     const isSvg = im.mime === "image/svg+xml", seg = Object.assign(document.createElement("div"), { className: "att-mode" });
     for (const [asset, label, tip] of [[false, "Reference", "The agent only looks at this picture."], [true, "In design", "This picture is placed into the design as it is (saved in the project’s assets folder): a logo, a specific image."]]) {
-      seg.append(Object.assign(document.createElement("button"), { type: "button", textContent: label, className: !!im.asset === asset ? "on" : "", disabled: isSvg && !asset, title: isSvg && !asset ? "An SVG can only be used in the design." : tip, onclick: () => { im.asset = asset; renderAttachments(); } }));
+      seg.append(Object.assign(document.createElement("button"), { type: "button", textContent: label, className: !!im.asset === asset ? "on" : "", disabled: isSvg && !asset, title: isSvg && !asset ? "An SVG can only be used in the design." : tip, onclick: () => { im.asset = asset; rerender(); } }));
     }
     d.append(seg);
-    d.append(Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: "Remove attachment", onclick: () => { pending = pending.filter((x) => x.id !== im.id); renderAttachments(); } }));
-    box.append(d);
-  }
+    d.append(Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: "Remove attachment", onclick: () => { const i = list.indexOf(im); if (i >= 0) list.splice(i, 1); rerender(); } }));
+    return d;
+  });
+}
+function renderAttachments() {
+  const box = $("attachments"); box.replaceChildren();
+  box.append(...imageCards(pending, renderAttachments));
   if (preparing) box.append(Object.assign(document.createElement("div"), { className: "att busy", textContent: "…" }));
   docCards.renderInto(box);
   if (sitePick) box.append(sitePickCard(sitePick, () => { sitePick = null; renderAttachments(); }));
@@ -2663,22 +2825,25 @@ async function prepareSvg(file) {
   const data = await blobToBase64(new Blob([buf]));
   return { id: crypto.randomUUID(), name: file.name || "image.svg", mime: "image/svg+xml", data, thumb: `data:image/svg+xml;base64,${data}`, asset: true };
 }
-async function addImages(files) {
+async function addImages(files, dash = null) {
   const manuals = [...files].filter(isBrandFile);
-  if (manuals.length) { // a PDF / HTML / Markdown file is a brand manual, not a picture
+  if (manuals.length && dash) { toast("A brand manual (PDF, HTML, Markdown) can be added once the project is open. Here you can attach pictures.", { err: true }); files = [...files].filter((f) => !isBrandFile(f)); }
+  else if (manuals.length) { // a PDF / HTML / Markdown file is a brand manual, not a picture
     if (!project) toast("Open a project first.", { err: true });
     else if (await askConfirm({ title: "Use as brand manual?", danger: false, detail: `“${manuals.map((f) => f.name).join("”, “")}” will be stored in the project and read for colours, fonts and logo sizes, which go into the design guide every screen follows.`, ok: "Use as manual" })) await brand.importFiles(manuals);
     files = [...files].filter((f) => !isBrandFile(f));
   }
   const imgs = [...files].filter((f) => f.type.startsWith("image/"));
   if (!imgs.length) return;
-  if (pending.length + preparing + imgs.length > MAX_IMAGES) { toast(`You can attach at most ${MAX_IMAGES} images at a time.`, { err: true }); imgs.splice(Math.max(0, MAX_IMAGES - pending.length - preparing)); }
-  preparing += imgs.length; renderAttachments();
+  // the chat keeps its pictures in `pending`, the dashboard in `dash` ({ list, preparing })
+  const list = dash ? dash.list : pending, busyNow = () => (dash ? dash.preparing : preparing), addBusy = (k) => { if (dash) dash.preparing += k; else preparing += k; }, rerender = dash ? renderDashAttachments : renderAttachments;
+  if (list.length + busyNow() + imgs.length > MAX_IMAGES) { toast(`You can attach at most ${MAX_IMAGES} images at a time.`, { err: true }); imgs.splice(Math.max(0, MAX_IMAGES - list.length - busyNow())); }
+  addBusy(imgs.length); rerender();
   for (const f of imgs) {
-    try { pending.push(f.type === "image/svg+xml" ? await prepareSvg(f) : await prepareImage(f)); } catch { toast(`The image “${f.name || "from the clipboard"}” could not be loaded.`, { err: true }); }
-    preparing--; renderAttachments();
+    try { list.push(f.type === "image/svg+xml" ? await prepareSvg(f) : await prepareImage(f)); } catch { toast(`The image “${f.name || "from the clipboard"}” could not be loaded.`, { err: true }); }
+    addBusy(-1); rerender();
   }
-  $("prompt").focus();
+  $(dash ? "dash-prompt" : "prompt").focus();
 }
 $("prompt").addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
@@ -2734,7 +2899,7 @@ $("form").onsubmit = async (e) => {
   const all = chips.slice(), ctx = all.filter((c) => c.kind !== "sitemap"), mapNotes = all.filter((c) => c.kind === "sitemap");
   const shown = pages ? `${prompt}\n🗺 Pages picked from “${pages.title}” (${pages.count})` : prompt;
   push({ kind: "user", text: shown, ...(all.length ? { annotations: historyOf(all) } : {}), ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
-  $("prompt").value = ""; pending = []; sitePick = null; renderAttachments(); setBusy(true);
+  $("prompt").value = ""; pending = []; sitePick = null; renderAttachments(); setPlanPending(planMode); setBusy(true); // Plan mode: the empty canvas says a plan is coming, not a screen
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
   const noteBlock = await memory.notesFor([...refs.map((n) => `${n}.html`), ...(fsFile ? [fsFile] : []), ...(ctx ?? []).map((c) => c.file)]);
@@ -2752,12 +2917,14 @@ $("form").onsubmit = async (e) => {
     fsFile && `Context: the user is viewing the screen ${fsFile} in fullscreen preview right now. Unless they name another screen, their request is about ${fsFile}: change that file.`,
     annotationsContext(ctx),
     mapNotes.length && mapRevision(mapNotes),
+    componentBrief, // Start from an existing component: the task of building its screen (once)
   ].filter(Boolean);
+  componentBrief = null;
   // annotations of the map of a plan are answered with a revised plan; those of the map of the project in Agent mode change it at once (the previous map is kept, the user can take it back)
   const plan = planMode || (mapNotes.length > 0 && !mapDirect(mapNotes));
   if (window.__plan?.dryRun) { window.__plan.lastSend = { message: extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, plan }; setBusy(false); clearChips(); if (chatPick) setInspect(false); return; } // the automated checks read the message instead of starting the agent
   sentModel = $("model").value;
-  planPending = plan;
+  setPlanPending(plan);
   window.studio.send(extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, sentModel || undefined, { plan, economy });
   clearChips(); if (chatPick) setInspect(false);
 };

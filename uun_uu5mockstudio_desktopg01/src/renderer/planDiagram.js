@@ -1,4 +1,4 @@
-import { layoutTree, dropTarget, BOX } from "./planTree.js";
+import { ROLE_TAG, layoutTree, dropTarget, BOX } from "./planTree.js";
 
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -40,9 +40,9 @@ export function renderDiagram(o) {
 
   // ----- boxes
   for (const b of layout.nodes) {
-    const n = b.node, unknown = o.checkNames !== false && n.kind === "library" && !known.has(n.name), sel = b.key === (entry.sel ?? []).join(".");
+    const n = b.node, unknown = o.checkNames !== false && n.kind === "library" && !n.role && !known.has(n.name), sel = b.key === (entry.sel ?? []).join(".");
     const box = el("div", {
-      className: `pd-box k-${n.kind}${n.change ? ` c-${n.change}` : ""}${n.low ? " low" : ""}${sel && (editable || o.onNodeClick) ? " sel" : ""}${!editable && n.kind === "library" && !unknown ? " click" : ""}`,
+      className: `pd-box k-${n.kind}${n.change ? ` c-${n.change}` : ""}${n.role && n.role !== "visual" ? ` nv r-${n.role}` : ""}${n.low ? " low" : ""}${sel && (editable || o.onNodeClick) ? " sel" : ""}${!editable && n.kind === "library" && !unknown ? " click" : ""}`,
       tabIndex: 0, role: "button",
       "aria-label": `${n.name}, ${n.kind}${n.change ? `, ${n.change}` : ""}${n.relation ? ", repeated" : ""}${b.path.length ? "" : ", root"}`,
       title: [n.name, n.note, n.data ? `receives: ${n.data}` : "", n.render ? `R: ${n.render}` : "", n.disabled ? `D: ${n.disabled}` : "", unknown ? "Not in the documentation of the uu5-development plugin." : ""].filter(Boolean).join("\n"),
@@ -55,6 +55,8 @@ export function renderDiagram(o) {
     if (n.disabled) chips.append(el("span", { className: "chip d", textContent: "D", title: n.disabled }));
     if (n.label) chips.append(el("span", { className: "chip lbl", textContent: `// ${n.label}` }));
     if (n.change) chips.append(el("span", { className: "chip chg", textContent: n.change }));
+    if (n.role && n.role !== "visual") chips.append(el("span", { className: "chip role", textContent: ROLE_TAG[n.role] ?? n.role, title: "Not visual: only in the tree, not in the mockup" }));
+    if (n.source) chips.append(el("span", { className: "chip src", textContent: "repo", title: `Exists in the repository: ${n.source}` }));
     if (unknown) chips.append(el("span", { className: "chip unk", textContent: "?" }));
     box.append(chips, el("code", { className: "pd-name", textContent: n.name }));
     const sub = n.data ? `← ${n.data}` : n.note;

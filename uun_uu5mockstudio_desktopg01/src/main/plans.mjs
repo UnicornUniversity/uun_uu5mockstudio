@@ -22,7 +22,7 @@ export async function listPlans(projectDir) {
     try {
       const f = path.join(projectDir, PLANS_DIR, n), p = parsePlan(await fs.promises.readFile(f, "utf8"));
       const heading = p.body.match(/^#{1,6}\s+(.+)$/m)?.[1].trim(), generic = !p.meta.title || /^plan$/i.test(p.meta.title);
-      out.push({ slug, title: generic ? heading || p.meta.title || slug : p.meta.title, status: p.meta.status ?? "draft", created: p.meta.created ?? "", mtime: (await fs.promises.stat(f)).mtimeMs });
+      out.push({ slug, title: generic ? heading || p.meta.title || slug : p.meta.title, status: p.meta.status ?? "draft", created: p.meta.created ?? "", ...(p.meta.baseline ? { baseline: p.meta.baseline } : {}), ...(p.meta.reference ? { reference: p.meta.reference } : {}), mtime: (await fs.promises.stat(f)).mtimeMs });
     } catch { /* unreadable: skipped */ }
   }
   // plans with the same title are told apart: by the date they were made, and when that is the same too, by the name of the file
