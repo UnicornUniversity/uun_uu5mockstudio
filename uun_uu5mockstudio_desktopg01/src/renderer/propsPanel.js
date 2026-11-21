@@ -13,7 +13,9 @@ const WELL_KNOWN = { colorScheme: { type: "colorScheme" }, borderRadius: { type:
 /** headerColorScheme, iconColorScheme, footerBorderRadius ... are the same kind of value as colorScheme / borderRadius. */
 const wellKnown = (name) => WELL_KNOWN[name] ?? (/.[a-z]ColorScheme$/.test(name) ? WELL_KNOWN.colorScheme : /.[a-z]BorderRadius$/.test(name) ? WELL_KNOWN.borderRadius : undefined);
 // enums that a component documents only as "oneOf" (no values), such as Uu5Forms.SubmitButton: the values are the same everywhere
-const WELL_KNOWN_ENUMS = { significance: ["common", "highlighted", "distinct", "subdued"] };
+// card: the card type of Uu5Elements.Block and of everything built on it (IdentificationBlock, Plus4U5Elements.ContentContainer ...), which
+// the reference of ContentContainer does not list at all
+const WELL_KNOWN_ENUMS = { significance: ["common", "highlighted", "distinct", "subdued"], card: ["none", "full", "content"] };
 // list props whose items come from a fixed set even when the component has no reference page (Uu5.Utils.NestingLevel.valueList, plus the modal level of ContentContainer)
 const WELL_KNOWN_LISTS = { nestingLevelList: ["uve", "route", "areaCollection", "area", "boxCollection", "box", "spotCollection", "spot", "inline", "modal"] };
 // A prop that holds an icon: documented as one, or named like one (icon, typeIcon, rightIcon, iconRight, stateIcon ...). Names that only

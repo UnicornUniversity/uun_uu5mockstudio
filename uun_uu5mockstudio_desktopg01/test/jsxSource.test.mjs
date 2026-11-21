@@ -882,3 +882,21 @@ test("an icon written as ICON.edit says what it resolves to and how many places 
   // a variable that is a local literal resolves too
   assert.equal(describeElement(src, 1).attrs.find((a) => a.name === "headerColorScheme").resolved.langs[0].value, "positive");
 });
+
+test("setProp puts a prop after a later {...spread}, so the spread does not override the chosen value", () => {
+  const src = page(`<Uu5Elements.Block
+          card="none"
+          {...rest}
+          header="H"
+        >x</Uu5Elements.Block>`);
+  const ord = parseElements(src).findIndex((e) => e.name === "Uu5Elements.Block");
+  const out = setProp(src, ord, "card", { type: "string", value: "content" });
+  assert.match(out, /\{\.\.\.rest\}\n\s+card="content"\n\s+header="H"/, "moved behind the spread, on its own line");
+  assert.equal((out.match(/card=/g) ?? []).length, 1, "the old one in front of the spread is gone");
+  const added = setProp(src, ord, "significance", { type: "string", value: "distinct" });
+  assert.match(added, /\{\.\.\.rest\}\n\s+significance="distinct"/, "a new prop goes after the spread too");
+  const after = setProp(src, ord, "header", { type: "string", value: "G" });
+  assert.match(after, /card="none"\n\s+\{\.\.\.rest\}\n\s+header="G"/, "a prop already after the spread stays where it is");
+  const plain = page(`<Uu5Elements.Text colorScheme="red">x</Uu5Elements.Text>`), p = parseElements(plain).findLastIndex((e) => e.name === "Uu5Elements.Text");
+  assert.match(setProp(plain, p, "size", { type: "string", value: "s" }), /<Uu5Elements\.Text size="s" colorScheme="red">/, "no spread: added at the start as before");
+});

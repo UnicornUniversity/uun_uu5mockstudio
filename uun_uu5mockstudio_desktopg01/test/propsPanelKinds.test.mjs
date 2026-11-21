@@ -30,3 +30,9 @@ test("headerColorScheme and other *ColorScheme / *BorderRadius props are choices
   assert.deepEqual(kindOf({ type: "oneOf" }, { type: "string", value: "none" }, palettes, "footerBorderRadius"), { kind: "select", options: ["none", "moderate"] });
   assert.equal(kindOf(null, { type: "string", value: "x" }, palettes, "colorSchemeList").kind, "text", "only a name that ends with it");
 });
+
+test("card is a choice of none / full / content even on a component whose reference does not list it (ContentContainer)", () => {
+  assert.deepEqual(kindOf(null, { type: "string", value: "none" }, {}, "card"), { kind: "select", options: ["none", "full", "content"] });
+  assert.deepEqual(kindOf({ type: "string" }, { type: "string", value: "full" }, {}, "card"), { kind: "select", options: ["none", "full", "content"] });
+  assert.equal(kindOf({ type: "bool" }, { type: "boolean", value: true }, {}, "card").kind, "bool", "a documented type of another kind wins");
+});

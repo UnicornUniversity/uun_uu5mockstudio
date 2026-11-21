@@ -543,15 +543,19 @@ export function setProp(html, ordinal, name, value) {
     assertValid(out);
     return out;
   }
-  const text = reindent(attrSource(name, value), html, cur ? cur.start : e.nameEnd);
+  // a later {...spread} wins over the props in front of it (`card="none" {...containerProps}`: splitProps puts card: undefined in it), so a prop
+  // set here goes after the last spread: the value the user chose is the one that applies
+  const lastSpread = [...e.attrs].reverse().find((a) => a.spread);
+  const first = e.attrs[0], gap = first ? html.slice(e.nameEnd, first.start) : "";
+  // a tag written with one attribute per line gets the new attribute on its own line, indented like the others
+  const sep = gap.includes("\n") ? "\n" + gap.slice(gap.lastIndexOf("\n") + 1) : " ";
   let out;
-  if (cur) out = html.slice(0, cur.start) + text + html.slice(cur.end);
-  else {
-    // a tag written with one attribute per line gets the new attribute on its own line, indented like the others
-    const first = e.attrs[0], gap = first ? html.slice(e.nameEnd, first.start) : "";
-    const sep = gap.includes("\n") ? "\n" + gap.slice(gap.lastIndexOf("\n") + 1) : " ";
-    out = html.slice(0, e.nameEnd) + sep + text + html.slice(e.nameEnd);
-  }
+  if (lastSpread && (!cur || cur.start < lastSpread.start)) {
+    const text = reindent(attrSource(name, value), html, lastSpread.start);
+    out = html.slice(0, lastSpread.end) + sep + text + html.slice(lastSpread.end);
+    if (cur) { let from = cur.start; while (from > e.nameEnd && /\s/.test(html[from - 1])) from--; out = out.slice(0, from) + out.slice(cur.end); } // cur is in front of the spread: the positions before it are unchanged
+  } else if (cur) out = html.slice(0, cur.start) + reindent(attrSource(name, value), html, cur.start) + html.slice(cur.end);
+  else out = html.slice(0, e.nameEnd) + sep + reindent(attrSource(name, value), html, e.nameEnd) + html.slice(e.nameEnd);
   assertValid(out);
   return out;
 }
