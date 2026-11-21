@@ -687,8 +687,9 @@ const onAgentEvent = (m) => {
       let g = last(); if (g?.kind !== "steps") g = push({ kind: "steps", steps: [] });
       g.steps.push({ id: b.id, label: labelOf(b), status: "run" }); paint(g);
       setWork(WORK[b.name] ?? labelOf(b));
-      const wf = toolFile(b); if (wf) setWorkFile(wf);
-      if (wf && /^(Write|Edit|MultiEdit|apply_patch|write_file|edit_file)$/i.test(b.name ?? "")) turnFiles.add(wf); // a screen the agent changed: checked against the code when the answer is done
+      const wf = toolFile(b), writes = wf && /^(Write|Edit|MultiEdit|apply_patch|write_file|edit_file)$/i.test(b.name ?? "");
+      // only a screen the agent writes pulses: a screen it merely reads (as a pattern, for consistency) is not the one being changed
+      if (writes) { setWorkFile(wf); turnFiles.add(wf); } // turnFiles: checked against the code when the answer is done
     }
   } else if (m.type === "tool_result") {
     for (const g of entries) if (g.kind === "steps") {
