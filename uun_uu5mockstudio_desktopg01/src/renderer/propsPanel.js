@@ -4,6 +4,8 @@ import { iconField, ICON_PICK_SVG as ICON_SHAPES } from "./iconField.js";
 import { textField } from "./textField.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null)); return n; };
+/** The description of a component from the knowledge base as plain text: wiki links [[page|Label]] become their label, ** * ` marks go. */
+export const plainDoc = (s = "") => String(s).replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?!\w)/g, "$1$2").replace(/`([^`]+)`/g, "$1");
 const SKIP_ADD = new Set(["children", "elementRef", "elementAttrs", "uu5Tag"]);
 const CODE_TYPE = /func|object|array|node|element|ref|\[\]|shape/i;
 // props whose values come from uuGds palettes, even when the component has no reference page
@@ -379,8 +381,13 @@ export function createPropsPanel({ api, getScreens = () => [], onUse, onComment,
     const subLine = info.element.item ? `Item ${info.element.item.index + 1} of ${info.element.item.prop} in ${names[0]}` : "";
     $("insp-text").textContent = subLine || (level === 0 && pick.text ? `“${pick.text}”` : "");
     const d = info.doc;
-    $("insp-desc").replaceChildren(d ? el("span", { textContent: d.description }) : el("span", { className: "mute", textContent: info.docsAvailable ? "No reference found for this component." : "Install the uu5-development plugin in Claude Code to see the component reference and every available prop." }),
-      d?.url ? el("a", { href: d.url, textContent: " Docs", onclick: (e) => { e.preventDefault(); api.openExternal(d.url); } }) : null); // opens in the system browser
+    const descEl = $("insp-desc"), descText = d ? plainDoc(d.description) : "";
+    descEl.replaceChildren(...[d ? el("span", { className: "dtext", textContent: descText }) : el("span", { className: "mute", textContent: info.docsAvailable ? "No reference found for this component." : "Install the uu5-development plugin in Claude Code to see the component reference and every available prop." }),
+      d?.url ? el("a", { href: d.url, textContent: " Docs", onclick: (e) => { e.preventDefault(); api.openExternal(d.url); } }) : null].filter(Boolean)); // opens in the system browser (a null would be shown as the text "null")
+    // a long description is cut to a few lines; a click on it shows all of it
+    descEl.classList.toggle("long", descText.length > 220); descEl.classList.remove("open");
+    descEl.title = descEl.classList.contains("long") ? "Click to show the whole description" : "";
+    descEl.onclick = (e) => { if (e.target.closest("a") || !descEl.classList.contains("long")) return; descEl.classList.toggle("open"); descEl.title = descEl.classList.contains("open") ? "" : "Click to show the whole description"; };
     const props = $("insp-props"); props.replaceChildren();
     const attrs = info.element.attrs;
     // "Leads to screen": the link between screens without code: sets the href of a button or a link to the file of another screen (the flow arrows follow)

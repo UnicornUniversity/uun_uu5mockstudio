@@ -1869,3 +1869,6 @@ body.docview-on :is(#selbar,#selmenu){display:none!important} /* the bar of the 
 .hod-task{display:flex;flex-direction:column;gap:12px}.hod-task pre{margin:0;max-height:200px;overflow:auto;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap}.hod-task button{align-self:flex-start}
 
 .msg.exceptions{align-self:stretch;font-size:12.5px;border:1px solid var(--line);border-left:3px solid #d98a00;border-radius:8px;padding:8px 10px;background:var(--bg)}.msg.exceptions b{display:block;margin-bottom:4px}.msg.exceptions ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+/* a long description of a component: a few lines, a click shows all of it */
+#insp-desc.long:not(.open) .dtext{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+#insp-desc.long{cursor:pointer}#insp-desc.long:not(.open)::after{content:"Show more";display:block;color:var(--acc);margin-top:2px}

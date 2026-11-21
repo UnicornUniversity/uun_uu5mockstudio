@@ -222,7 +222,8 @@ body[data-glass] .fmt-panel{background:var(--glass-thick,var(--panel));border-co
 body[data-glass] .fmt-panel .fmt-tiles .fmt-tile:hover{background:var(--glass-hover)}
 /* the right panels are floating cards (app.css): under the glass toolbar they start below it, with all their edges */
 body[data-glass] :is(#inspector,#smside){margin-top:calc(var(--glass-top,0px) + 8px)!important;border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi);padding-top:0!important}
-body[data-glass] :is(#inspector,#smside)>.insp-head{background:transparent}
+/* the head stays on top while the panel scrolls: the text under it must not shine through */
+body[data-glass] :is(#inspector,#smside)>.insp-head{background:var(--glass-thick,var(--panel));-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);border-radius:14px 14px 0 0}
 body[data-glass]:not([data-chat="float"]):not([data-fs]) #chat{border-color:var(--glass-edge)}
 /* the tabs of the screens: one glass capsule (app.css), plain tabs in it */
 body[data-glass] #bar #tabs{background:var(--glass-thin);border-color:var(--glass-edge);box-shadow:var(--glass-shadow-sm),inset 0 1px 0 var(--glass-hi)}
