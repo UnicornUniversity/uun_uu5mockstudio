@@ -32,6 +32,7 @@ ${unchanged.length ? `Leave ${unchanged.map((n) => `\`${n}\``).join(", ")} as ${
 - A component marked "keep" in the plan's tree stays as it is: do not refactor it.
 - Implement the props exactly as specified (names, types, required, defaults); add propTypes and defaultProps.
 - Every acceptance criterion must hold; the business rules (R-nnn) are constraints, not suggestions.
+- Library components in the mockups are the ones the application uses (Plus4U5Elements included), except stand-ins: a \`const Plus4U5App = { … }\` or another library object defined in a mockup only simulates that library – use its real components there, with the same props.
 - Real data comes from the application's calls, not from the mockup's fake data; where a call does not exist yet, leave a clear TODO and a mock in one place.
 - Do not edit anything in \`${HANDOFF_ROOT}/\`.
 

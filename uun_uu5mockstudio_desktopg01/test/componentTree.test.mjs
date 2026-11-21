@@ -164,7 +164,7 @@ test("a component of uuOpenBusinessBrickKit: render props, an early return and t
   const REPO = fileURLToPath(new URL("./fixtures/brickrepo", import.meta.url));
   const { tree, files } = asIsTree(REPO, "src/course/header.js");
   const path = (names) => names.reduce((n, name) => n?.children?.find((c) => c.name === name), { children: [tree] });
-  assert.deepEqual(tree.children.map((c) => [c.name, c.role ?? null, c.render ?? null]), [["useSubApp", "hook", null], ["useBusinessBrick", "hook", null], ["HighlightedBox", null, "isMissing"], ["OpenBusinessBrickKit.Loader", "data", "not (isMissing)"]]);
+  assert.deepEqual(tree.children.map((c) => [c.name, c.role ?? null, c.render ?? null]), [["useSubApp", "hook", null], ["useBusinessBrick", "hook", null], ["Uu5Elements.HighlightedBox", null, "isMissing"], ["OpenBusinessBrickKit.Loader", "data", "not (isMissing)"]]);
   const view = path(["Header", "OpenBusinessBrickKit.Loader", "DataObjectStateResolver", "TagSetProvider", "Shape.Provider", "OpenBusinessBrick.OpenBusinessBrickLoader", "Shape.Provider", "ProgressProvider", "View"]);
   assert.ok(view, "View is reached through the render props");
   assert.equal(view.source, "src/course/header/view.js");
@@ -195,7 +195,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
   const names = (n) => [n.name, ...(n.children ?? []).flatMap(names)];
   const all = names(real);
   assert.ok(all.includes("TagSetProvider") && all.includes("OpenBusinessBrickKit.Loader") && all.includes("useSubApp")); // the non-visual parts of the code
-  assert.ok(!all.includes("DemoStateSwitch") && !all.includes("Uu5Elements.Pending")); // what the mockup only simulates
+  assert.ok(!all.includes("DemoStateSwitch") && !real.children.some((c) => c.name === "Uu5Elements.Pending")); // what the mockup only simulates (the Pending of the code's SectionsModal stays)
   const find = (n, name) => (n.name === name ? n : (n.children ?? []).map((c) => find(c, name)).find(Boolean) ?? null);
   assert.equal(find(real, "CourseGoals").change, "add"); assert.equal(find(real, "CourseGoals").kind, "new");
   assert.equal(find(real, "Content").source, "src/course/header/content.js");
@@ -208,8 +208,8 @@ test("a component made by a higher-order function is followed into what it wraps
   const { tree } = asIsTree(REPO, "src/course/header/sections-modal.js");
   const list = find(tree, "DraggableList");
   assert.equal(list.kind, "existing"); assert.equal(list.note, "Uu5DnD.withDroppableItemList(ScrollableBox, DraggableListItem)");
-  assert.deepEqual(list.children.map((c) => c.name), ["ScrollableBox", "DraggableListItem"]);
-  assert.equal(list.children[1].note, "Uu5DnD.withDraggable(ListItem)"); assert.equal(list.children[1].children[0].name, "ListItem");
+  assert.deepEqual(list.children.map((c) => c.name), ["Uu5Elements.ScrollableBox", "DraggableListItem"]);
+  assert.equal(list.children[1].note, "Uu5DnD.withDraggable(ListItem)"); assert.equal(list.children[1].children[0].name, "Uu5Elements.ListItem");
   assert.equal(list.render, 'tabCode === "a"');
 });
 
@@ -275,4 +275,68 @@ test("only the changes: what changes with all inside it, and the way from the ro
   const sq = changesOnly(deep);
   assert.deepEqual(names(sq), ["H", "3 wrappers", "V", "N"]); assert.equal(sq.children[0].note, "L › P › Q");
   assert.equal(changesOnly(normalizeTree({ name: "A", kind: "existing", children: [{ name: "B", kind: "existing" }] })), null);
+});
+
+test("library components keep their documented names, and the agent is told to use them for real – Plus4U included; only the app shell is a stand-in", async () => {
+  const { libraryName, libraryRule } = await import("../src/main/componentTree.mjs");
+  assert.equal(libraryName("StateBadge", { from: "uu_plus4u5g02-elements", imported: "StateBadge" }), "Plus4U5Elements.StateBadge");
+  assert.equal(libraryName("Elements.Badge", { from: "uu5g05-elements", imported: "default" }), "Uu5Elements.Badge");
+  assert.equal(libraryName("Uu5Elements.Block", { from: "uu5g05-elements", imported: "*" }), "Uu5Elements.Block");
+  assert.equal(libraryName("Shape.Provider", { from: "uu_editablestructuredcontentg02-core", imported: "Shape" }), "Shape.Provider"); // not a library of the mockups: as written
+  const tree = { name: "Header", kind: "existing", children: [{ name: "Plus4U5Elements.StateBadge", kind: "library" }, { name: "Uu5Elements.Box", kind: "library" }, { name: "OpenBusinessBrickKit.Loader", kind: "library", role: "data" }] };
+  const rule = libraryRule(tree);
+  assert.match(rule, /use exactly the ones the code uses \(Plus4U5Elements\.StateBadge, Uu5Elements\.Box\)/);
+  assert.match(rule, /add "uu_plus4u5g02-elements": "1\.x" and "uu_plus4u5g02": "1\.x" to uu5DemoDependencies with `import Plus4U5Elements from "uu_plus4u5g02-elements";`/);
+  assert.match(rule, /overrides the rule of the uu5-mockup skill/); assert.doesNotMatch(rule, /stand-in/);
+  const shell = libraryRule({ name: "X", kind: "existing", children: [{ name: "Plus4U5App.RouteHeader", kind: "library" }, { name: "UuTForms.FormArtifactSelect", kind: "library" }] });
+  assert.match(shell, /`const Plus4U5App = \{ RouteHeader: \(props\) => … \};` and `const UuTForms = \{ FormArtifactSelect: \(props\) => … \};`/);
+  assert.doesNotMatch(rule, /OpenBusinessBrickKit/); // data loading is not drawn
+  assert.equal(libraryRule({ name: "X", kind: "existing", children: [{ name: "Uu5Elements.Box", kind: "library" }] }).includes("stand-in"), false);
+  const { screenBrief } = await import("../src/main/componentTree.mjs");
+  assert.match(screenBrief({ name: "Header", file: "h.js", files: ["h.js"], tree, screen: "header" }), /Load their libraries for real/);
+});
+
+test("JSX kept in consts of the render, in props and in helper functions of the file is followed", async () => {
+  const { asIsTree } = await import("../src/main/componentTree.mjs");
+  const REPO = fileURLToPath(new URL("./fixtures/brickrepo", import.meta.url));
+  const { tree } = asIsTree(REPO, "src/course/header/badge-panel.js");
+  const box = tree.children.find((c) => c.name === "Uu5Elements.Box");
+  assert.deepEqual(box.children.map((c) => [c.name, c.render ?? null]), [["Plus4U5Elements.StateBadge", "data.stateIcon"], ["Uu5Elements.Grid", null]]); // header={stateBadge}, then {children}
+  const grid = box.children[1];
+  assert.deepEqual(grid.children.map((c) => c.name), ["Plus4U5Elements.StateBadge", "Uu5Elements.InfoItem"]);
+  const names = (n) => [n.name, ...(n.children ?? []).flatMap(names)];
+  assert.ok(names(tree).includes("Plus4U5Elements.PersonItem")); // from buildItemList(…)
+});
+
+test("the exceptions of a screen against the code: stand-ins, equivalents, look-alikes, parts not drawn", async () => {
+  const { standInsOf, libraryDeviations, deviationLines, libraryRule } = await import("../src/main/componentTree.mjs");
+  const html = `<script type="text/babel">
+import Uu5Elements from "uu5g05-elements";
+// mockup stand-in of uu_plus4u5g02-elements
+const Plus4U5Elements = {
+  StateBadge: ({ icon, children }) => <Uu5Elements.Badge icon={icon}>{children}</Uu5Elements.Badge>,
+  PersonItem(props) { return <Uu5Elements.Text>{props.name}</Uu5Elements.Text>; },
+};
+function Header() { return <Uu5Elements.Block><Plus4U5Elements.StateBadge icon="x" /><Uu5Elements.Tag /></Uu5Elements.Block>; }
+</script>`;
+  assert.deepEqual(standInsOf(html), ["Plus4U5Elements.StateBadge", "Plus4U5Elements.PersonItem"]);
+  const code = { name: "Header", kind: "existing", children: [{ name: "Plus4U5Elements.ContentContainer", kind: "library", children: [{ name: "Plus4U5Elements.StateBadge", kind: "library" }, { name: "Uu5Elements.Modal", kind: "library" }, { name: "Uu5Elements.Link", kind: "library" }] }, { name: "Shape.Provider", kind: "library", role: "provider" }] };
+  const screen = { name: "Header", kind: "existing", children: [{ name: "Uu5Elements.Block", kind: "library", children: [{ name: "Plus4U5Elements.StateBadge", kind: "library" }, { name: "Uu5Elements.Tag", kind: "library" }] }] };
+  const d = libraryDeviations(code, screen, html);
+  assert.deepEqual(d, { standIns: ["Plus4U5Elements.StateBadge"], drawnAs: [["Plus4U5Elements.ContentContainer", "Uu5Elements.Block"]], notInCode: ["Uu5Elements.Tag"], notOnScreen: ["Uu5Elements.Modal", "Uu5Elements.Link"] });
+  const lines = deviationLines(d, { origin: "Header in the code" });
+  assert.equal(lines.length, 4);
+  assert.match(lines[1], /Plus4U5Elements\.ContentContainer as Uu5Elements\.Block/);
+  assert.match(lines[2], /Not used by Header in the code: Uu5Elements\.Tag/);
+  assert.equal(libraryDeviations(code, screen, html, { kind: "reference" }).notOnScreen.length, 0); // a new component need not draw all of its reference
+  assert.deepEqual(deviationLines({ standIns: [], drawnAs: [], notInCode: [], notOnScreen: [] }), []);
+  assert.match(libraryRule(code, { plan: true, who: "the reference" }), /in the uu5-tree use the ones the reference uses[\s\S]*Plus4U5Elements\.ContentContainer/);
+});
+
+test("the handoff package lists the exceptions of the mockups", async () => {
+  const { packageFiles } = await import("../src/main/handoffPackage.mjs");
+  const { strFromU8 } = await import("fflate");
+  const files = packageFiles({ slug: "h", project: "P", date: "2026-11-21", components: [], handoff: { project: "P", screens: [], rules: [] }, exceptions: [{ file: "header.html", origin: "Header in the code", lines: ["Drawn with an equivalent: Plus4U5Elements.ContentContainer as Uu5Elements.Block."] }], mockups: { files: [], entries: {} }, docs: { files: [], entries: {} }, shots: {} }).files;
+  const md = strFromU8(files[".uu5mock/handoff/h/HANDOFF.md"]);
+  assert.match(md, /## Exceptions in the mockups[\s\S]*### header\.html\n\n- Drawn with an equivalent: Plus4U5Elements\.ContentContainer as Uu5Elements\.Block\./);
 });

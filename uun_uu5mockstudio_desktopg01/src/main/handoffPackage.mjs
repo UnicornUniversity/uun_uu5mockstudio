@@ -18,6 +18,7 @@ import { HANDOFF_ROOT, COMMAND_FILE, buildInstructions, slashCommand, handoffPro
 import { mockupComponents, repoComponentProps, propsDiff } from "./componentProps.mjs";
 import { readLinks } from "./handoffLinks.mjs";
 import { isSecretPath } from "./repo.mjs";
+import { LIB_EQUIV, libraryDeviations, deviationLines, readBaselines, readReferences } from "./componentTree.mjs";
 
 export const sha = (buf) => createHash("sha256").update(buf).digest("hex").slice(0, 16);
 
@@ -77,7 +78,6 @@ export function screenComponents(screens, links = {}) {
  * Every entry of the baseline has `baseline: true`. `links`: the choices of the dialog (.studio/links.json).
  */
 /** Components of the Plus4U libraries that a mockup draws with what they render: not a change of the component. */
-const LIB_EQUIV = { ContentContainer: "Block", RouteContainer: "Block", AppContainer: "Block", ContentBox: "Box" };
 
 /**
  * What a component renders itself: the components of its content down to the next component of its own (library wrappers are looked
@@ -190,6 +190,7 @@ export function packageFiles(data) {
   const hashes = Object.fromEntries((data.mockups?.files ?? []).map((f) => [f, sha(data.mockups.entries[f])]));
   const sections = [...componentsSection(all)];
   if (data.asIs?.tree) sections.push(`## The existing component as it is: ${data.asIs.tree.name}`, "", `\`${data.asIs.file}\` – its decomposition read from the code (non-visual parts included); the changes above are against it.`, "", "```", outlineText(data.asIs.tree), "```", "");
+  if (data.exceptions?.length) sections.push("## Exceptions in the mockups", "", "Where the mockups differ from the library components of the code they come from. In the application use the real components.", "", ...data.exceptions.flatMap((x) => [`### ${x.file}`, "", ...x.lines.map((l) => `- ${l}`), ""]));
   if (data.plan) {
     sections.push(`## Plan: ${data.plan.title}`, "", data.plan.text || "", "");
     if (data.plan.tree) sections.push("### Component tree", "", "```", outlineText(data.plan.tree), "```", "");
@@ -232,6 +233,21 @@ async function pickPlan(projectDir, slug) {
 }
 
 /** Reads the project into the data of `packageFiles`. `shot(file)` → PNG Buffer of a screen, or null (optional). */
+/** For a project made from code (a redesign, or a new component modelled on one): how each screen's library components differ from it. */
+export async function screenExceptions(projectDir, screens) {
+  const b = (await readBaselines(projectDir).catch(() => []))[0], r = b ? null : (await readReferences(projectDir).catch(() => []))[0];
+  const origin = b ? { kind: "baseline", tree: b.tree, name: b.tree?.name, label: `${b.tree?.name ?? "the component"} in the code` } : r ? { kind: "reference", tree: r.tree, name: r.component, label: `the reference ${r.tree?.name ?? ""}`.trim() } : null;
+  if (!origin?.tree) return [];
+  const out = [];
+  for (const { file, html } of screens) {
+    const full = structureOf(html, file.replace(/\.html$/, ""));
+    if (!full) continue;
+    const lines = deviationLines(libraryDeviations(origin.tree, componentView(normalizeTree(full), { focus: origin.name ? [origin.name] : [] }), html, { kind: origin.kind }), { origin: origin.label });
+    if (lines.length) out.push({ file, origin: origin.label, lines });
+  }
+  return out;
+}
+
 export async function gatherPackage(projectDir, { project, planSlug = null, baseline = null, slug = null, repo = "", repoDir = null, appVersion = null, shot = null, only = null, date = new Date().toISOString().slice(0, 10) } = {}) {
   const p = planSlug === "@screens" || String(planSlug ?? "").startsWith("@redesign") ? null : await pickPlan(projectDir, planSlug); // "@screens": the components of the mockups, "@redesign": the screen against its baseline
   const extracted = p ? extractPlan(p.body) : null;
@@ -246,6 +262,7 @@ export async function gatherPackage(projectDir, { project, planSlug = null, base
   if (shot) for (const f of mockups.files) { const png = await shot(f).catch(() => null); if (png) shots[f.replace(/\.html$/, ".png")] = new Uint8Array(png); }
   const screens = mockups.files.map((f) => ({ file: f, html: fs.readFileSync(path.join(projectDir, f), "utf8") }));
   const components = withRepo(plan?.tree ? componentsToBuild(plan.tree) : baseline ? redesignComponents(screens, baseline.tree, readLinks(projectDir)) : screenComponents(screens, readLinks(projectDir)), repoDir);
+  const exceptions = await screenExceptions(projectDir, screens);
   const named = only?.length === 1 && !plan ? only[0].replace(/\.html$/, "") : null; // one screen handed over: the package (and branch) is named after it
-  return { components, ...(baseline && !plan ? { asIs: baseline } : {}), slug: slug || (named ? handoffSlug(named) : planHandoffSlug(plan ?? (baseline ? { title: baseline.tree?.name } : null), project)), project, date, appVersion, repo, plan, only: only ?? null, handoff: await gatherHandoff(projectDir, { project, repo, date, only }), mockups, docs: await docEntries(projectDir), shots };
+  return { components, ...(baseline && !plan ? { asIs: baseline } : {}), slug: slug || (named ? handoffSlug(named) : planHandoffSlug(plan ?? (baseline ? { title: baseline.tree?.name } : null), project)), project, date, appVersion, repo, plan, only: only ?? null, handoff: await gatherHandoff(projectDir, { project, repo, date, only }), exceptions, mockups, docs: await docEntries(projectDir), shots };
 }

@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("studio", {
   handoffReveal: (folder) => invoke("handoff:reveal", folder),
   componentStart: (file, opts) => invoke("component:start", file, opts),
   componentFocus: () => invoke("component:focus"),
+  componentExceptions: (files) => invoke("component:exceptions", files),
   componentOrigin: () => invoke("component:origin"),
   componentBaseline: () => invoke("component:baseline"),
   componentReread: () => invoke("component:reread"),

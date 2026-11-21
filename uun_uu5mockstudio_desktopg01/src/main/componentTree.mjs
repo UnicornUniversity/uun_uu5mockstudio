@@ -9,6 +9,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseCode, walk, repoComponentProps } from "./componentProps.mjs";
 import { isSecretPath } from "./repo.mjs";
+import { PREVIEW_LIBS } from "./componentPreview.mjs";
+import { CORE_IMPORTS } from "./componentSnippets.mjs";
+
+/** The namespace of a uu5 library by its package (uu_plus4u5g02-elements -> Plus4U5Elements), as the mockups and the documentation name it. */
+const LIB_NS = Object.fromEntries([...Object.entries(CORE_IMPORTS).map(([ns, pkg]) => [pkg, ns]), ...Object.entries(PREVIEW_LIBS).map(([ns, [pkg]]) => [pkg, ns])]);
+/**
+ * The name of a library component as the documentation writes it, whatever the import: `import { StateBadge } from "uu_plus4u5g02-elements"`
+ * gives Plus4U5Elements.StateBadge, `import Elements from "uu5g05-elements"` + <Elements.Badge> gives Uu5Elements.Badge. Other packages keep the written name.
+ */
+export function libraryName(name, imp) {
+  const ns = imp && LIB_NS[imp.from];
+  if (!ns) return name;
+  const [root, ...rest] = name.split(".");
+  if (imp.imported === "default" || imp.imported === "*") return root === ns ? name : [ns, ...rest].join(".");
+  return [ns, imp.imported, ...rest].join(".");
+}
 
 const EXT = [".js", ".jsx", ".ts", ".tsx", ".mjs"];
 /** Hooks of React and uu5 that say nothing about the design (state, effects, texts…): left out of the tree. */
@@ -42,7 +58,7 @@ export function resolveImport(repoDir, fromFile, spec) {
 function readModule(repoDir, rel) {
   let code; try { code = fs.readFileSync(path.join(repoDir, rel), "utf8"); } catch { return null; }
   const ast = parseCode(code); if (!ast) return null;
-  const imports = new Map(), comps = new Map();
+  const imports = new Map(), comps = new Map(), fns = new Map(); // fns: helper functions of the module (lowercase) that may return JSX
   let def = null;
   const asComponent = (init) => { // createVisualComponent({ render }) / createComponent({ render }) / a function returning JSX
     if (!init) return null;
@@ -68,6 +84,8 @@ function readModule(repoDir, rel) {
     const d = st.type === "ExportNamedDeclaration" || st.type === "ExportDefaultDeclaration" ? st.declaration : st;
     if (d?.type === "VariableDeclaration") for (const v of d.declarations) { const c = v.id.type === "Identifier" && /^[A-Z]/.test(v.id.name) ? asComponent(v.init) : null; if (c) comps.set(v.id.name, c); }
     if (d?.type === "FunctionDeclaration" && d.id && /^[A-Z]/.test(d.id.name)) comps.set(d.id.name, { fn: d, role: "visual" });
+    if (d?.type === "FunctionDeclaration" && d.id && /^[a-z]/.test(d.id.name)) fns.set(d.id.name, d);
+    if (d?.type === "VariableDeclaration") for (const v of d.declarations) if (v.id.type === "Identifier" && /^[a-z]/.test(v.id.name) && /^(Arrow)?Function(Expression)?$/.test(v.init?.type ?? "")) fns.set(v.id.name, v.init);
     if (st.type === "ExportDefaultDeclaration") {
       if (d?.type === "Identifier") def = d.name;
       else if (d?.id?.name) def = d.id.name;
@@ -75,7 +93,7 @@ function readModule(repoDir, rel) {
     }
     if (st.type === "ExportNamedDeclaration" && !st.declaration) for (const s of st.specifiers) if (keyName(s.exported) === "default") def = s.local.name;
   }
-  return { code, ast, imports, comps, def };
+  return { code, ast, imports, comps, fns, def };
 }
 
 /** The main component of a module: the default export, else the one named like the file, else the only one. */
@@ -126,7 +144,7 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
     const root = w.split(".")[0], imp = m.imports.get(root);
     if (m.comps.has(w)) return componentNode(rel, w, w, level + 1, stack);
     if (imp?.file && !w.includes(".")) { const sub = mod(imp.file); return componentNode(imp.file, sub ? mainComponent(sub, imp.file, imp.imported) ?? imp.imported : imp.imported, w, level + 1, stack); }
-    if (imp) { count++; const role = libraryRole(w); return { name: w, kind: "library", ...(role ? { role } : {}) }; }
+    if (imp) { count++; const role = libraryRole(w); return { name: libraryName(w, imp), kind: "library", ...(role ? { role } : {}) }; }
     return null;
   }
   /** The hooks a render calls that matter for the design: loading data, contexts, the repository's own hooks. */
@@ -160,6 +178,18 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
     const out = [], code = (n) => m.code.slice(n.start, n.end).replace(/\s+/g, " ").slice(0, 160);
     if (fn.body?.type && fn.body.type !== "BlockStatement") return fromExpr(m, rel, fn.body, level, stack, {}); // an arrow returning JSX
     const conds = [];
+    pushLocals(fn.body);
+    try { return renderBody(m, rel, fn, level, stack, out, code, conds); } finally { scopes.pop(); }
+  }
+  /** The consts of a body that hold JSX or something with JSX in it (const stateBadge = <StateBadge …/>; const children = (…)): found when used as {stateBadge}. */
+  const scopes = [];
+  function pushLocals(body) {
+    const locals = new Map();
+    for (const st of body?.body ?? []) if (st.type === "VariableDeclaration") for (const v of st.declarations) if (v.id.type === "Identifier" && v.init) locals.set(v.id.name, v.init);
+    scopes.push(locals);
+  }
+  const resolving = new Set();
+  function renderBody(m, rel, fn, level, stack, out, code, conds) {
     const returnsIn = (st) => { const r = []; if (!st) return r; if (st.type === "ReturnStatement") r.push(st); else if (st.type === "BlockStatement") for (const x of st.body) if (x.type === "ReturnStatement") r.push(x); return r; };
     for (const st of fn.body?.body ?? []) {
       if (st.type === "IfStatement") {
@@ -182,17 +212,46 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
       case "ParenthesizedExpression": return fromExpr(m, rel, e.expression, level, stack, ctx);
       case "ArrowFunctionExpression": case "FunctionExpression": { // a render prop: {({ dataObject }) => <View … />}
         if (e.body.type !== "BlockStatement") return fromExpr(m, rel, e.body, level, stack, ctx);
-        const r = []; for (const st of e.body.body) if (st.type === "ReturnStatement" && st.argument) r.push(...fromExpr(m, rel, st.argument, level, stack, ctx));
+        const r = []; pushLocals(e.body);
+        try { for (const st of e.body.body) if (st.type === "ReturnStatement" && st.argument) r.push(...fromExpr(m, rel, st.argument, level, stack, ctx)); } finally { scopes.pop(); }
         return r;
       }
       case "CallExpression": { // items.map((x) => <Item/>)
         const isMap = e.callee.type === "MemberExpression" && keyName(e.callee.property) === "map";
         const fnArg = e.arguments.find((a) => a.type === "ArrowFunctionExpression" || a.type === "FunctionExpression");
-        if (isMap && fnArg) { const body = fnArg.body.type === "BlockStatement" ? (() => { const r = []; walk(fnArg.body, (x) => { if (x.type === "ReturnStatement" && x.argument) r.push(x.argument); }); return r; })() : [fnArg.body]; return body.flatMap((b) => fromExpr(m, rel, b, level, stack, { ...ctx, many: true })); }
-        return [];
+        if (isMap && fnArg) { const body = fnArg.body.type === "BlockStatement" ? (() => { const r = []; walk(fnArg.body, (x) => { if (x.type === "ReturnStatement" && x.argument) r.push(x.argument); }); return r; })() : [fnArg.body]; const made = body.flatMap((b) => fromExpr(m, rel, b, level, stack, { ...ctx, many: true }));
+          const carried = e.callee.object.type === "Identifier" || e.callee.object.type === "CallExpression" ? fromExpr(m, rel, e.callee.object, level, stack, {}) : []; // JSX in the items themselves ({ children: <PersonItem/> }) is shown in what renders them
+          if (carried.length && made.length === 1) made[0].children = [...(made[0].children ?? []), ...carried];
+          return made.length ? made : carried; }
+        return jsxInside(m, rel, e, level, stack, ctx); // a helper of the file, or JSX in the arguments
       }
-      default: return [];
+      case "Identifier": { // {stateBadge}: a const of the render (or of the enclosing render prop) holding JSX
+        const init = [...scopes].reverse().find((sc) => sc.has(e.name))?.get(e.name);
+        if (!init || resolving.has(init)) return [];
+        resolving.add(init); try { return fromExpr(m, rel, init, level, stack, ctx); } finally { resolving.delete(init); }
+      }
+      default: return jsxInside(m, rel, e, level, stack, ctx);
     }
+  }
+  /**
+   * JSX inside anything else: an array or object of items ([{ icon, children: <PersonItem/> }]), a call of a helper function of the same file
+   * (buildInfoItemList(…) is followed into its body), a template of props. Only the outermost JSX elements count.
+   */
+  function jsxInside(m, rel, e, level, stack, ctx) {
+    const out = [];
+    const visit = (x) => {
+      if (!x || typeof x.type !== "string") return;
+      if (x.type === "JSXElement" || x.type === "JSXFragment") { out.push(...fromExpr(m, rel, x, level, stack, ctx)); return; }
+      if (x.type === "CallExpression" && x.callee.type === "Identifier" && m.fns?.has(x.callee.name)) { const f = m.fns.get(x.callee.name); if (!resolving.has(f)) { resolving.add(f); try { pushLocals(f.body?.type === "BlockStatement" ? f.body : null); try { visit(f.body); } finally { scopes.pop(); } } finally { resolving.delete(f); } } }
+      if (x.type === "Identifier" && x !== e) { out.push(...fromExpr(m, rel, x, level, stack, ctx)); return; }
+      for (const k of Object.keys(x)) {
+        if (k === "loc" || k === "leadingComments" || k === "trailingComments" || k === "callee" && x.type === "CallExpression" && x.callee.type === "Identifier") continue;
+        if (x.type === "MemberExpression" && k === "property" || x.type === "ObjectProperty" && k === "key") continue;
+        const v = x[k]; if (Array.isArray(v)) v.forEach(visit); else if (v && typeof v.type === "string") visit(v);
+      }
+    };
+    if (e.type === "CallExpression" || e.type === "ArrayExpression" || e.type === "ObjectExpression" || e.type === "SequenceExpression") visit(e);
+    return out;
   }
   function fromChild(m, rel, c, level, stack, ctx) {
     if (c.type === "JSXElement" || c.type === "JSXFragment") return fromExpr(m, rel, c, level, stack, ctx);
@@ -201,18 +260,26 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
   }
   function fromElement(m, rel, el, level, stack, ctx) {
     const name = jsxName(el.openingElement.name), rootId = name.split(".")[0];
-    const kids = () => el.children.flatMap((c) => fromChild(m, rel, c, level, stack, {}));
+    const inProps = () => el.openingElement.attributes.flatMap((a) => { // footer={<SubmitButton/>}, header={stateBadge}, itemList={[{ children: <X/> }]}
+      const v = a.type === "JSXAttribute" ? a.value : null;
+      if (!v) return [];
+      if (v.type === "JSXElement" || v.type === "JSXFragment") return fromExpr(m, rel, v, level, stack, {});
+      const x = v.type === "JSXExpressionContainer" ? v.expression : null;
+      if (!x || /^on[A-Z]/.test(a.name?.name ?? "")) return []; // handlers draw nothing
+      return fromExpr(m, rel, x, level, stack, {});
+    });
+    const kids = () => [...inProps(), ...el.children.flatMap((c) => fromChild(m, rel, c, level, stack, {}))];
     if (!name || /^[a-z]/.test(name) || /^(Fragment|React\.Fragment)$/.test(name)) return kids(); // see-through
     const tag = (n) => { if (ctx.many) n.relation = "1:N"; if (ctx.render) n.render = ctx.render.slice(0, 160); return n; };
     const imp = m.imports.get(rootId);
     if (/\.Provider$/.test(name)) { // Context.Provider of the repository, or Shape.Provider of a library
       count++; const inner = kids();
-      return tag(imp && !imp.file ? { name, kind: "library", role: "provider", ...(inner.length ? { children: dedupe(inner) } : {}) } : { name, kind: "existing", role: "provider", source: imp?.file ?? rel, ...(inner.length ? { children: dedupe(inner) } : {}) });
+      return tag(imp && !imp.file ? { name: libraryName(name, imp), kind: "library", role: "provider", ...(inner.length ? { children: dedupe(inner) } : {}) } : { name, kind: "existing", role: "provider", source: imp?.file ?? rel, ...(inner.length ? { children: dedupe(inner) } : {}) });
     }
     let n;
     if (m.comps.has(name)) n = componentNode(rel, name, name, level + 1, stack); // defined in the same file
     else if (imp?.file && !name.includes(".")) { const sub = mod(imp.file); n = componentNode(imp.file, sub ? mainComponent(sub, imp.file, imp.imported) ?? imp.imported : imp.imported, name, level + 1, stack); }
-    else if (imp && !imp.file) { count++; const role = libraryRole(name); n = { name, kind: "library", ...(role ? { role } : {}) }; }
+    else if (imp && !imp.file) { count++; const role = libraryRole(name); n = { name: libraryName(name, imp), kind: "library", ...(role ? { role } : {}) }; }
     else { count++; n = { name, kind: "existing", role: "unknown", note: "not found among the imports" }; }
     if (n.kind === "existing" && n.role === "component" && /Provider$/.test(n.name)) n.role = "provider"; // a createComponent named …Provider gives data to its children
     const inner = kids();
@@ -257,6 +324,76 @@ ${JSON.stringify(tree, null, 2)}
 `;
 }
 
+/** Namespaces simulated in a mockup even when the code has them: the application shell (Spa, routes, the Top) needs a running uuApp. */
+const SHELL_ONLY = /^Plus4U5App$/;
+/**
+ * What the agent must know about the library components of the code: use exactly these, for real (no look-alikes from another library) –
+ * also the Plus4U ones, which work in the screens of this app (served over http) – with the uu5DemoDependencies they need. Only what cannot
+ * be loaded (the app shell, a library unknown to the mockup runtime) is a stand-in under the same name, so that the screen reads like the code.
+ */
+export function libraryRule(tree, { plan = false, who = "the code" } = {}) {
+  const names = new Set();
+  const w = (n) => { if (n.kind === "library" && (!n.role || n.role === "visual") && /^[A-Z]\w*\.[A-Z]/.test(n.name)) names.add(n.name); (n.children ?? []).forEach(w); };
+  if (tree) w(tree);
+  if (!names.size) return "";
+  const all = [...names], ns = (n) => n.split(".")[0];
+  const loadable = (n) => !SHELL_ONLY.test(ns(n)) && Boolean(CORE_IMPORTS[ns(n)] || PREVIEW_LIBS[ns(n)]);
+  const stand = all.filter((n) => !loadable(n)), extra = [...new Set(all.filter(loadable).map(ns))].filter((x) => !CORE_IMPORTS[x]);
+  const list = `${all.slice(0, 30).join(", ")}${all.length > 30 ? ", …" : ""}`;
+  if (plan) return `Library components: in the uu5-tree use the ones ${who} uses for the same purposes – nodes of kind "library" named exactly ${list} – never a look-alike of another library (e.g. no Uu5Elements.Block where ${who} has Plus4U5Elements.ContentContainer, no Uu5Elements.Badge for a StateBadge). Only a part ${who} has nothing for gets another library component.`;
+  const deps = extra.map((x) => `"${PREVIEW_LIBS[x][0]}": "${PREVIEW_LIBS[x][1]}"`), imports = extra.map((x) => `import ${x} from "${PREVIEW_LIBS[x][0]}";`);
+  const plus = extra.some((x) => /^Plus4U5/.test(x)) || deps.some((d) => d.includes("uu_plus4u5g02")) ? ` and "uu_plus4u5g02": "1.x"` : "";
+  const byNs = {}; for (const n of stand) (byNs[ns(n)] ??= []).push(n.split(".").slice(1).join("."));
+  return [
+    `Library components: use exactly the ones ${who} uses (${list}) – the real components with the props ${who} gives them, never a look-alike from another library (e.g. no Uu5Elements.Block where ${who} has Plus4U5Elements.ContentContainer, no Uu5Elements.Badge for a StateBadge).`,
+    extra.length ? `Load their libraries for real: add ${deps.join(", ")}${plus} to uu5DemoDependencies with ${imports.map((i) => `\`${i}\``).join(" ")}. This includes the Plus4U libraries: in uu5Mock Studio the screens are served over http and Plus4U5Elements renders there, so for the components ${who} uses this overrides the rule of the uu5-mockup skill against Plus4U libraries. A component that loads its own data from a uuApp (e.g. PersonItem) shows without it – that is expected; never replace it.` : "",
+    stand.length ? `Only these cannot be loaded in a mockup (${stand.some((n) => SHELL_ONLY.test(ns(n))) ? "the application shell needs a running uuApp" : "the library is not available to the mockup runtime"}), so simulate them under the SAME name: define ${Object.entries(byNs).map(([n, parts]) => `\`const ${n} = { ${parts.map((p) => `${p}: (props) => …`).join(", ")} };\``).join(" and ")} in the screen, built from uu5g05-elements with the look of the real component, with the comment \`// mockup stand-in\`, and write them in JSX exactly as ${who} does.` : "",
+  ].filter(Boolean).join("\n");
+}
+
+/** Library components a mockup draws with another one of uu5g05-elements (the visible equivalent): reported as "drawn as", not as a difference. */
+export const LIB_EQUIV = { ContentContainer: "Block", RouteContainer: "Block", AppContainer: "Block", ContentBox: "Box" };
+const LIB_NAME = /^(Uu5|Plus4U5|UuT|Uu)[A-Za-z0-9]*\.[A-Z]/;
+/** The stand-ins a mockup defines instead of a library: `const Plus4U5Elements = { StateBadge: (props) => … }` → ["Plus4U5Elements.StateBadge"]. */
+export function standInsOf(html) {
+  const out = [];
+  for (const m of String(html ?? "").matchAll(/(?:const|let|var)\s+((?:Plus4U5|Uu5|UuT|Uu)[A-Za-z0-9]*)\s*=\s*\{/g)) {
+    let depth = 0, i = m.index + m[0].length - 1, body = "";
+    for (; i < html.length; i++) { const ch = html[i]; if (ch === "{") depth++; else if (ch === "}" && --depth === 0) break; if (depth === 1) body += ch; }
+    for (const k of body.matchAll(/(?:^|[,{\s])([A-Z][A-Za-z0-9]*)\s*[:(]/g)) out.push(`${m[1]}.${k[1]}`);
+  }
+  return [...new Set(out)];
+}
+/**
+ * How the library components of a screen differ from those of the code it is made from (the existing component, or the reference of a new one):
+ * { standIns (simulated under the real name, the Plus4U libraries cannot be loaded), drawnAs ([code, screen]: a visible equivalent, e.g.
+ * ContentContainer as Block), notInCode (used by the screen, not by the code), notOnScreen (only for a redesign: in the code, not drawn) }.
+ */
+export function libraryDeviations(codeTree, screenTree, html, { kind = "baseline" } = {}) {
+  const code = new Set(), screen = new Set();
+  const wc = (n) => { if (n.kind === "library" && (!n.role || n.role === "visual") && LIB_NAME.test(n.name)) code.add(n.name); (n.children ?? []).forEach(wc); };
+  const ws = (n) => { if (LIB_NAME.test(n.name ?? "")) screen.add(n.name); (n.children ?? []).forEach(ws); };
+  if (codeTree) wc(codeTree); if (screenTree) ws(screenTree);
+  const standIns = standInsOf(html).filter((n) => screen.has(n) || code.has(n));
+  const last = (n) => n.split(".").slice(1).join(".");
+  let notOnScreen = [...code].filter((n) => !screen.has(n)), notInCode = [...screen].filter((n) => !code.has(n) && !standIns.includes(n));
+  const drawnAs = [];
+  for (const c of [...notOnScreen]) { const eq = LIB_EQUIV[last(c)]; const s = eq && notInCode.find((x) => last(x) === eq); if (s) drawnAs.push([c, s]); }
+  notOnScreen = notOnScreen.filter((c) => !drawnAs.some(([x]) => x === c));
+  notInCode = notInCode.filter((s) => !drawnAs.some(([, x]) => x === s));
+  return { standIns, drawnAs, notInCode, notOnScreen: kind === "baseline" ? notOnScreen : [] };
+}
+/** The same as lines for a person (the chat, HANDOFF.md); empty when the screen follows the code. */
+export function deviationLines(d, { origin = "the code" } = {}) {
+  const list = (a, max = 8) => `${a.slice(0, max).join(", ")}${a.length > max ? ` and ${a.length - max} more` : ""}`;
+  return [
+    d.standIns.length && `Simulated instead of the real library component (a stand-in under the real name): ${list(d.standIns)}${d.standIns.some((n) => !/^Plus4U5App\./.test(n)) ? " – the real one can be used in the mockup, ask the agent to load it" : ""}.`,
+    d.drawnAs.length && `Drawn with an equivalent instead of the real component: ${d.drawnAs.map(([c, s]) => `${c} as ${s}`).join(", ")} – the real one can be used in the mockup.`,
+    d.notInCode.length && `Not used by ${origin}: ${list(d.notInCode)} – check that they are meant, not a look-alike of a component the code has.`,
+    d.notOnScreen.length && `In ${origin} but not on the screen: ${list(d.notOnScreen)} (hidden states and dialogs are often not drawn).`,
+  ].filter(Boolean);
+}
+
 /** The task for the agent: build a mockup screen of the existing component, linked to it by the names of its visual components. */
 export function screenBrief({ name, file, files, tree, screen, root = "" }) {
   const visual = [], logic = [];
@@ -267,10 +404,11 @@ export function screenBrief({ name, file, files, tree, screen, root = "" }) {
     `Read these files of the repository first (read-only): ${files.map((f) => `\`${root ? `${root}/` : ""}${f}\``).join(", ")}. If a screenshot is attached, it shows the component in the real application: match it (layout, texts, colours, states).`,
     `Name the components of the screen exactly like the real visual components (${[...new Set(visual)].join(", ") || name}) and keep their nesting, so that the screen stays linked to the code: the handoff and later changes rely on these names.`,
     `The non-visual parts (${[...new Set(logic)].join(", ") || "providers, hooks, data loading"}) are not built in the mockup: put realistic fake data into ONE component of the screen named ${name}MockData (or one const MOCK_DATA) and pass it down as the real loading would; mark it in a comment as mockup only. Show the important states (loading, empty, error) the code has, switchable if useful.`,
+    libraryRule(tree),
     `A plan "${name} (as is)" with the real component tree (including the non-visual parts) has been saved in plans/: do not change it. The tree, read from the code:`,
     "```", asIsOutline(tree), "```",
-    "When the screen is done, say in two sentences what it shows and which states can be switched.",
-  ].join("\n");
+    "When the screen is done, say in two sentences what it shows and which states can be switched; then list, as Exceptions, every library component of the code you simulated (stand-ins) or drew with another component, and why.",
+  ].filter(Boolean).join("\n");
 }
 
 /** The baselines of a project: plans made by Start from an Existing Component (front matter `baseline: <file>`), newest first. */
@@ -322,10 +460,11 @@ export function referenceBrief({ name, refName, file, files, tree, screen, root 
     `NEW COMPONENT BASED ON AN EXISTING ONE: build one mockup screen \`${screen}.html\` of the NEW component ${name}${description ? ` – ${description}` : ""}.`,
     `Use the existing component ${refName} of the linked repository (\`${file}\`) as the pattern: read these files first (read-only): ${files.map((f) => `\`${root ? `${root}/` : ""}${f}\``).join(", ")}. Follow its decomposition (where data is loaded, which providers and hooks it uses), its look (spacing, colours, components of the libraries) and the conventions of the repository. If a screenshot is attached, it shows the reference in the real application.`,
     `Name the components of the screen for the new component (${name} and its parts). Where a part of the reference fits as it is, reuse it under its real name (it stays an existing component). The non-visual parts (providers, hooks, data loading) are not built in the mockup: put realistic fake data into ONE component named ${name}MockData and pass it down as the real loading would; mark it as mockup only.`,
+    libraryRule(tree, { who: "the reference" }),
     `A plan "${refName} (reference for ${name})" with the reference's real tree has been saved in plans/: do not change it. The reference tree, read from the code:`,
     "```", asIsOutline(tree), "```",
-    "When the screen is done, say in two sentences what it shows and what it took from the reference.",
-  ].join("\n");
+    "When the screen is done, say in two sentences what it shows and what it took from the reference; then list, as Exceptions, every library component of the reference you simulated (stand-ins) or replaced with another one, and why.",
+  ].filter(Boolean).join("\n");
 }
 
 /** The rules for the agent in a project that redesigns an existing component: plan against the baseline, keep the mockup visual. */
@@ -337,8 +476,9 @@ export function referencePrompt(refs, { plan = false } = {}) {
     plan
       ? `In your plan the uu5-tree is the NEW component's real decomposition: nodes of kind "new" with their "role" (visual, or component = non-visual, provider, context, hook, data = data loading – the non-visual parts are nodes too), shaped like the reference (where data is loaded, which providers and hooks). A part of the reference reused as it is stays a node of kind "existing" with its "source" and "change": "keep".`
       : "The screen shows only the visual components; the non-visual parts (providers, hooks, data loading) are never built in the mockup – their fake data stays in the one MockData component.",
+    libraryRule(r.tree, { plan, who: "the reference" }),
     "The reference tree:", "```", asIsOutline(r.tree), "```",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function baselinePrompt(baselines, { plan = false } = {}) {
@@ -349,6 +489,7 @@ export function baselinePrompt(baselines, { plan = false } = {}) {
     plan
       ? `In your plan the uu5-tree starts FROM THIS BASELINE: copy its nodes with their "kind": "existing", "source" and "role", and give each a "change": "keep" (unchanged), "modify" (say what changes in "note", and give the "props" it should have) or "remove". New parts are nodes with "kind": "new", "change": "add" and their "role" – a new provider, hook or data loading is a node of the tree too (with "role" and a "note" saying what it loads or provides), not only the visual components. Keep the uu5 decomposition: data loading above the view that shows it, providers around what uses them.`
       : "When you change the screen: it shows only the visual components, named exactly like in the baseline (new ones get their own names); the non-visual parts (providers, hooks, data loading) are never built in the mockup – their fake data stays in the one MockData component of the screen.",
+    libraryRule(b.tree, { plan }),
     "The baseline tree:", "```", asIsOutline(b.tree), "```",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }

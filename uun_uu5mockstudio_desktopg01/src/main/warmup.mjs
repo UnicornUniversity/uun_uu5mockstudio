@@ -10,8 +10,8 @@ export const WARMUP_GROUPS = [
   { name: "tiles", deps: { uu5tilesg02: "2.x", "uu5tilesg02-controls": "2.x", "uu5tilesg02-elements": "2.x" },
     imports: `import Uu5Tiles from "uu5tilesg02"; import Uu5TilesControls from "uu5tilesg02-controls"; import Uu5TilesElements from "uu5tilesg02-elements";`, use: "Uu5Tiles, Uu5TilesControls, Uu5TilesElements" },
   { name: "charts", deps: { uu5chartsg01: "3.x" }, imports: `import { PieChart, XyChart } from "uu5chartsg01";`, use: "PieChart, XyChart" },
-  { name: "plus4u5", deps: { uu_plus4u5g02: "1.x", "uu_plus4u5g02-app": "1.x" },
-    imports: `import Plus4U5 from "uu_plus4u5g02"; import Plus4U5App from "uu_plus4u5g02-app";`, use: "Plus4U5, Plus4U5App" },
+  { name: "plus4u5", deps: { uu_plus4u5g02: "1.x", "uu_plus4u5g02-app": "1.x", "uu_plus4u5g02-elements": "1.x" },
+    imports: `import Plus4U5 from "uu_plus4u5g02"; import Plus4U5App from "uu_plus4u5g02-app"; import Plus4U5Elements from "uu_plus4u5g02-elements";`, use: "Plus4U5, Plus4U5App, Plus4U5Elements" },
 ];
 
 export const warmupPage = (g) => BOOT(g.deps) + `

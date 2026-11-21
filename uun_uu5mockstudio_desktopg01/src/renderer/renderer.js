@@ -91,6 +91,12 @@ function entryEl(e) {
     return d;
   }
   if (e.kind === "plan") return renderPlan(e, planCtx);
+  if (e.kind === "exceptions") { // where a screen made from code differs from its library components (stand-ins, equivalents, others)
+    const d = Object.assign(document.createElement("div"), { className: "msg exceptions" });
+    d.append(Object.assign(document.createElement("b"), { textContent: `Exceptions to ${e.origin} · ${e.file.replace(/\.html$/, "")}` }));
+    const ul = document.createElement("ul"); for (const l of e.lines) ul.append(Object.assign(document.createElement("li"), { textContent: l })); d.append(ul);
+    return d;
+  }
   if (e.kind === "usage") { // the tokens of one request, under its answer
     const big = isBigRequest(e), u = Object.assign(document.createElement("div"), { className: big ? "usage big" : "usage", textContent: usageLabel(e), title: usageTitle(e) });
     if (big) u.append(Object.assign(document.createElement("span"), { className: "usage-hint", textContent: " · a large request: a new conversation is cheaper" })); // shown in the simple view, where the other token lines are hidden
@@ -593,6 +599,7 @@ let workFile = null;
 function setWorkFile(file) {
   workFile = file; canvas.setWorking(file); renderTabs();
 }
+const turnFiles = new Set(); // the screens the agent wrote in the running request
 const toolFile = (b) => { const i = b.input ?? {}, p = i.file_path ?? i.path ?? i.file; return typeof p === "string" && p.endsWith(".html") ? p.split("/").pop() : null; };
 function updateScreenCtx() {
   const el = $("screenctx");
@@ -681,6 +688,7 @@ const onAgentEvent = (m) => {
       g.steps.push({ id: b.id, label: labelOf(b), status: "run" }); paint(g);
       setWork(WORK[b.name] ?? labelOf(b));
       const wf = toolFile(b); if (wf) setWorkFile(wf);
+      if (wf && /^(Write|Edit|MultiEdit|apply_patch|write_file|edit_file)$/i.test(b.name ?? "")) turnFiles.add(wf); // a screen the agent changed: checked against the code when the answer is done
     }
   } else if (m.type === "tool_result") {
     for (const g of entries) if (g.kind === "steps") {
@@ -692,8 +700,10 @@ const onAgentEvent = (m) => {
     finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { setPlanPending(false); if (!m.isError) convertPlan(); } persist();
     if (m.isError) push({ kind: "err", text: `Error: ${m.text}` });
     pushUsage(m.usage); // below the answer, and below the card of a plan
+    const changed = [...turnFiles]; turnFiles.clear();
+    if (!m.isError && changed.length && project) window.studio.componentExceptions?.(changed).then((list) => { for (const x of list ?? []) push({ kind: "exceptions", file: x.file, origin: x.origin, lines: x.lines }); if (list?.length) persist(); }).catch(() => {});
   } else if (m.type === "stopped") {
-    setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
+    turnFiles.clear(); setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
     setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }

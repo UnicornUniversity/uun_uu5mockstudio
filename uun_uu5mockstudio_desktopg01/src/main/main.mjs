@@ -24,7 +24,7 @@ import { loadFrame, listFrames, saveFrame, updateFrame, readFrame, parseFrameEnv
 import { WARMUP_GROUPS, warmupPage } from "./warmup.mjs";
 import { exportHtml, exportZip, listMockups } from "./exporter.mjs";
 import { gatherHandoff, buildHandoff } from "./handoff.mjs";
-import { gatherPackage, packageFiles, componentsToBuild, planHandoffSlug, handoffSlug, screenComponents, redesignComponents, withRepo, repoFile, sha as shortHash } from "./handoffPackage.mjs";
+import { gatherPackage, packageFiles, componentsToBuild, planHandoffSlug, handoffSlug, screenComponents, redesignComponents, withRepo, repoFile, sha as shortHash, screenExceptions } from "./handoffPackage.mjs";
 import { readLinks, saveLink } from "./handoffLinks.mjs";
 import { repoComponentProps, suggestSource } from "./componentProps.mjs";
 import { asIsTree, baselinePlan, screenBrief, screenNameOf, readBaselines, readReferences, referencePlan, referenceBrief } from "./componentTree.mjs";
@@ -1293,6 +1293,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("component:origin", guard(async () => {
     const b = (await readBaselines(dir()))[0], r = (await readReferences(dir()))[0];
     return b ? { kind: "baseline", name: b.tree?.name ?? b.title, file: b.file, plan: b.slug } : r ? { kind: "reference", name: r.component, ref: r.tree?.name, file: r.file, plan: r.slug } : null;
+  }));
+  // after the agent changed screens: how their library components differ from the code they come from (stand-ins, equivalents, others)
+  ipcMain.handle("component:exceptions", guard(async (_e, files = []) => {
+    const screens = []; for (const f of [...new Set(files)].slice(0, 12)) { try { screens.push({ file: path.basename(f), html: fs.readFileSync(screenPath(f), "utf8") }); } catch { /* gone */ } }
+    return screenExceptions(dir(), screens);
   }));
   // the tree of the component being redesigned, read from the code (the baseline): the real structure of the screen is built on it
   ipcMain.handle("component:baseline", guard(async () => { const b = (await readBaselines(dir()))[0]; return b ? { slug: b.slug, file: b.file, name: b.tree?.name, tree: b.tree } : null; }));
