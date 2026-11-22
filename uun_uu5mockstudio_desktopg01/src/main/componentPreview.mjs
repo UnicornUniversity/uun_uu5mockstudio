@@ -26,6 +26,8 @@ export const PREVIEW_LIBS = {
   Uu5RichText: ["uu5richtextg01", "3.x"], Uu5RichTextElements: ["uu5richtextg01-elements", "3.x"], Uu5RichTextForms: ["uu5richtextg01-forms", "3.x"],
   Uu5Tree: ["uu5treeg01", "3.x"], Uu5TreeElements: ["uu5treeg01-elements", "3.x"], UuI18n: ["uu_i18ng01", "1.x"],
   Plus4U5: ["uu_plus4u5g02", "1.x"], Plus4U5Elements: ["uu_plus4u5g02-elements", "1.x"],
+  // uuTerritory (ArtifactLink, ActivityLink …): published only with exact versions, the loader resolves 0.x to the latest one
+  UuTElements: ["uu_tg01-elements", "0.x"],
   ...BRICKS_LIBS,
 };
 // charts need data to show anything; these are only for the preview (a screen gets the generated snippet)
@@ -34,7 +36,7 @@ const PREVIEW_ONLY = {
   "Uu5Charts.XyChart": `<Uu5Charts.XyChart data={[{ month: "Jan", sum: 12 }, { month: "Feb", sum: 18 }, { month: "Mar", sum: 9 }]} serieList={[{ valueKey: "sum", title: "Sum", bar: true }]} labelAxis={{ dataKey: "month" }} />`,
 };
 const known = (ns) => Boolean(CORE_IMPORTS[ns] || PREVIEW_LIBS[ns]);
-const usedLibs = (text) => [...new Set([...text.matchAll(/<\/?((?:Uu5|Plus4U5|UuI18n)\w*)\./g)].map((m) => m[1]))];
+const usedLibs = (text) => [...new Set([...text.matchAll(/<\/?((?:Uu5|Plus4U5|UuI18n|UuT)\w*)\./g)].map((m) => m[1]))];
 
 // what cannot be seen on its own: layers that cover the page, buses and providers, the Alert (shows nothing outside of an AlertBus), the parts of a bigger component
 const NOT_SHOWN = /(Bus|Provider|Modal|Dialog|Drawer|Popover|FloatingBox|UnhandledError|Wizard|Lsi)(\.|$)|^Uu5Elements\.Alert$|^Plus4U5App\.|\.(use|with)[A-Z]|^\w+\.\w+\.(?!Input$)\w+/; // also the parts of a bigger component (Date.Picker, Date.Field …), except the bare inputs (Radios.Input), which work on their own

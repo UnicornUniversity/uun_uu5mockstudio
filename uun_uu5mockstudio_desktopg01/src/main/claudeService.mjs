@@ -15,6 +15,7 @@ import { readSitemap } from "./sitemapFile.mjs";
 import { sitemapOutline } from "../renderer/sitemap.js";
 import { SITEMAP_WRITE_TOOLS } from "./sitemapMcp.mjs";
 import { readBaselines, baselinePrompt, readReferences, referencePrompt } from "./componentTree.mjs";
+import { baselinesWithScreens } from "./componentUpdate.mjs";
 
 const RULES_LIMIT = 12000;
 
@@ -132,7 +133,7 @@ export async function agentInstructions(svc, { plan = false, economy = false } =
   const memory = memoryPrompt({ cwd: svc.cwd, repoDir: svc.repoDir, repoLabel: svc.repoLabel, rules, description: await readProject(svc.cwd), globalRules, globalFile, componentsBlock: componentsInRules(svc.docs, `${globalRules}\n${rules}`), sitemapBlock: svc.cwd ? sitemapOutline((await readSitemap(svc.cwd))?.sitemap) : "", brandBlock: guidePrompt({ cwd: svc.cwd, guide: await readGuide(svc.cwd), sources: await listSources(svc.cwd) }) });
   const docs = await docAgentSetup(svc.cwd).catch(() => ({ prompt: "", servers: {}, readTools: {} })); // documents of Plus4U read into the project
   const instructions = studioPrompt({ cwd: svc.cwd, urlBase: svc.urlBase, memory }) + (docs.prompt ? `\n${docs.prompt}` : "") + (templateMeta ? `\n${templatePrompt(templateMeta)}` : "") + (rolePrompt(svc.role) ? `\n${rolePrompt(svc.role)}` : "") + (kindPrompt(await projectKind(svc.cwd, templateMeta)) ? `\n${kindPrompt(await projectKind(svc.cwd, templateMeta))}` : "") + (plan ? `\n${planPrompt()}` : "") + (economy ? `\n${ECONOMY_MODE}` : "");
-  const baseline = svc.cwd ? [baselinePrompt(await readBaselines(svc.cwd).catch(() => []), { plan }), referencePrompt(await readReferences(svc.cwd).catch(() => []), { plan })].filter(Boolean).join("\n") : ""; // a redesign of an existing component, or a new one modelled on it
+  const baseline = svc.cwd ? [baselinePrompt(await readBaselines(svc.cwd).then((b) => baselinesWithScreens(svc.cwd, b)).catch(() => []), { plan }), referencePrompt(await readReferences(svc.cwd).catch(() => []), { plan })].filter(Boolean).join("\n") : ""; // a redesign of an existing component, or a new one modelled on it
   return { instructions: baseline ? `${instructions}\n${baseline}` : instructions, globalFile, docs, templateMeta };
 }
 

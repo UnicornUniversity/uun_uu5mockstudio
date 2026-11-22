@@ -291,6 +291,11 @@ test("library components keep their documented names, and the agent is told to u
   const shell = libraryRule({ name: "X", kind: "existing", children: [{ name: "Plus4U5App.RouteHeader", kind: "library" }, { name: "UuTForms.FormArtifactSelect", kind: "library" }] });
   assert.match(shell, /`const Plus4U5App = \{ RouteHeader: \(props\) => … \};` and `const UuTForms = \{ FormArtifactSelect: \(props\) => … \};`/);
   assert.doesNotMatch(rule, /OpenBusinessBrickKit/); // data loading is not drawn
+  // uuTerritory elements (ArtifactLink of a course header) are loaded for real, not drawn with a Link and an Icon
+  assert.equal(libraryName("ArtifactLink", { from: "uu_tg01-elements", imported: "ArtifactLink" }), "UuTElements.ArtifactLink");
+  const terr = libraryRule({ name: "Header", kind: "existing", children: [{ name: "UuTElements.ArtifactLink", kind: "library" }] });
+  assert.match(terr, /add "uu_tg01-elements": "0\.x" and "uu_plus4u5g02": "1\.x" to uu5DemoDependencies with `import UuTElements from "uu_tg01-elements";`/);
+  assert.doesNotMatch(terr, /stand-in/);
   assert.equal(libraryRule({ name: "X", kind: "existing", children: [{ name: "Uu5Elements.Box", kind: "library" }] }).includes("stand-in"), false);
   const { screenBrief } = await import("../src/main/componentTree.mjs");
   assert.match(screenBrief({ name: "Header", file: "h.js", files: ["h.js"], tree, screen: "header" }), /Load their libraries for real/);

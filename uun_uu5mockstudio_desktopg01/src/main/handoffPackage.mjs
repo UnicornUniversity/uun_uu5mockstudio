@@ -19,6 +19,7 @@ import { mockupComponents, repoComponentProps, propsDiff } from "./componentProp
 import { readLinks } from "./handoffLinks.mjs";
 import { isSecretPath } from "./repo.mjs";
 import { LIB_EQUIV, libraryDeviations, deviationLines, readBaselines, readReferences } from "./componentTree.mjs";
+import { screenBaselines } from "./componentUpdate.mjs";
 
 export const sha = (buf) => createHash("sha256").update(buf).digest("hex").slice(0, 16);
 
@@ -235,11 +236,13 @@ async function pickPlan(projectDir, slug) {
 /** Reads the project into the data of `packageFiles`. `shot(file)` → PNG Buffer of a screen, or null (optional). */
 /** For a project made from code (a redesign, or a new component modelled on one): how each screen's library components differ from it. */
 export async function screenExceptions(projectDir, screens) {
-  const b = (await readBaselines(projectDir).catch(() => []))[0], r = b ? null : (await readReferences(projectDir).catch(() => []))[0];
-  const origin = b ? { kind: "baseline", tree: b.tree, name: b.tree?.name, label: `${b.tree?.name ?? "the component"} in the code` } : r ? { kind: "reference", tree: r.tree, name: r.component, label: `the reference ${r.tree?.name ?? ""}`.trim() } : null;
-  if (!origin?.tree) return [];
+  const baselines = await readBaselines(projectDir).catch(() => []), r = baselines.length ? null : (await readReferences(projectDir).catch(() => []))[0];
+  const ofScreen = baselines.length ? await screenBaselines(projectDir, baselines, screens.map((x) => x.file)) : null; // each screen against its own component
+  const originOf = (file) => { const b = ofScreen?.get(file); return b ? { kind: "baseline", tree: b.tree, name: b.tree?.name, label: `${b.tree?.name ?? "the component"} in the code` } : r ? { kind: "reference", tree: r.tree, name: r.component, label: `the reference ${r.tree?.name ?? ""}`.trim() } : null; };
   const out = [];
   for (const { file, html } of screens) {
+    const origin = originOf(file);
+    if (!origin?.tree) continue;
     const full = structureOf(html, file.replace(/\.html$/, ""));
     if (!full) continue;
     const lines = deviationLines(libraryDeviations(origin.tree, componentView(normalizeTree(full), { focus: origin.name ? [origin.name] : [] }), html, { kind: origin.kind }), { origin: origin.label });

@@ -65,7 +65,7 @@ export function createStructureDialog({ api }) {
     note.textContent = real ? (onlyChanges ? `${added} new, shown with the way to them (${countNodes(whole)} components in all)` : `${countNodes(tree)} components from the code${added ? `, ${added} new` : ""}`) : `${countNodes(tree)} components${countNodes(tree) < countNodes(full) ? ` (${countNodes(full) - countNodes(tree)} mockup helpers hidden)` : ""}`;
     note.title = real ? `${base.name} as it is in ${base.file}, with what the screen adds; dashed = not visual (logic, providers, data loading)` : "In the order of rendering, top-down and left to right";
     $("st-view").hidden = !base; for (const b of $("st-view").children) b.classList.toggle("on", b.dataset.view === view);
-    $("st-helpers").parentElement.hidden = Boolean(real); $("st-changes").parentElement.hidden = !real; $("st-reset").hidden = Boolean(real); $("st-regen").hidden = Boolean(real); $("st-reread").hidden = !real;
+    $("st-helpers").parentElement.hidden = Boolean(real); $("st-changes").parentElement.hidden = !real; $("st-reset").hidden = Boolean(real); $("st-regen").hidden = Boolean(real); $("st-reread").hidden = !real; $("st-update").hidden = !real || Boolean(whole) || !api.update;
     $("st-hint").title = real ? "The structure of the component as it is in the code, with the new parts of the screen in their place (new). It is not rearranged here: change the screen, or plan a change." : "Click a component to select it. Drag a box onto another to rearrange: left third = before, right third = after, middle = inside. Drag the background to move, Ctrl/⌘ + wheel to zoom.";
     paint();
   }
@@ -75,11 +75,12 @@ export function createStructureDialog({ api }) {
   $("st-changes").onchange = () => { if (full) { show(); setTimeout(() => [...body.querySelectorAll(".pd-bar button")].find((b) => b.textContent === "Fit")?.click(), 60); } }; // narrowed: fit it in the view
   $("st-reread").onclick = async () => { // the code is read again (it changed, or it was read before the reading got better)
     const b = $("st-reread"); b.disabled = true; b.textContent = "Reading…";
-    const r = await api.reread?.().catch((e) => ({ error: String(e?.message ?? e) }));
+    const r = await api.reread?.(file).catch((e) => ({ error: String(e?.message ?? e) }));
     b.disabled = false; b.textContent = "Re-read the code";
     if (!r || r.error) { note.textContent = r?.error ?? "The code could not be read."; return; }
     base = { ...base, tree: normalizeTree(r.tree) }; show(); api.toast?.(`${r.name} was read again from ${r.file}: ${r.nodes} components from ${r.files} file${r.files === 1 ? "" : "s"}.`);
   };
+  $("st-update").onclick = () => { const f = file; close(); if (f) api.update(f); };
   $("st-reset").onclick = () => { if (!original) return; entry.tree = JSON.parse(JSON.stringify(original)); ops = []; entry.sel = []; entry.collapsed = []; chosen = null; bar(); paint(); };
   $("st-regen").onclick = () => { const f = file, o = original, t = entry?.tree, made = ops.slice(), part = whole; if (!f || !o || !t || !changes()) return; close(); api.regenerate(f, o, t, made, part); };
   $("st-plan").onclick = () => { const f = file; close(); if (f) api.plan(f); };
@@ -92,9 +93,9 @@ export function createStructureDialog({ api }) {
       box.hidden = false;
       const r = await api.structure(f, part?.ordinal ?? null).catch((e) => ({ error: String(e?.message ?? e) }));
       full = r && !r.error ? normalizeTree(r) : null;
-      focus = part ? [] : await (api.focus?.() ?? Promise.resolve([])).catch(() => []); // a screen made from an existing component starts at that component
+      focus = part ? [] : await (api.focus?.(f) ?? Promise.resolve([])).catch(() => []); // a screen made from an existing component starts at that component
       if (!full) { note.textContent = r?.error ?? (part ? "This element has no structure of its own (it is an HTML element or it is not written in the file)." : "The screen has no components to show."); $("st-view").hidden = true; return; }
-      const b = !part && focus.length ? await (api.baseline?.() ?? Promise.resolve(null)).catch(() => null) : null; // a screen made from an existing component: its real structure first
+      const b = !part && focus.length ? await (api.baseline?.(f) ?? Promise.resolve(null)).catch(() => null) : null; // a screen made from an existing component: its real structure first
       base = b && !b.error && b.tree ? { ...b, tree: normalizeTree(b.tree) } : null; view = base ? "real" : "mockup";
       $("st-legend").hidden = false;
       show();

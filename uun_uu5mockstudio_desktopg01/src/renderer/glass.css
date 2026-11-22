@@ -52,11 +52,11 @@ body[data-glass][data-chat="float"] #chat:not(.collapsed),
 body[data-glass] :is(#bar,#descstrip,#inspector,#smside,#selbar,#previewbar,#fsctl){
   background:var(--glass-regular)!important;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 /* thick: menus, popovers, toasts */
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#toast,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip,.catalog-drag-ghost){
+body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#toast,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip,.catalog-drag-ghost){
   background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);
   border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip){border-radius:14px!important}
-body[data-glass] :is(#ctxmenu,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#devmenu,.pm-pop,.rc-sugg) :is(button,.item,[role=menuitem]):hover{background:var(--glass-hover)}
+body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip){border-radius:14px!important}
+body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#devmenu,.pm-pop,.rc-sugg) :is(button,.item,[role=menuitem]):hover{background:var(--glass-hover)}
 body[data-glass] #histmenu .row:hover{background:var(--glass-hover)}body[data-glass] #histmenu :is(.open,.del):hover{background:none}
 body[data-glass] #toast{border-radius:999px!important}
 

@@ -185,10 +185,16 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
   const scopes = [];
   function pushLocals(body) {
     const locals = new Map();
-    for (const st of body?.body ?? []) if (st.type === "VariableDeclaration") for (const v of st.declarations) if (v.id.type === "Identifier" && v.init) locals.set(v.id.name, v.init);
+    for (const st of body?.body ?? []) if (st.type === "VariableDeclaration") for (const v of st.declarations) {
+      if (!v.init) continue;
+      if (v.id.type === "Identifier") locals.set(v.id.name, v.init);
+      // const { containerProps, componentProps } = ContentContainer.splitProps(props, { title: <Header/> }): each name holds what the call was given,
+      // read only where it is spread into a component ({...containerProps}), not where one value of it is passed (colorScheme={colorScheme})
+      else if (v.id.type === "ObjectPattern" && v.init.type !== "Identifier") for (const pr of v.id.properties) { const id = pr.type === "RestElement" ? pr.argument : pr.value?.type === "AssignmentPattern" ? pr.value.left : pr.value; if (id?.type === "Identifier") locals.set(id.name, { spreadOnly: v.init }); }
+    }
     scopes.push(locals);
   }
-  const resolving = new Set();
+  const resolving = new Set(), spread = new Set();
   function renderBody(m, rel, fn, level, stack, out, code, conds) {
     const returnsIn = (st) => { const r = []; if (!st) return r; if (st.type === "ReturnStatement") r.push(st); else if (st.type === "BlockStatement") for (const x of st.body) if (x.type === "ReturnStatement") r.push(x); return r; };
     for (const st of fn.body?.body ?? []) {
@@ -227,7 +233,7 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
       }
       case "Identifier": { // {stateBadge}: a const of the render (or of the enclosing render prop) holding JSX
         const init = [...scopes].reverse().find((sc) => sc.has(e.name))?.get(e.name);
-        if (!init || resolving.has(init)) return [];
+        if (!init || init.spreadOnly || resolving.has(init)) return [];
         resolving.add(init); try { return fromExpr(m, rel, init, level, stack, ctx); } finally { resolving.delete(init); }
       }
       default: return jsxInside(m, rel, e, level, stack, ctx);
@@ -261,6 +267,12 @@ export function asIsTree(repoDir, file, { depth = 3, component = null } = {}) {
   function fromElement(m, rel, el, level, stack, ctx) {
     const name = jsxName(el.openingElement.name), rootId = name.split(".")[0];
     const inProps = () => el.openingElement.attributes.flatMap((a) => { // footer={<SubmitButton/>}, header={stateBadge}, itemList={[{ children: <X/> }]}
+      if (a.type === "JSXSpreadAttribute") { // {...containerProps}: the JSX in the props it spreads (title: <Header/>), once – a sibling spread of the same split call does not repeat it
+        if (a.argument.type !== "Identifier") return [];
+        const local = [...scopes].reverse().find((sc) => sc.has(a.argument.name))?.get(a.argument.name), init = local?.spreadOnly ?? local;
+        if (!init || spread.has(init)) return [];
+        spread.add(init); return fromExpr(m, rel, init, level, stack, {});
+      }
       const v = a.type === "JSXAttribute" ? a.value : null;
       if (!v) return [];
       if (v.type === "JSXElement" || v.type === "JSXFragment") return fromExpr(m, rel, v, level, stack, {});
@@ -342,7 +354,7 @@ export function libraryRule(tree, { plan = false, who = "the code" } = {}) {
   const list = `${all.slice(0, 30).join(", ")}${all.length > 30 ? ", …" : ""}`;
   if (plan) return `Library components: in the uu5-tree use the ones ${who} uses for the same purposes – nodes of kind "library" named exactly ${list} – never a look-alike of another library (e.g. no Uu5Elements.Block where ${who} has Plus4U5Elements.ContentContainer, no Uu5Elements.Badge for a StateBadge). Only a part ${who} has nothing for gets another library component.`;
   const deps = extra.map((x) => `"${PREVIEW_LIBS[x][0]}": "${PREVIEW_LIBS[x][1]}"`), imports = extra.map((x) => `import ${x} from "${PREVIEW_LIBS[x][0]}";`);
-  const plus = extra.some((x) => /^Plus4U5/.test(x)) || deps.some((d) => d.includes("uu_plus4u5g02")) ? ` and "uu_plus4u5g02": "1.x"` : "";
+  const plus = extra.some((x) => /^(Plus4U5|UuT)/.test(x)) || deps.some((d) => d.includes("uu_plus4u5g02")) ? ` and "uu_plus4u5g02": "1.x"` : "";
   const byNs = {}; for (const n of stand) (byNs[ns(n)] ??= []).push(n.split(".").slice(1).join("."));
   return [
     `Library components: use exactly the ones ${who} uses (${list}) – the real components with the props ${who} gives them, never a look-alike from another library (e.g. no Uu5Elements.Block where ${who} has Plus4U5Elements.ContentContainer, no Uu5Elements.Badge for a StateBadge).`,
@@ -483,13 +495,28 @@ export function referencePrompt(refs, { plan = false } = {}) {
 
 export function baselinePrompt(baselines, { plan = false } = {}) {
   if (!baselines?.length) return "";
-  const b = baselines[0];
-  return [
-    `REDESIGN OF AN EXISTING COMPONENT: this project changes ${b.tree?.name ?? "a component"} of the linked repository (\`${b.file}\`). plans/${b.slug}.md holds its real decomposition AS IT IS NOW (the baseline), including the parts that are not visual (role: component = non-visual component, provider, context, hook, data = data loading). Never edit that plan file.`,
+  const rules = (b) => [
     plan
       ? `In your plan the uu5-tree starts FROM THIS BASELINE: copy its nodes with their "kind": "existing", "source" and "role", and give each a "change": "keep" (unchanged), "modify" (say what changes in "note", and give the "props" it should have) or "remove". New parts are nodes with "kind": "new", "change": "add" and their "role" – a new provider, hook or data loading is a node of the tree too (with "role" and a "note" saying what it loads or provides), not only the visual components. Keep the uu5 decomposition: data loading above the view that shows it, providers around what uses them.`
       : "When you change the screen: it shows only the visual components, named exactly like in the baseline (new ones get their own names); the non-visual parts (providers, hooks, data loading) are never built in the mockup – their fake data stays in the one MockData component of the screen.",
     libraryRule(b.tree, { plan }),
-    "The baseline tree:", "```", asIsOutline(b.tree), "```",
+  ];
+  const on = (b) => (b.screens?.length ? ` – its screen${b.screens.length === 1 ? "" : "s"}: ${b.screens.map((f) => `\`${f}\``).join(", ")}` : "");
+  if (baselines.length === 1) {
+    const b = baselines[0];
+    return [
+      `REDESIGN OF AN EXISTING COMPONENT: this project changes ${b.tree?.name ?? "a component"} of the linked repository (\`${b.file}\`)${on(b)}. plans/${b.slug}.md holds its real decomposition AS IT IS NOW (the baseline), including the parts that are not visual (role: component = non-visual component, provider, context, hook, data = data loading). Never edit that plan file.`,
+      ...rules(b),
+      "The baseline tree:", "```", asIsOutline(b.tree), "```",
+    ].filter(Boolean).join("\n");
+  }
+  // screens of several existing components: each screen follows its own baseline, never another one's
+  return [
+    `EXISTING COMPONENTS: this project has screens of ${baselines.length} existing components of the linked repository. Each screen belongs to ONE of them and follows only its baseline (its real decomposition AS IT IS NOW, in plans/, with the parts that are not visual: role component = non-visual component, provider, context, hook, data = data loading). Never edit these plan files. When the user talks about a screen, work with the component of that screen.`,
+    ...baselines.flatMap((b) => [
+      `— ${b.tree?.name ?? "a component"} (\`${b.file}\`, plans/${b.slug}.md)${on(b)}:`,
+      ...rules(b),
+      "Its baseline tree:", "```", asIsOutline(b.tree), "```",
+    ]),
   ].filter(Boolean).join("\n");
 }

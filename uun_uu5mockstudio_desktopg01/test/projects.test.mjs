@@ -189,3 +189,13 @@ test("a project says when it waits for a handoff: ready (repo, something to hand
     fs.writeFileSync(path.join(dir, "a.html"), "<html>changed</html>"); assert.equal((await projects.list())[0].handoff, "outdated");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("a new project has an empty PROJECT.md, so a sentence under a screen's heading in the rules is not taken for its description", async () => {
+  const { projects, root } = await setup();
+  await projects.create("Nova");
+  assert.equal(await readFile(path.join(root, "Nova", "PROJECT.md"), "utf8"), "");
+  const { migrateDescriptions } = await import("../src/main/rules.mjs");
+  await writeFile(path.join(root, "Nova", "BUSINESS_RULES.md"), "# Business rules\n\n## Screen: header\n\nCurrent behaviour of header.js (as is).\n\n- R-001 (screen: header) A rule.\n");
+  assert.equal(await migrateDescriptions(path.join(root, "Nova")), false);
+  assert.match(await readFile(path.join(root, "Nova", "BUSINESS_RULES.md"), "utf8"), /Current behaviour/); // left where the agent wrote it
+});

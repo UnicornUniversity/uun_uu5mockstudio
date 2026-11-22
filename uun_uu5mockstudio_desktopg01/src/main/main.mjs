@@ -9,13 +9,14 @@ import { createPreviewCheck } from "./previewCheck.mjs";
 import { ClaudeService } from "./claudeService.mjs";
 import { CodexService, resetCodexPlugins } from "./codexService.mjs";
 import { codexStatus, codexVersion, findCodex } from "./codexEnv.mjs";
+import { devTools, handoffTabs } from "./devTools.mjs";
 import { ensureCodexPlugins, codexPluginVersions, codexPluginStates } from "./codexPlugins.mjs";
 import { listAgents } from "./agents.mjs";
 import { createStudioBrowser } from "./studioBrowserMcp.mjs";
 import { createKeyStore, createImageGenerator, DEFAULT_MODEL, MODEL_RE } from "./imageGen.mjs";
 import { startBrowserMcpHttp } from "./studioBrowserHttp.mjs";
 import { createScreenHistory } from "./screenHistory.mjs";
-import { getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude, claudeAuthInfo, setClaudeAuth } from "./claudeEnv.mjs";
+import { findClaude, getStatus, login, cancelLogin, installClaude, cancelInstall, installerCommand, installPlugins, checkPluginUpdates, updatePlugins, configure as configureClaude, claudeAuthInfo, setClaudeAuth } from "./claudeEnv.mjs";
 import { shouldCheck } from "./pluginUpdates.mjs";
 import { createCdnCache } from "./cdnCache.mjs";
 import { wrapPage, ENVIRONMENTS } from "./environments.mjs";
@@ -28,6 +29,7 @@ import { gatherPackage, packageFiles, componentsToBuild, planHandoffSlug, handof
 import { readLinks, saveLink } from "./handoffLinks.mjs";
 import { repoComponentProps, suggestSource } from "./componentProps.mjs";
 import { asIsTree, baselinePlan, screenBrief, screenNameOf, readBaselines, readReferences, referencePlan, referenceBrief } from "./componentTree.mjs";
+import { planUpdate, updateBrief, deltaSize, screenBaselines, baselinesWithScreens } from "./componentUpdate.mjs";
 import { commitToBranch, branchInfo, fetchRemotes, baseStatus, ensureWorkspace, workingCopyState, switchWorkingCopy } from "./handoffBranch.mjs";
 import { developerCommands, workspaceCommands, HANDOFF_ROOT } from "./handoffCommand.mjs";
 import { extractPlan, setComponentSpec, replaceTreeBlock } from "../renderer/planTree.js";
@@ -1242,18 +1244,21 @@ app.whenReady().then(async () => {
     // the plans to hand over: approved ones that are not a baseline ("as is" has nothing to build); with a baseline, the ones made after it come first
     const plans = listed.filter((p) => (p.status === "approved" || p.status === "built") && !p.baseline && !p.reference).map((p) => ({ ...p, beforeBaseline: baselines.length > 0 && p.mtime < baseMtime })).reverse();
     // what is handed over by default: a plan made after the baseline, else the redesign (the screen against the baseline), else the newest plan
-    const fallback = baselines.length ? (plans.find((p) => !p.beforeBaseline) ? null : `@redesign:${baselines[0].slug}`) : null;
+    // the components of the screens handed over (a project may have screens of several existing components): the redesign is of theirs, never of another one
+    const mine = only?.length && baselines.length > 1 ? [...new Set([...(await screenBaselines(dir(), baselines, only)).values()].filter(Boolean))] : baselines;
+    const fallback = mine.length ? (plans.find((p) => !p.beforeBaseline) ? null : `@redesign:${mine[0].slug}`) : null;
     const want = planSlug ?? fallback;
-    const redesign = String(want ?? "").startsWith("@redesign") ? baselines.find((b) => `@redesign:${b.slug}` === want) ?? baselines[0] ?? null : null;
+    const redesign = String(want ?? "").startsWith("@redesign") ? mine.find((b) => `@redesign:${b.slug}` === want) ?? mine[0] ?? null : null;
     const chosen = want === "@screens" || redesign ? null : plans.find((p) => p.slug === want) ?? plans.find((p) => !p.beforeBaseline) ?? plans[0] ?? null;
     const plan = chosen ? await readPlan(dir(), chosen.slug) : null, tree = plan ? extractPlan(plan.body).tree : null;
-    const files = (await listMockups(dir())).filter((f) => !only?.length || only.includes(f));
+    let files = (await listMockups(dir())).filter((f) => !only?.length || only.includes(f));
+    if (redesign && baselines.length > 1) { const map = await screenBaselines(dir(), baselines, files); files = files.filter((f) => map.get(f) === redesign); } // the screens of that component only
     const screens = async () => Promise.all(files.map(async (f) => ({ file: f, html: await fs.promises.readFile(path.join(dir(), f), "utf8") })));
     const raw = tree && !only?.length ? componentsToBuild(tree) : redesign ? redesignComponents(await screens(), redesign.tree, readLinks(dir())) : screenComponents(await screens(), readLinks(dir()));
     const ok = repo && !repo.error, readDir = ok ? repo.readDir ?? repo.path : null;
     const all = ok ? await listRepoFiles(repo.path, "", { limit: 5000, ...(repo.view ? { ref: repo.view } : {}) }).catch(() => []) : [];
     const components = withRepo(raw, readDir).map((c) => (c.mockOnly || c.source ? c : { ...c, suggest: suggestSource(c.name, all) }));
-    return { plans, chosen, plan, tree, components, mode: tree ? "plan" : redesign ? "redesign" : "screens", redesign, baselines: baselines.map((b) => ({ slug: b.slug, name: b.tree?.name ?? b.title, file: b.file })), files, readDir };
+    return { plans, chosen, plan, tree, components, mode: tree ? "plan" : redesign ? "redesign" : "screens", redesign, baselines: mine.map((b) => ({ slug: b.slug, name: b.tree?.name ?? b.title, file: b.file })), files, readDir };
   };
   // what the dialog shows: the repository, the plans to hand over (or the screens), the components, the branch and the last handoff of it
   ipcMain.handle("handoff:info", guard(async (_e, planSlug, only = null) => {
@@ -1277,7 +1282,8 @@ app.whenReady().then(async () => {
     only = Array.isArray(only) && only.length ? only.map(String) : null;
     const state = await loadChats(dir()), repo = await repoView(state);
     if (!repo || repo.error) throw new Error(repo?.error ?? "Link a git repository first (Project → Git Repository).");
-    const asIs = String(planSlug ?? "").startsWith("@redesign") ? (await readBaselines(dir())).find((b) => `@redesign:${b.slug}` === planSlug) ?? null : null;
+    const allBaselines = await readBaselines(dir()), asIs = String(planSlug ?? "").startsWith("@redesign") ? allBaselines.find((b) => `@redesign:${b.slug}` === planSlug) ?? null : null;
+    if (asIs && !only && allBaselines.length > 1) { const map = await screenBaselines(dir(), allBaselines); only = [...map].filter(([, b]) => b === asIs).map(([f]) => f); } // a redesign hands over the screens of its own component
     const data = await gatherPackage(dir(), { project: current, planSlug: only && planSlug && !String(planSlug).startsWith("@") ? "@screens" : planSlug, baseline: asIs, only, repo: repo.name, repoDir: repo.readDir ?? repo.path, appVersion: app.getVersion(), shot: screenPng });
     if (!data.mockups.files.length) throw new Error("There is no screen to hand over yet.");
     const { files, components, prompt } = packageFiles(data);
@@ -1290,9 +1296,11 @@ app.whenReady().then(async () => {
   // the handover fields of one component, edited in the dialog, written into the plan's tree (the plan file stays the source of truth)
   // the components the screens are about (the roots of the baselines): the component tree of a screen starts there
   // where the project comes from: the existing component it redesigns (baseline) or the one a new component follows (reference); null for neither
+  // a project may have screens of several existing components: each with the screens made from it (the menus list them, a screen offers Update from code)
   ipcMain.handle("component:origin", guard(async () => {
-    const b = (await readBaselines(dir()))[0], r = (await readReferences(dir()))[0];
-    return b ? { kind: "baseline", name: b.tree?.name ?? b.title, file: b.file, plan: b.slug } : r ? { kind: "reference", name: r.component, ref: r.tree?.name, file: r.file, plan: r.slug } : null;
+    const baselines = await readBaselines(dir()), r = (await readReferences(dir()))[0];
+    if (baselines.length) return { kind: "baseline", components: (await baselinesWithScreens(dir(), baselines)).map((b) => ({ name: b.tree?.name ?? b.title, file: b.file, plan: b.slug, screens: b.screens })) };
+    return r ? { kind: "reference", name: r.component, ref: r.tree?.name, file: r.file, plan: r.slug } : null;
   }));
   // after the agent changed screens: how their library components differ from the code they come from (stand-ins, equivalents, others)
   ipcMain.handle("component:exceptions", guard(async (_e, files = []) => {
@@ -1300,18 +1308,57 @@ app.whenReady().then(async () => {
     return screenExceptions(dir(), screens);
   }));
   // the tree of the component being redesigned, read from the code (the baseline): the real structure of the screen is built on it
-  ipcMain.handle("component:baseline", guard(async () => { const b = (await readBaselines(dir()))[0]; return b ? { slug: b.slug, file: b.file, name: b.tree?.name, tree: b.tree } : null; }));
+  const baselineOf = async (screen) => { const all = await readBaselines(dir()); if (!screen) return all.length === 1 ? all[0] : null; const f = path.basename(String(screen)); return (await screenBaselines(dir(), all, [f])).get(f) ?? null; };
+  ipcMain.handle("component:baseline", guard(async (_e, screen = null) => { const b = await baselineOf(screen); return b ? { slug: b.slug, file: b.file, name: b.tree?.name, tree: b.tree } : null; }));
   // Re-read the code: the baseline is read again from the repository (after the code changed, or a better reading of it) – its plan keeps its name and date
-  ipcMain.handle("component:reread", guard(async () => {
-    const b = (await readBaselines(dir()))[0]; if (!b) throw new Error("This project was not started from an existing component.");
+  ipcMain.handle("component:reread", guard(async (_e, screen = null) => {
+    const b = await baselineOf(screen); if (!b) throw new Error(screen ? `${path.basename(String(screen)).replace(/\.html$/, "")} is not made from an existing component.` : "This project was not started from an existing component.");
     const repo = await repoView(await loadChats(dir())); if (!repo || repo.error) throw new Error(repo?.error ?? "Link the git repository first.");
     const root = repo.readDir ?? repo.path; if (!repoFile(root, b.file)) throw new Error(`The file ${b.file} is not in the repository any more.`);
     const { tree, files } = asIsTree(root, b.file), plan = await readPlan(dir(), b.slug);
+    // the reading the screens were made from stays (Update from code compares with it); only the first re-read has to keep it
+    if (!(await readState(dir())).componentSync?.[b.slug] && b.tree) await updateState(dir(), (st) => ({ ...st, componentSync: { ...(st.componentSync ?? {}), [b.slug]: { tree: b.tree, at: b.created || null } } }));
     await writePlan(dir(), b.slug, baselinePlan({ name: tree.name, file: b.file, tree, files, date: plan.meta.created ?? new Date().toISOString().slice(0, 10) }));
     let count = 0; const w = (n) => { count++; (n.children ?? []).forEach(w); }; w(tree);
     return { slug: b.slug, file: b.file, name: tree.name, tree, files: files.length, nodes: count };
   }));
-  ipcMain.handle("component:focus", guard(async () => (await readBaselines(dir())).map((b) => b.tree?.name).filter(Boolean)));
+  /**
+   * Update from code: the code is read again and compared with the reading the screen was made from; the difference (and the library
+   * components the screen still draws with look-alikes) is the task for the agent, with the screen's own changes to keep. The new reading
+   * becomes the screen's starting point only when the agent has done it (component:synced).
+   */
+  const pendingSync = new Map(); // baseline slug -> { tree, file, html }
+  ipcMain.handle("component:update", guard(async (_e, screen = null) => {
+    const baselines = await readBaselines(dir()); if (!baselines.length) throw new Error("This project was not started from an existing component.");
+    const repo = await repoView(await loadChats(dir())); if (!repo || repo.error) throw new Error(repo?.error ?? "Link the git repository first.");
+    // the screen: the one asked for, else the screen of the only component, else the only screen
+    const shown = listScreens(), one = baselines.length === 1 ? `${screenNameOf(baselines[0].tree?.name ?? "")}.html` : null;
+    const file = screen && shown.includes(path.basename(String(screen))) ? path.basename(String(screen)) : shown.includes(one) ? one : shown.length === 1 ? shown[0] : null;
+    if (!file) throw new Error("Select the screen of the component on the canvas first.");
+    const html = fs.readFileSync(screenPath(file), "utf8");
+    let screenTree = null; try { screenTree = structureOf(html, file.replace(/\.html$/, "")); } catch { /* the screen cannot be read: compare the code only */ }
+    const b = (await screenBaselines(dir(), baselines, [file])).get(file);
+    if (!b) throw new Error(`${file.replace(/\.html$/, "")} is not made from an existing component. Select the screen made from one.`);
+    const root = repo.readDir ?? repo.path; if (!repoFile(root, b.file)) throw new Error(`The file ${b.file} is not in the repository any more.`);
+    const synced = (await readState(dir())).componentSync?.[b.slug] ?? null, before = synced?.tree ?? b.tree;
+    const { tree: after, files } = asIsTree(root, b.file), plan = await readPlan(dir(), b.slug);
+    await writePlan(dir(), b.slug, baselinePlan({ name: after.name, file: b.file, tree: after, files, date: plan.meta.created ?? new Date().toISOString().slice(0, 10) }));
+    const u = planUpdate({ before, after, screenTree, html });
+    if (u.upToDate) { await updateState(dir(), (st) => ({ ...st, componentSync: { ...(st.componentSync ?? {}), [b.slug]: { tree: after, at: new Date().toISOString() } } })); return { upToDate: true, file, name: after.name }; }
+    pendingSync.set(b.slug, { tree: after, file, html });
+    const brief = updateBrief({ name: after.name, file: b.file, screen: file, files, root, before, after, delta: u.delta, libs: u.libs, additions: u.additions, known: Boolean(synced) });
+    return { slug: b.slug, file, name: after.name, brief, changes: deltaSize(u.delta), libs: u.libs.length, additions: u.additions.length, known: Boolean(synced) };
+  }));
+  // the agent has brought the code into the screen: the new reading is the screen's starting point, and the update is one step of Undo
+  ipcMain.handle("component:synced", guard(async (_e, slug) => {
+    const p = pendingSync.get(String(slug)); if (!p) return { ok: false };
+    pendingSync.delete(String(slug));
+    await updateState(dir(), (st) => ({ ...st, componentSync: { ...(st.componentSync ?? {}), [slug]: { tree: p.tree, at: new Date().toISOString() } } }));
+    try { const sp = screenPath(p.file), now = fs.readFileSync(sp, "utf8"); history.record(sp, p.html, now, "Update from code"); } catch { /* the screen is gone */ }
+    return { ok: true, file: p.file };
+  }));
+  // the component a screen's tree starts at: the one the screen is made from (a project may have screens of several); without a screen, all of them
+  ipcMain.handle("component:focus", guard(async (_e, screen = null) => { if (screen) { const b = await baselineOf(screen); return b?.tree?.name ? [b.tree.name] : []; } return (await readBaselines(dir())).map((b) => b.tree?.name).filter(Boolean); }));
   // Start from an existing component: its "as is" tree read from the repository becomes the baseline plan, and the agent gets the task to build its screen
   ipcMain.handle("component:start", guard(async (_e, file, opts = {}) => {
     const repo = await repoView(await loadChats(dir()));
@@ -1329,6 +1376,8 @@ app.whenReady().then(async () => {
     }
     const name = tree.name, screen = screenNameOf(name);
     const saved = await savePlan(dir(), { title: `${name} (as is)`, markdown: baselinePlan({ name, file: rel, tree, files, date }), status: "approved" });
+    // the reading the screen is made from, and the link of the screen to its component (a project may have screens of several)
+    await updateState(dir(), (st) => ({ ...st, componentSync: { ...(st.componentSync ?? {}), [saved.slug]: { tree, at: new Date().toISOString() } }, screenBaselines: { ...(st.screenBaselines ?? {}), [`${screen}.html`]: saved.slug } }));
     return { mode: "extend", name, screen, plan: saved.slug, files, nodes: count, brief: screenBrief({ name, file: rel, files, tree, screen, root }) };
   }));
   // a change of one component in the dialog: the Build switch, New / Modify (the existing file), or its fields. Into the plan's tree, or (screens) .studio/links.json
@@ -1386,6 +1435,8 @@ app.whenReady().then(async () => {
     await shell.openExternal(`vscode://file${target.split(path.sep).map(encodeURIComponent).join("/").replace(/^([^/])/, "/$1")}/`);
     return { ok: true };
   }));
+  // the tools on this computer the handoff can be built with (the dialog offers only these)
+  ipcMain.handle("handoff:tools", guard(async () => { const t = await devTools({ findClaude, findCodex, protocolApp: (u) => app.getApplicationNameForProtocol(u) }); return { ...t, tabs: handoffTabs(t) }; }));
   ipcMain.handle("handoff:reveal", guard(async (_e, folder) => { if (!folder || !fs.existsSync(String(folder))) throw new Error("The folder is not there."); shell.openPath(String(folder)); return { ok: true }; }));
   ipcMain.handle("export:handoff", guard(async (_e, mode) => {
     const text = await handoffText();

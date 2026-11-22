@@ -101,10 +101,20 @@ const CARDS = [
   },
   {
     title: "Project memory",
-    text: "Business rules, project and screen descriptions and notes live in the project folder, so every request builds on them. Brand Guidelines… turns the customer's brand manual into a design guide the agent follows. Link a git repository: the agent reads it, never writes to it, and any branch works as a read-only snapshot.",
+    text: "Business rules, project and screen descriptions (click the one under a screen to edit it) and notes live in the project folder, so every request builds on them. Brand Guidelines… turns the customer's brand manual into a design guide the agent follows. Link a git repository: the agent reads it, never writes to it, and any branch works as a read-only snapshot.",
     art: S(`${frame(14, 14, 412, 34)}<circle cx="34" cy="31" r="5" class="t-accent"/>${line(48, 28, 90)}<rect x="320" y="24" width="86" height="14" rx="7" class="t-fill"/>
       ${frame(14, 60, 200, 116)}${line(28, 76, 80)}${[96, 116, 136].map((y) => `<rect x="28" y="${y}" width="26" height="12" rx="3" class="t-accent"/>${line(62, y + 3, 130, "t-line s")}`).join("")}
       ${frame(226, 60, 200, 116)}${line(240, 76, 60)}${[0, 1, 2, 3].map((k) => `<circle cx="${250 + k * 30}" cy="106" r="10" class="${k ? "t-fill" : "t-accent"}"/>`).join("")}${line(240, 132, 160, "t-line s")}${line(240, 148, 120, "t-line s")}`),
+  },
+  {
+    title: "From your code and back",
+    advanced: true,
+    text: "Start a screen from an existing component of the linked repository: it shows the component as it is, with the same uu5 components, and the project can hold screens of several components. Change the screen, then Update from code (right-click › Code) brings in what changed in the code and keeps your changes. Hand off the screen: a branch with what to build, for Claude Code or Codex in the tools you have.",
+    art: S(`${frame(14, 30, 110, 130)}<text x="28" y="52" class="t-text">.js</text>${[64, 80, 96, 112, 128].map((y, k) => line(28, y, [70, 54, 80, 46, 64][k], "t-line s")).join("")}
+      <path d="M134 80h44" class="t-arrow"/><path d="M170 71l10 9-10 9" class="t-arrow"/><path d="M178 116h-44" class="t-arrow"/><path d="M142 107l-10 9 10 9" class="t-arrow"/>
+      ${frame(192, 30, 120, 130, "t-card t-sel")}${line(204, 46, 60)}<rect x="204" y="62" width="96" height="30" rx="5" class="t-fill"/><rect x="204" y="100" width="96" height="22" rx="5" class="t-orange"/>${line(204, 134, 80, "t-line s")}
+      <path d="M322 95h30" class="t-arrow"/><path d="M344 86l10 9-10 9" class="t-arrow"/>
+      <circle cx="384" cy="60" r="8" class="t-accent"/><circle cx="384" cy="130" r="8" class="t-fill"/><path d="M384 68v54" class="t-link"/><path d="M384 76q26 6 26 30" class="t-link"/><circle cx="410" cy="110" r="7" class="t-accent"/>`),
   },
   {
     title: "Work with Plus4U documents",

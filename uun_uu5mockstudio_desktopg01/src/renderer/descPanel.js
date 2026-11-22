@@ -8,7 +8,7 @@ import { getProjectText, setProjectText, getScreenText, setScreenText } from "./
  * `onProject(text)` keeps the strip above the canvas up to date.
  */
 export function createDescPanel({ api, getScreens, onProject, onScreens }) {
-  let md = "", loaded = false;
+  let md = "", loaded = false, only = null; // only: the screen whose description is edited (opened from the screen), null = the project and all screens
   const box = document.createElement("div");
   box.id = "descdlg"; box.hidden = true;
   box.innerHTML = `<div class="card" role="dialog" aria-labelledby="dd-title">
@@ -22,6 +22,8 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
 
   const field = (label, text, screen, placeholder) => `<h5 class="rc-h2">${esc(label)}</h5><div class="rc-desc" contenteditable="plaintext-only" spellcheck="false" role="textbox"${screen != null ? ` data-screen="${esc(screen)}"` : ""} aria-label="${esc(label)}" data-placeholder="${esc(placeholder)}">${esc(text)}</div>`;
   function paint() {
+    q("#dd-title").textContent = only ? `Description of ${only}` : "Description";
+    if (only) { fields.innerHTML = field("Screen", getScreenText(md, only), only, "What is this screen for?"); return; }
     fields.innerHTML = field("Project", getProjectText(md), null, "What is this project about?")
       + getScreens().map((f) => { const n = f.replace(/\.html$/, ""); return field(`Screen: ${n}`, getScreenText(md, n), n, "What is this screen for?"); }).join("");
   }
@@ -53,10 +55,12 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
   const isOpen = () => !box.hidden;
   const editing = () => isOpen() && box.contains(document.activeElement) && document.activeElement.matches?.(".rc-desc");
   async function reload() { if (editing()) return; md = (await api.descGet()) ?? ""; loaded = true; paint(); publish(); }
-  /** `focus`: a screen file name puts the cursor into its description, anything else into the project's. */
+  /** `focus`: a screen file name opens the description of that screen only; anything else the project's and all the screens'. */
   async function open({ focus } = {}) {
+    const stem = typeof focus === "string" ? focus.replace(/\.html$/, "") : null;
+    only = stem && getScreens().some((f) => f.replace(/\.html$/, "").toLowerCase() === stem.toLowerCase()) ? stem : null;
     err.textContent = ""; meta.textContent = ""; md = (await api.descGet()) ?? ""; loaded = true; paint(); box.hidden = false;
-    const name = typeof focus === "string" ? focus.replace(/\.html$/, "").toLowerCase() : null;
+    const name = stem ? stem.toLowerCase() : null;
     const target = (name && [...fields.querySelectorAll(".rc-desc[data-screen]")].find((d) => d.dataset.screen.toLowerCase() === name)) ?? fields.querySelector(".rc-desc");
     target.scrollIntoView({ block: "center" }); target.focus();
   }
@@ -67,6 +71,14 @@ export function createDescPanel({ api, getScreens, onProject, onScreens }) {
 
   return {
     open, close, isOpen, reload,
+    /** The description of one screen changed in place (its caption on the canvas): saved into PROJECT.md as read now. */
+    async setScreen(file, text) {
+      const now = (await api.descGet()) ?? "", next = setScreenText(now, String(file).replace(/\.html$/, ""), text);
+      const r = await api.descSet(next);
+      if (r?.error) return r;
+      md = next; loaded = true; if (isOpen() && !editing()) paint(); publish();
+      return { ok: true };
+    },
     /** A project was opened (or none): the dialog closes and the strip follows the new file. */
     async load(hasProject) {
       box.hidden = true; md = "";

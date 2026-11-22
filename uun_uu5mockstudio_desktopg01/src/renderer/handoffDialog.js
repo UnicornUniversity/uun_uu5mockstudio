@@ -197,9 +197,15 @@ export function openHandoffDialog({ api, toast = () => {}, onLinkRepo = () => {}
     const endNote = h("p", { className: "mute" });
     const steps = h("div", { className: "hod-steps" });
     const tabsBox = h("span", { className: "hod-mode hod-tabs", role: "tablist" });
-    let tab = "vscode";
-    const TABS = [["vscode", "VS Code"], ["app", "Claude app"], ["terminal", "Terminal"]];
-    for (const [k, label] of TABS) { const b = h("button", { type: "button", textContent: label, role: "tab" }); b.dataset.tab = k; b.onclick = () => { tab = k; paint(); }; tabsBox.append(b); }
+    // only the tools on this computer (handoff:tools): the Claude / Codex apps, their CLIs, VS Code with their extensions
+    let tab = "vscode", tools = null;
+    const LABELS = { vscode: "VS Code", app: "Claude app", codex: "Codex", terminal: "Terminal", task: "Task" };
+    const setTabs = (list) => {
+      tabsBox.replaceChildren(...list.map((k) => { const b = h("button", { type: "button", textContent: LABELS[k], role: "tab" }); b.dataset.tab = k; b.onclick = () => { tab = k; paint(); }; return b; }));
+      tabsBox.hidden = list.length < 2; if (!list.includes(tab)) tab = list[0];
+    };
+    setTabs(["vscode", "app", "codex", "terminal"]);
+    const agentsIn = () => { const c = tools ? tools.vscodeClaude || (!tools.vscodeCodex && tools.claudeCli) : true, x = tools ? tools.vscodeCodex || (!tools.vscodeClaude && tools.codexCli) : true; return c && x ? "the Claude Code panel (or Codex)" : x ? "the Codex panel" : "the Claude Code panel"; };
     const reveal = () => api.handoffReveal(ws.path).catch(() => null);
     function paint() {
       for (const b of tabsBox.children) { const on = b.dataset.tab === tab; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
@@ -219,14 +225,24 @@ export function openHandoffDialog({ api, toast = () => {}, onLinkRepo = () => {}
       const need = !ws ? h("p", { className: "hod-need", textContent: place === "here" ? "First switch to the branch (step 1)." : "First prepare the folder (step 1)." }) : null;
       if (tab === "vscode") steps.replaceChildren(
         h("p", {}, h("b", { textContent: "a) " }), "Open the folder in VS Code", ws ? " " : "", ws ? h("button", { type: "button", textContent: "Open in VS Code", onclick: async () => { const x = await api.handoffOpenEditor(ws.path).catch((e) => ({ error: String(e?.message ?? e) })); if (x?.error) toast(x.error, { err: true }); } }) : need),
-        h("p", {}, h("b", { textContent: "b) " }), "Open the Claude Code panel (or Codex) there and send this task:"),
+        h("p", {}, h("b", { textContent: "b) " }), `Open ${agentsIn()} there and send this task:`),
         task());
       else if (tab === "app") steps.replaceChildren(
         h("p", {}, h("b", { textContent: "a) " }), "In the Claude app open Code and start a new session in that folder", ws ? " " : "", ws ? h("button", { type: "button", className: "linkish", textContent: "Copy path", onclick: () => copy(ws.path, "The path") }) : need),
         h("p", {}, h("b", { textContent: "b) " }), "Send this task:"),
+        task());
+      else if (tab === "codex") steps.replaceChildren(
+        h("p", {}, h("b", { textContent: "a) " }), "In the Codex app add that folder as a project and start a new local task in it", ws ? " " : "", ws ? h("button", { type: "button", className: "linkish", textContent: "Copy path", onclick: () => copy(ws.path, "The path") }) : need),
+        h("p", {}, h("b", { textContent: "b) " }), "Send this task:"),
+        task());
+      else if (tab === "terminal") {
+        const cmds = [tools?.claudeCli !== false && ["Claude Code", ws?.commands.claude], tools?.codexCli !== false && ["Codex", ws?.commands.codex]].filter(Boolean);
+        steps.replaceChildren(...(ws ? [h("p", { textContent: cmds.length > 1 ? "Run one of them (the agent starts with the task):" : "Run it (the agent starts with the task):" }), ...cmds.map(([l, c]) => line(l, c, "The command"))] : [need]));
+      } else steps.replaceChildren( // no coding agent found on this computer: the folder and the task, for whatever the developer uses
+        h("p", {}, h("b", { textContent: "a) " }), "Open that folder in your coding agent", ws ? " " : "", ws ? h("button", { type: "button", className: "linkish", textContent: "Copy path", onclick: () => copy(ws.path, "The path") }) : need),
+        h("p", {}, h("b", { textContent: "b) " }), "Send this task:"),
         task(),
-        h("p", { className: "mute", textContent: "In the Codex app the same: a session in that folder, then this task." }));
-      else steps.replaceChildren(...(ws ? [h("p", { textContent: "Run one of them (the agent starts with the task):" }), line("Claude Code", ws.commands.claude, "The command"), line("Codex", ws.commands.codex, "The command")] : [need]));
+        h("p", { className: "mute", textContent: "Neither Claude Code nor Codex was found on this computer." }));
     }
     prep.onclick = async () => {
       const label = prep.textContent; prep.disabled = true; prep.textContent = place === "here" ? "Switching…" : "Preparing…";
@@ -236,6 +252,7 @@ export function openHandoffDialog({ api, toast = () => {}, onLinkRepo = () => {}
       ws = x; worked = place === "here" ? "switched" : "folder"; paint();
       if (x.repo) window.dispatchEvent(new CustomEvent("studio:repo", { detail: x.repo })); // the working copy is on another branch now
     };
+    api.handoffTools?.().then((t) => { if (!t || t.error) return; tools = t; setTabs(t.tabs); paint(); }).catch(() => {});
     api.handoffWorkingCopy(r.branch, r.prompt).then((s) => {
       wc = s && !s.error ? s : { dirty: 0, current: "", here: false, elsewhere: null };
       if (wc.here) ws = { path: wc.path, commands: wc.commands }; // already on the branch: nothing to do

@@ -59,7 +59,7 @@ function openDevMenu(f, anchor, envs, mode = "size") {
   setTimeout(() => { if (devMenu?.el === m) { addEventListener("pointerdown", away, true); addEventListener("keydown", key, true); } }, 0);
 }
 
-export function createCanvas({ root, world, onComments, onNavigate, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, getInset, getEnvs, getExtraRects }) {
+export function createCanvas({ root, world, onComments, onNavigate, urlFor, preloadUrl, onViewSwapped, onGuestMessage, onReady, onGone, onDelete, onFullscreen, onTemplate, onRequestSize, onChange, onSelect, onPageReady, onNoteEdit, onNoteBlur, onNoteDelete, onContextMenu, onDescClick, onDescChange, getInset, getEnvs, getExtraRects }) {
   const envsFor = () => getEnvs?.() ?? null; // { environments, refresh } or null
   let workingFile = null; // the screen the agent is working on right now (may not exist yet while it is being created)
   const frames = new Map(); // file -> {file,x,y,device,el,view,shield}
@@ -136,7 +136,7 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
   let descs = {}; // file -> description
   let cmtCounts = {};
   const applyCommentCount = (f) => { const n = cmtCounts[f.file] ?? 0, b = f.cmtBtn?.querySelector(".fcmt-n"); if (!b) return; b.textContent = String(n); b.hidden = !n; f.cmtBtn.classList.toggle("has", n > 0); f.cmtBtn.title = n ? `${n} open comment${n === 1 ? "" : "s"} on this screen` : "Comments on this screen"; };
-  const applyDesc = (f) => { const t = descs[f.file] ?? ""; f.desc.hidden = !t; f.desc.textContent = t; };
+  const applyDesc = (f) => { if (f.desc.isContentEditable) return; const t = descs[f.file] ?? ""; f.desc.hidden = !t; f.desc.textContent = t; }; // not while it is being edited
   // history of the arrangement (position and size of the screens): undo / redo of moves and resizes
   const undoStack = [], redoStack = [];
   const snap = () => JSON.stringify([...frames.values()].map((f) => [f.file, f.x, f.y, f.device, f.w ?? null, f.h ?? null]));
@@ -214,7 +214,28 @@ export function createCanvas({ root, world, onComments, onNavigate, urlFor, prel
     body.append(view, shield);
     f.freeze = attachFreeze(view, body); // a picture covers a screen that is reloaded by something else than the canvas (the agent's checks)
     const desc = document.createElement("div"); desc.className = "fdesc"; desc.hidden = true; desc.title = "Description of the screen (click to edit)";
-    desc.addEventListener("pointerdown", (e) => e.stopPropagation()); desc.addEventListener("click", () => onDescClick?.(file));
+    // edited in place: a click makes it a text field; Enter or a click elsewhere saves, Shift+Enter is a new line, Esc takes the change back
+    desc.addEventListener("pointerdown", (e) => e.stopPropagation());
+    desc.addEventListener("click", () => {
+      if (desc.isContentEditable) return;
+      if (!onDescChange) return onDescClick?.(file);
+      desc.contentEditable = "plaintext-only"; desc.classList.add("editing"); desc.title = ""; desc.focus();
+      const r = document.createRange(); r.selectNodeContents(desc); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    });
+    const commitDesc = (revert = false) => {
+      if (!desc.isContentEditable) return;
+      desc.contentEditable = "false"; desc.classList.remove("editing"); desc.title = "Description of the screen (click to edit)";
+      const before = descs[file] ?? "", text = desc.innerText.replace(/\n{3,}/g, "\n\n").trim();
+      if (revert || text === before.trim()) { applyDesc(f); return; }
+      descs[file] = text; applyDesc(f); onDescChange(file, text);
+    };
+    desc.addEventListener("keydown", (e) => {
+      if (!desc.isContentEditable) return;
+      e.stopPropagation(); // not the shortcuts of the canvas (Delete removes the screen)
+      if (e.key === "Escape") { e.preventDefault(); commitDesc(true); desc.blur(); }
+      else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitDesc(); desc.blur(); }
+    });
+    desc.addEventListener("blur", () => commitDesc());
     el.append(desc);
     Object.assign(f, { el, body, view, shield, desc, devSel, syncDev, customOpt: devSel.querySelector('option[value="custom"]') });
     syncDev();

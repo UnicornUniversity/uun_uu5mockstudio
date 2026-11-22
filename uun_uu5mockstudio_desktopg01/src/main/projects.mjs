@@ -80,6 +80,9 @@ export function createProjects(root, { trash }) {
     const name = sanitizeName(raw);
     if (await exists(dirOf(name))) throw new Error(`Project “${name}” already exists.`);
     await mkdir(dirOf(name), { recursive: true });
+    // a new project has its (empty) description file from the start: the one-time move of descriptions out of BUSINESS_RULES.md
+    // (projects of earlier versions) must not take a sentence the agent writes under a `## Screen:` heading for the screen's description
+    await writeFile(path.join(dirOf(name), "PROJECT.md"), "");
     return name;
   }
 

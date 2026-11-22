@@ -702,9 +702,10 @@ const onAgentEvent = (m) => {
     if (m.isError) push({ kind: "err", text: `Error: ${m.text}` });
     pushUsage(m.usage); // below the answer, and below the card of a plan
     const changed = [...turnFiles]; turnFiles.clear();
+    finishCodeUpdate(m.isError ? [] : changed);
     if (!m.isError && changed.length && project) window.studio.componentExceptions?.(changed).then((list) => { for (const x of list ?? []) push({ kind: "exceptions", file: x.file, origin: x.origin, lines: x.lines }); if (list?.length) persist(); }).catch(() => {});
   } else if (m.type === "stopped") {
-    turnFiles.clear(); setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
+    turnFiles.clear(); codeUpdate = null; setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "note", text: "Zastaveno" });
   } else if (m.type === "app_error") {
     setPlanPending(false); finishSteps("bad"); setBusy(false); clearPlanning(); push({ kind: "err", text: m.message }); checkClaude(true);
   }
@@ -860,6 +861,7 @@ const canvas = createCanvas({
   onNoteEdit: (f, id, t) => memory.noteEdited(f, id, t), onNoteBlur: (f, id, t) => memory.noteBlurred(f, id, t), onNoteDelete: (f, id) => memory.deleteNote(f, id),
   onContextMenu: (ev) => showContextMenu(ev),
   onDescClick: (file) => openDesc(file),
+  onDescChange: (file, text) => desc.setScreen(file, text).then((r) => { if (r?.error) { toast(r.error, { err: true }); desc.reload(); } }),
   onSelect: () => { renderTabs(); updateSelbar(); vlayer?.draw(); flow?.setFocus(flowHover ?? canvas?.selected()); syncMenuScreenState(); },
   onViewSwapped: (f, v) => v.addEventListener("console-message", (e) => inspector.handleConsole(f.file, e.message)), // the screen was rendered again in a new webview
   onPageReady: (f) => { lastScreenChange = Date.now(); const injected = inspector.injectIfOn(f.view), again = takePending(f.file); if (injected) Promise.resolve(injected).then(() => { inspector.setAnnotate([f.view], annotating); if (annotating) return repinScreen(f.file, f.view); }); if (again) Promise.resolve(injected).then(() => again.forEach((o, i) => (typeof o === "number" ? inspector.pickOrdinal(f.view, o, i > 0) : inspector.pickItem(f.view, o.ordinal, o.prop, o.index, i > 0)))); if (marked.some((m) => m.file === f.file)) { marked = marked.filter((m) => m.file !== f.file); if (activeMarked?.file === f.file) activeMarked = marked.at(-1) ?? null; renderMarked(); } }, // a reloaded page lost its frames
@@ -1085,6 +1087,7 @@ window.studio.onPreviewChanged(({ project: p, screens, changed }) => {
   flow?.refresh();
   for (const f of changed) if (!fresh.includes(f)) canvas.reload(f);
   for (const f of changed) propsPanel.refresh(f); // the inspector re-reads the picked component (or clears when it is gone)
+  if (fresh.length || changed.some((f) => !linkedScreens.has(f))) refreshLinkedScreens(); // a new screen may be one made from a component
   if (fsFile && changed.includes(fsFile)) { fsFreeze?.cover(); fsView?.reload(); }
   if (fsFile && !screens.includes(fsFile)) closeFullscreen();
   if (fresh.length) canvas.focus(fresh[fresh.length - 1]);
@@ -1187,8 +1190,8 @@ const propsPanel = createPropsPanel({
 let structFrom = null; // the screen whose structure the inspector was opened from (for the way back)
 const structureDialog = createStructureDialog({ api: {
   structure: window.studio.jsxStructure,
-  focus: () => window.studio.componentFocus(), // a screen made from an existing component: its tree starts at that component
-  baseline: () => window.studio.componentBaseline(), reread: () => window.studio.componentReread(), toast: (t) => toast(t),
+  focus: (file) => window.studio.componentFocus(file), // a screen made from an existing component: its tree starts at that component
+  baseline: (file) => window.studio.componentBaseline(file), reread: (file) => window.studio.componentReread(file), toast: (t) => toast(t), update: (file) => updateFromCode(file),
   show: (file, ordinal, part) => { structFrom = { file, part: part ?? null }; $("insp-back").hidden = false; if (!$("inspect").classList.contains("on")) $("inspect").click(); propsPanel.show({ file, chain: [ordinal] }); },
   /**
    * The moves the file can take safely are done in the file at once, so the screen on the canvas is the preview; the bar asks to keep or to undo them.
@@ -1839,27 +1842,41 @@ syncViewSw();
   let origin = null;
   const paintOrigin = async () => {
     origin = await window.studio.componentOrigin?.().catch(() => null) ?? null; if (origin?.error) origin = null;
-    const o = $("pi-origin"), offer = !meta.role || meta.role === "architect" || meta.role === "uiux"; // also in a project made from a component: another one can follow
+    const o = $("pi-origins"), offer = !meta.role || meta.role === "architect" || meta.role === "uiux"; // also in a project made from a component: another one can follow
     $("pi-fromcomp-t").textContent = origin ? "Another from an existing component…" : "From an existing component…";
     // Hand off for production: in the Advanced view, with a linked repository; its state from the projects list (ready / outdated / the last one)
     const hand = !isSimple() && Boolean(repo && !repo.error);
     $("pi-handoff").hidden = !hand;
     if (hand) { const p = (await window.studio.listProjects().catch(() => [])).find((x) => x.name === project); $("pi-handoffstate").textContent = p?.handoff === "outdated" ? "outdated" : p?.handoff === "ready" ? "ready" : ""; $("pi-handoffstate").className = p?.handoff ? "pi-hstate" : ""; }
-    o.hidden = !origin; $("pi-fromcomp").hidden = !offer; $("pi-compsep").hidden = !origin && !offer && !hand;
-    if (origin) { o.replaceChildren(document.createTextNode(origin.kind === "baseline" ? `Redesign of ${origin.name}` : `${origin.name}, based on ${origin.ref}`), Object.assign(document.createElement("small"), { textContent: origin.file.split("/").pop() })); o.title = `${origin.kind === "baseline" ? "The existing component this project changes" : "The existing component the new one follows"}: ${origin.file}. ${origin.kind === "baseline" ? "Click to see its real structure: the code's tree with what the screen adds." : "Click to see its tree read from the code."}`; }
+    setLinkedScreens(origin);
+    // the existing components the screens are made from, each with its own screen; a new component: the one it follows
+    const items = origin?.kind === "baseline" ? origin.components : origin ? [{ ...origin, name: `${origin.name}, based on ${origin.ref}` }] : [];
+    o.replaceChildren(...items.map((c, i) => {
+      const b = Object.assign(document.createElement("button"), { type: "button", className: "pi-origin", role: "menuitem" });
+      b.dataset.pi = "origin"; b.dataset.i = String(i);
+      b.append(document.createTextNode(c.name), Object.assign(document.createElement("small"), { textContent: c.screens ? (c.screens.length ? c.screens.map((f) => f.replace(/\.html$/, "")).join(", ") : "no screen") : c.file.split("/").pop() }));
+      b.title = origin.kind === "baseline" ? `Existing component ${c.file}${c.screens?.length ? `, shown on ${c.screens.join(", ")}` : ""}. Click to see the real structure of its screen: the code's tree with what the screen adds.` : `The existing component the new one follows: ${c.file}. Click to see its tree read from the code.`;
+      return b;
+    }));
+    o.hidden = !items.length;
+    // Update from code works on one screen: the selected one when it is made from a component, else the only such screen
+    const target = updateTarget();
+    $("pi-update").hidden = origin?.kind !== "baseline"; $("pi-updatefor").textContent = target ? target.replace(/\.html$/, "") : "select a screen";
+    $("pi-fromcomp").hidden = !offer; $("pi-compsep").hidden = !origin && !offer && !hand;
   };
   btn.onclick = async (e) => { e.stopPropagation(); const willOpen = menu.hidden; dismissMenus(); if (willOpen) await paintOrigin(); setOpen(willOpen); };
   menu.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     if (b.classList.contains("viewtog")) return; // the Advanced view switches in place (its own handler); the menu stays open to show the new state
     setOpen(false);
-    if (b.dataset.pi === "desc") openDesc(null); else if (b.dataset.pi === "rules") openRules(); else if (b.dataset.pi === "fromcomp") startFromComponent(); else if (b.dataset.pi === "handoff") window.__menuAction("repo:handoff");
+    if (b.dataset.pi === "update") { const t = updateTarget(); if (t) updateFromCode(t); else toast("Select the screen to update: one made from an existing component.", { err: true }); }
+    else if (b.dataset.pi === "desc") openDesc(null); else if (b.dataset.pi === "rules") openRules(); else if (b.dataset.pi === "fromcomp") startFromComponent(); else if (b.dataset.pi === "handoff") window.__menuAction("repo:handoff");
     else if (b.dataset.pi === "origin" && origin) {
-      // a redesign: the real structure of its screen (the code's tree with the screen's new parts); a reference: its tree read from the code (the plan)
-      const files = canvas.files(), kebab = origin.name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-      const screen = files.find((f) => f === `${kebab}.html`) ?? canvas.selected() ?? files[0];
+      // an existing component: the real structure of its screen (the code's tree with the screen's new parts); a reference: its tree read from the code (the plan)
+      const c = origin.kind === "baseline" ? origin.components[Number(b.dataset.i)] : origin;
+      const screen = c?.screens?.includes(canvas.selected()) ? canvas.selected() : c?.screens?.find((f) => canvas.get(f));
       if (origin.kind === "baseline" && screen) structureDialog.open(screen);
-      else { if (isSimple()) setView("advanced"); if (!planCards.openView(origin.plan)) toast(`Open the plan file plans/${origin.plan}.md.`, { err: true }); }
+      else { if (isSimple()) setView("advanced"); if (!planCards.openView(c.plan)) toast(`Open the plan file plans/${c.plan}.md.`, { err: true }); }
     }
   });
   document.addEventListener("click", (e) => { if (!menu.hidden && !e.target.closest("#projinfow")) setOpen(false); });
@@ -1957,12 +1974,57 @@ function showContextMenu({ file, clientX, clientY, at }) {
   canvas.select(file);
   const m = $("ctxmenu"), name = file.replace(/\.html$/, "");
   const simple = isSimple(); // the simple view keeps what is needed to look at, edit and share a design; the rest is under Advanced
-  const items = [
-    [at ? "Add note here" : "Add note", () => addNote(file, at)], ...(simple ? [] : [["Add rule…", () => openRules(file)]]), ["Present", () => openFullscreen(file)], ["Fit screen", () => canvas.focus(file)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ["Reload screen", () => canvas.reload(file)], ...(simple ? [] : mentionItems(name)),
-    ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)], ["Description…", () => openDesc(file)], ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []), ...(simple ? [] : [...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : []), ["Variants…", () => variantsDialog.open(file)], ["Show component tree", () => structureDialog.open(file)], ...(repo && !repo.error ? [["Hand off this screen…", () => openHandoffDialog({ api: window.studio, toast, screens: [file], onLinkRepo: () => linkRepoFlow(), onOpenPlan: (slug) => { if (!planCards.openView(slug)) toast(`Open the plan file plans/${slug}.md.`, { err: true }); } })]] : []), [REVEAL_LABEL, () => window.studio.revealScreen(file)]]), null, ["Copy screen", () => copyScreen(file)], ["Copy to project…", () => pickCopyTarget(file, clientX, clientY)], null, ["Delete screen…", () => deleteScreen(file), true],
+  const code = repo && !repo.error;
+  // the everyday actions stay at the top; the rest is in three submenus: the screen's settings, its link to the code, the file
+  const screenItems = [
+    ["Description…", () => openDesc(file)], ["Device size…", () => canvas.openDeviceMenu(file, clientX, clientY)],
+    ...(variantInfo(file, canvas.files()) ? [[`Use as ${v0(file)}…`, () => keepVariant(file)]] : groupVariants(canvas.files()).some((g) => g.base === file) ? [["Keep original, remove variants…", () => keepVariant(file)]] : []),
+    ...(simple ? [] : [["Variants…", () => variantsDialog.open(file)], ["Add rule…", () => openRules(file)], ...(brandReady ? [["Check against brand guide", () => checkBrand(file)]] : [])]),
   ];
-  m.replaceChildren(...items.map((it) => it ? Object.assign(document.createElement("button"), { textContent: it[0], className: it[2] ? "danger" : "", onclick: () => { m.hidden = true; it[1](); } }) : document.createElement("hr")));
-  m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.min(clientY, innerHeight - 40 * items.length) + "px"; m.hidden = false;
+  const codeItems = simple ? [] : [
+    ["Show component tree", () => structureDialog.open(file)],
+    ...(linkedScreens.has(file) ? [["Update from code…", () => updateFromCode(file)]] : []),
+    ...(code ? [["Hand off this screen…", () => openHandoffDialog({ api: window.studio, toast, screens: [file], onLinkRepo: () => linkRepoFlow(), onOpenPlan: (slug) => { if (!planCards.openView(slug)) toast(`Open the plan file plans/${slug}.md.`, { err: true }); } })]] : []),
+  ];
+  const fileItems = [["Copy screen", () => copyScreen(file)], ["Copy to project…", () => pickCopyTarget(file, clientX, clientY)], ...(simple ? [] : [[REVEAL_LABEL, () => window.studio.revealScreen(file)]])];
+  const items = [
+    [at ? "Add note here" : "Add note", () => addNote(file, at)], [$("inspect").classList.contains("on") ? "Exit Edit mode" : "Edit components", () => $("inspect").click()], ...(simple ? [] : mentionItems(name)),
+    null, ["Present", () => openFullscreen(file)], ["Fit screen", () => canvas.focus(file)], ["Reload screen", () => canvas.reload(file)],
+    null, ["Screen", screenItems], ...(codeItems.length ? [["Code", codeItems]] : []), ["File", fileItems],
+    null, ["Delete screen…", () => deleteScreen(file), true],
+  ];
+  fillCtxMenu(m, items);
+  const rows = items.length;
+  m.style.left = Math.min(clientX, innerWidth - 220) + "px"; m.style.top = Math.max(8, Math.min(clientY, innerHeight - 36 * rows - 12)) + "px"; m.hidden = false;
+}
+/**
+ * The items of a context menu: [label, run, danger] runs, [label, [items]] opens a submenu beside it (on hover or click), null is a line.
+ * A submenu opens to the left where there is no room on the right, and up where there is none below.
+ */
+function fillCtxMenu(m, items) {
+  let open = null;
+  const closeSub = () => { open?.sub.remove(); open?.btn.classList.remove("on"); open = null; };
+  const row = (it) => {
+    if (!it) return document.createElement("hr");
+    const [label, what, danger] = it;
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: label, className: danger ? "danger" : "" });
+    if (!Array.isArray(what)) { b.onclick = () => { m.hidden = true; what(); }; b.onmouseenter = () => closeSub(); return b; }
+    b.classList.add("ctx-parent"); b.setAttribute("aria-haspopup", "menu");
+    const show = () => {
+      if (open?.btn === b) return;
+      closeSub();
+      const sub = Object.assign(document.createElement("div"), { className: "ctx-sub", role: "menu" });
+      sub.append(...what.map((x) => { const c = row(x); if (c.tagName === "BUTTON") c.onmouseenter = null; return c; }));
+      m.append(sub); open = { sub, btn: b }; b.classList.add("on");
+      const r = b.getBoundingClientRect(), mr = m.getBoundingClientRect(), w = sub.offsetWidth, h = sub.offsetHeight;
+      sub.style.left = (mr.right + w + 4 <= innerWidth ? mr.width - 6 : -w + 6) + "px";
+      sub.style.top = Math.max(-mr.top + 8, Math.min(r.top - mr.top - 5, innerHeight - mr.top - h - 8)) + "px";
+    };
+    b.onmouseenter = show;
+    b.onclick = (e) => { e.stopPropagation(); show(); }; // the click outside closes the menu; this one only opens the submenu
+    return b;
+  };
+  m.replaceChildren(...items.map(row));
 }
 // ---------- copy / paste of a screen, also between projects (the screen takes its pictures, notes, rules and description along) ----------
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -2350,6 +2412,9 @@ function loadProject(info) {
   planCards?.closeView?.(); // the plan or the map of the project before is not shown over the new one
   sitePick = null; // pages picked from a link belong to the project they were picked in
   port = info.port; webviewPreload = info.webviewPreload; project = info.project; projectList = info.projects ?? projectList;
+  // the Edit (or Annotate) mode and the picked component belong to the project before: its panel does not stay over the new one
+  structFrom = null; $("insp-back").hidden = true;
+  if (inspector.on) setInspect(false); else propsPanel.clear();
   setBusy(false); clearChips(); resetMarked();
   chatId = info.chatId; chatList = info.chats ?? [];
   entries = info.chat ?? [];
@@ -2358,6 +2423,7 @@ function loadProject(info) {
   projectLevel = info.level ?? null; projectScope = info.scope ?? null; defaultEnv = info.environment ?? null; refreshEnvs(); updateMapBtn();
   canvas.removeAll(); planCards.clear(); planCards.load(info.layout?.plans); savedLayout = info.layout?.frames ?? {};
   syncFrames(info.screens);
+  linkedScreens = new Set(); refreshLinkedScreens();
   showRepo(info.repo ?? null); rules.load(Boolean(project)); desc.load(Boolean(project)); refreshBrandFlag(); if (project) { comments.reload(); setTimeout(() => flow?.refresh(), 800); } else { $("cmtbadge").hidden = true; flow?.clear(); } memory.setNotes(info.notes); memory.loadTexts();
   window.studio.plansList().then((list) => { if (!list.error && project === info.project) onPlansChanged(list); });
   window.studio.sitemapRead().then((r) => {
@@ -2811,6 +2877,34 @@ const checkClaude = (refresh) => setup.check(refresh).then((st) => { refreshAgen
 const MAX_IMAGES = 8, MAX_SIDE = 2000, THUMB_SIDE = 320;
 let pending = []; // [{id,name,mime,data(base64),thumb}]
 let componentBrief = null; // the task for the agent after Start from an Existing Component, sent with the next message
+/**
+ * Update from code: the component is read again and compared with the reading its screen was made from; the agent brings only the
+ * difference into the screen and keeps the user's changes. When it has written the screen, the new reading becomes the starting point
+ * and the whole update is one step of Undo.
+ */
+let codeUpdate = null; // { slug, file } while the agent works on it
+let linkedScreens = new Set(); // the screens made from an existing component (they offer Update from code)
+function setLinkedScreens(origin) { linkedScreens = new Set(origin?.kind === "baseline" ? origin.components.flatMap((c) => c.screens ?? []) : []); }
+const refreshLinkedScreens = () => (project ? window.studio.componentOrigin?.().then((o) => setLinkedScreens(o?.error ? null : o)).catch(() => {}) : setLinkedScreens(null));
+/** The screen Update from code works on: the selected one when it is made from a component, else the only such screen. */
+const updateTarget = () => (linkedScreens.has(canvas.selected()) ? canvas.selected() : linkedScreens.size === 1 ? [...linkedScreens][0] : null);
+async function updateFromCode(screen) {
+  if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
+  await flushSaves();
+  const r = await window.studio.componentUpdate(screen ?? null).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (r?.error) return toast(r.error, { err: true });
+  const name = r.file.replace(/\.html$/, "");
+  if (r.upToDate) return toast(`${name} is up to date with the code of ${r.name}.`);
+  const what = [r.changes && `${r.changes} change${r.changes === 1 ? "" : "s"} in the code`, r.libs && "library components drawn differently"].filter(Boolean).join(" and ");
+  codeUpdate = { slug: r.slug, file: r.file }; componentBrief = r.brief; setPlanMode(false);
+  $("prompt").value = `Update @${name} from the code of ${r.name} (${what}); keep my changes on the screen.`;
+  $("form").requestSubmit();
+}
+function finishCodeUpdate(changed) {
+  const u = codeUpdate; codeUpdate = null;
+  if (!u || !changed.includes(u.file)) return;
+  window.studio.componentSynced(u.slug).then((r) => { if (r?.ok) toast(`${u.file.replace(/\.html$/, "")} follows the code again.`, { action: { label: "Undo", run: () => stepScreen(u.file, "undo") } }); }).catch(() => {});
+}
 let preparing = 0;
 const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true, card.tree), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
