@@ -695,6 +695,8 @@ body[data-glass] .pm-pop{background:var(--g-menu,var(--panel))!important}
 
 /* ---- composer like in Claude Desktop: one rounded box with the tools inside, a quiet row under it with the mode and the model */
 .inputbox textarea{padding:10px 14px 46px}
+/* the next step suggested by the agent (Tab takes it): a placeholder that reads as an offer, not as a hint */
+.inputbox textarea.has-suggestion::placeholder{color:var(--fg);opacity:.42;font-style:italic}
 .inputbox #annotate{left:8px;right:auto}.inputbox #attach{left:44px;right:auto}.inputbox #libbtn{left:80px;right:auto} /* annotate, file, catalog of components */
 .inputbox #send,.inputbox #stop{position:absolute;right:8px;bottom:8px;width:32px;min-width:32px;height:32px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .inputbox #send[hidden],.inputbox #stop[hidden]{display:none}.inputbox #send .ico,.inputbox #stop .ico{width:17px;height:17px;stroke-width:2.2}

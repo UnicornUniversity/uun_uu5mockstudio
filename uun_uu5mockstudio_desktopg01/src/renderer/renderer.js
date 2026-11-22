@@ -1,4 +1,5 @@
 import { createCanvas, DEVICES } from "./canvas.js";
+import { splitNextStep } from "./nextStep.js";
 import { createInspector, describePick, updateSelection, MAX_MARKED } from "./inspector.js";
 import { annotationKey, annotationsContext, describeAnnotation, historyOf, captureRect, renumbering, renumberText, MAX_ANNOTATIONS, MAP_WHOLE } from "./annotations.js";
 import { createAnnotatePopover } from "./annotatePopover.js";
@@ -62,7 +63,7 @@ const $ = (id) => document.getElementById(id);
 
 const log = $("log");
 const NO_AI = "Chat is not available: neither Claude Code nor Codex is installed and signed in (see Help)."; // the rest of the app works without it
-let port, webviewPreload = "", chatId = null, chatList = [], project = "", projectList = [], loading = false, ready = false, busy = false, setup = null;
+let port, webviewPreload = "", chatId = null, chatList = [], project = "", projectList = [], loading = false, ready = false, busy = false, setup = null, suggestion = null;
 /** Persisted chat: {kind:"user"|"ai"|"err"|"note", text} | {kind:"steps", steps:[{id,label,status}]} */
 let entries = [];
 
@@ -106,7 +107,7 @@ function entryEl(e) {
   const el = document.createElement("div");
   el.className = `msg ${e.kind === "note" ? "note" : e.kind === "err" ? "err" : e.kind}`;
   if (e.kind === "ai" && e.planning) { el.classList.add("planning"); el.textContent = "Preparing the plan…"; } // the answer in Plan mode is shown once, as the finished plan
-  else if (e.kind === "ai") el.innerHTML = markdown(e.text);
+  else if (e.kind === "ai") el.innerHTML = markdown(splitNextStep(e.text).body); // the <next-step> line goes to the message field, not into the bubble
   else if (e.kind === "user") {
     el.innerHTML = highlightMentions(e.text);
     if (e.images?.length) { const row = Object.assign(document.createElement("div"), { className: "atts" }); for (const im of e.images) row.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name ?? "attachment", title: im.name ?? "" })); el.append(row); }
@@ -276,8 +277,12 @@ function setPlanMode(on) {
   updateBuildBtn();
   syncPlaceholder();
 }
+/** `suggestion` (declared at the top): the next step the agent suggested at the end of its last answer, the hint of the empty message field; Tab (or →) puts it there. */
+function setSuggestion(text) { suggestion = text || null; syncPlaceholder(); }
 /** The hint in the message field follows what is in front of the user: no project, the sitemap, an open plan, or the canvas (Plan or Agent). */
 function syncPlaceholder() {
+  $("prompt").classList.toggle("has-suggestion", Boolean(project && suggestion));
+  if (project && suggestion) { $("prompt").placeholder = `${suggestion}   ⇥ Tab`; return; }
   let key = null; try { key = planCards?.viewKey?.() ?? null; } catch { /* planCards not set up yet: the canvas */ }
   $("prompt").placeholder = !project ? "Open or create a project first…"
     : key === "@sitemap" ? "Describe what should change in the sitemap…"
@@ -629,6 +634,7 @@ function setBusy(b) {
   clearInterval(workTimer);
   if (!b && workFile) setWorkFile(null);
   if (b) {
+    if (!was) setSuggestion(null); // a new request: the old suggestion no longer fits
     if (!was) { workStart = Date.now(); $("work-label").textContent = "Thinking…"; }
     tickWork(); workTimer = setInterval(tickWork, 1000);
   }
@@ -698,9 +704,12 @@ const onAgentEvent = (m) => {
     }
     setWork("Thinking…");
   } else if (m.type === "result") {
+    const ai = last()?.kind === "ai" ? last() : null;
+    if (ai) { const { body, next } = splitNextStep(ai.text); ai.text = body; ai.next = m.isError ? null : next; paint(ai); } // before convertPlan: the plan gets the text without the line
     setTimeout(() => refreshLimits(true), 1500); // the request used some of the plan: the meter catches up
     finishSteps("ok"); setBusy(false); clearPlanning(); if (planPending) { setPlanPending(false); if (!m.isError) convertPlan(); } persist();
     if (m.isError) push({ kind: "err", text: `Error: ${m.text}` });
+    setSuggestion(ai?.next);
     pushUsage(m.usage); // below the answer, and below the card of a plan
     const changed = [...turnFiles]; turnFiles.clear();
     finishCodeUpdate(m.isError ? [] : changed);
@@ -2416,7 +2425,7 @@ function loadProject(info) {
   // the Edit (or Annotate) mode and the picked component belong to the project before: its panel does not stay over the new one
   structFrom = null; $("insp-back").hidden = true;
   if (inspector.on) setInspect(false); else propsPanel.clear();
-  setBusy(false); clearChips(); resetMarked();
+  setBusy(false); clearChips(); resetMarked(); suggestion = null; // the suggestion belonged to the project before (the placeholder follows in updateNoProject)
   chatId = info.chatId; chatList = info.chats ?? [];
   entries = info.chat ?? [];
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
@@ -3081,6 +3090,10 @@ $("prompt").onkeydown = (e) => {
     if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(box.children[mentionIdx].dataset.name); return; }
     if (e.key === "Escape") { e.preventDefault(); box.hidden = true; return; }
   }
+  const t = $("prompt");
+  if (suggestion && !t.value && !e.isComposing && ((e.key === "Tab" && !e.shiftKey) || e.key === "ArrowRight") && !e.metaKey && !e.ctrlKey && !e.altKey) { // the suggested next step into the field, to edit or send
+    e.preventDefault(); t.value = suggestion; t.setSelectionRange(t.value.length, t.value.length); t.dispatchEvent(new Event("input")); return;
+  }
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("form").requestSubmit(); }
 };
 $("stop").onclick = () => window.studio.stop();
@@ -3091,6 +3104,8 @@ function showChat(v) {
   for (const e of entries) if (e.kind === "steps") for (const st of e.steps) if (st.status === "run") st.status = "bad";
   loading = true; log.replaceChildren(); entries.forEach(paint); loading = false;
   setBusy(false); clearChips(); ctxNow = 0; updateCtxWarn();
+  const lastMsg = [...entries].reverse().find((x) => x.kind === "ai" || x.kind === "user" || x.kind === "plan");
+  setSuggestion(lastMsg?.kind === "ai" ? lastMsg.next : null); // the suggestion of this conversation, if its last word was the agent's
 }
 const fmtWhen = (ts) => {
   const d = new Date(ts), t = d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" });

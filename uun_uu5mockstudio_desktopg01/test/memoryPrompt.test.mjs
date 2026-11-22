@@ -66,3 +66,7 @@ test("a whole web site starts with its sitemap, an application or one page gets 
   assert.match(kindPrompt({ level: "component" }), /unless the user asks for a sitemap/);
   assert.equal(kindPrompt({ level: "web" }), ""); assert.equal(kindPrompt(null), ""); // an older Web project: as before
 });
+
+test("every answer ends with a suggested next step for the message field", () => {
+  assert.match(studioPrompt({ cwd: "/p", urlBase: "http://x" }), /<next-step>/);
+});

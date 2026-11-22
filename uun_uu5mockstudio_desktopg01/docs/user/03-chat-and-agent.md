@@ -35,6 +35,8 @@ One rounded box: your text, a strip of tools under it, and the round send button
 
 Under the box: the **mode** (Agent or Plan) on the left and the **model** on the right (Default is the model configured in your Claude Code). Enter sends, Shift+Enter makes a new line.
 
+**The suggested next step.** When the agent has finished, the empty message field shows in grey what you would most likely ask next (for example *Add the detail of a room and link it from the table*). **Tab** (or →) puts it into the field, where you can change it and send it with Enter; just start typing to write something else. The suggestion disappears once you send a message, and each conversation keeps its own.
+
 ## Agent and Plan
 
 - **Agent** (the default): Claude builds and changes screens right away.

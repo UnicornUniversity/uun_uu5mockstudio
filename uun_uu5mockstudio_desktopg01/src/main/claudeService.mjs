@@ -101,6 +101,9 @@ export const ECONOMY = [
 /** The extra rules of the Economy switch of the message field: the cheapest way that still does what was asked. */
 export const ECONOMY_MODE = "Economy mode is ON for this request: make the smallest change that does what is asked, do not redesign or polish what was not asked for, check the result once (console and snapshot, no screenshot unless the user asked for a visual check) and answer in two or three sentences.";
 
+/** The last line of every answer: what the user would most likely ask next. The window hides it and offers it in the empty message field (Tab takes it). */
+export const NEXT_STEP_RULE = "End every answer with one last line `<next-step>…</next-step>` holding the single most likely next request the user would type now: written as the user would write it (an imperative, in the language the user writes in, at most about 12 words, concrete to this project and what you just did). Leave the line out when there is no sensible next step. Never mention the tag or the line in the answer; the app hides it.";
+
 export function studioPrompt({ cwd, urlBase, memory = "" }) {
   return [
     "You run inside uu5Mock Studio, a desktop app that previews mockups live.",
@@ -116,6 +119,7 @@ export function studioPrompt({ cwd, urlBase, memory = "" }) {
     "Use the uu5-mockup and uugds skills for composition and rules. For a screen with an application shell (simulated Top, route header, local navigation) invoke the mockup-route-layout skill with the Skill tool before you write it (not for a Web page or a content page meant for a document). A content page meant for a document (uuBookKit, uuManagementKit) is built from Uu5Bricks and the other Bricks libraries: use the uu5bricks-knowledge skill for them. Ask no questions unless essential; pick sensible defaults.",
     "The user can switch the message field from Agent to Plan: then you only propose a plan with a tree of the components first. For a large request (several screens, a rewrite) you may build as asked, but say in one sentence at the end that Plan lets them review a component tree before the next big step.",
     "When screens belong to one flow, link them: a button or link that leads to another screen uses a relative address of its file (`<a href=\"room-detail.html\">` or `onClick={() => { location.href = \"room-detail.html\"; }}`). The app draws arrows between linked screens, and the user can click through them in Present mode.",
+    NEXT_STEP_RULE,
     memory,
   ].join("\n");
 }
