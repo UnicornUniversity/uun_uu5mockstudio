@@ -16,6 +16,7 @@ For people who develop or maintain the app. It describes how the app is built an
 12. [Security and privacy](12-security.md).
 13. [Templates for new projects](13-templates.md): the format, sources (built-in, plugins, mine), applying a template.
 14. [uu5String export](14-uu5string.md): the screen as uu5String for documents, from the rendered React tree.
+15. [Existing components](15-existing-components.md): start from a component of the repository, screens of several components, Update from code, hand off for production.
 
 ## Where to start
 

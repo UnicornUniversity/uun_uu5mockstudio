@@ -79,8 +79,8 @@ body[data-glass] #chat .ai pre{background:color-mix(in srgb,var(--pre) 70%,trans
 body[data-glass] #chat .user{background:var(--glass-accent);box-shadow:0 2px 8px rgba(59,108,240,.25),inset 0 1px 0 rgba(255,255,255,.3)}
 
 /* ---------- dialogs: the scrim blurs what is behind, the card is thick glass ---------- */
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,.tsdbox,.docprev){background:var(--glass-scrim)!important;-webkit-backdrop-filter:blur(10px) saturate(120%);backdrop-filter:blur(10px) saturate(120%)}
-body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,.tsdbox,.docprev) .card{
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,#helpbox,.tsdbox,.docprev){background:var(--glass-scrim)!important;-webkit-backdrop-filter:blur(10px) saturate(120%);backdrop-filter:blur(10px) saturate(120%)}
+body[data-glass] :is(#actbox,#structbox,#libbox,#tour,#setup,#jsonbox,#about,#iconbox,#dialog,#confirm,#sizebox,#rules,#descdlg,#tplbox,#helpbox,.tsdbox,.docprev) .card{
   background:var(--glass-thick)!important;-webkit-backdrop-filter:var(--glass-blur-thick);backdrop-filter:var(--glass-blur-thick);border:1px solid var(--glass-edge)!important;border-radius:24px!important;
   box-shadow:var(--glass-shadow-lg),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
 /* insets inside a dialog (source tiles, lists, previews) are thin glass, not opaque boxes */

@@ -195,6 +195,7 @@ contextBridge.exposeInMainWorld("studio", {
   installUpdate: () => invoke("update:install"),
   selfInstallUpdate: () => invoke("update:selfinstall"),
   tourDone: () => invoke("tour:done"),
+  helpDocs: () => invoke("help:docs"),
   setRole: (role) => invoke("role:set", role),
   skipRole: () => invoke("role:skip"),
   usableAgents: () => invoke("settings:agents"),

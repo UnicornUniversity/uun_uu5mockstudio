@@ -13,11 +13,16 @@ Requirements: Node 22. The target machine needs Claude Code installed (the app u
 | `npm run dist:win` | Windows NSIS installer (x64) |
 | `npm run dist:linux` | Linux AppImage (x64) |
 | `npm run icon` | regenerates icons from `build/icon.svg` (`scripts/make-icon.mjs`) |
+| `npm run build:native` | builds the native module of the Help menu search (macOS), see below |
+
+## Native module (macOS)
+
+`native/helpsearch/helpsearch.mm` puts the user guide into the search field of the Help menu (see `helpSearch.mjs` in [02](02-main-process.md)). `scripts/build-native.mjs` builds it with clang into `native/helpsearch/build/helpsearch.node`: one universal binary (arm64 + x86_64) against the Node-API headers, so it is ABI-stable and does **not** need a rebuild for a new Electron. It runs after `npm install` (a missing toolchain is only a warning: the app works without it) and, with `--strict`, before `pack` and `dist:mac*`, where a failure stops the build. It needs the Xcode command-line tools (`xcode-select --install`) and `node_api.h` (next to Node, or `npx node-gyp install`). The build folder is not committed.
 
 ## Packaging (`electron-builder.config.cjs`)
 
 - `appId` `net.uu5mock.studio`; artifacts are named `uu5Mock-Studio-<version>-<arch>.<ext>`.
-- Only `src/**`, `package.json` and the needed `node_modules` are packed; the native `claude` binaries of `@anthropic-ai/claude-agent-sdk-*` (~240 MB per platform) are excluded because the app runs the user's own Claude Code (`pathToClaudeCodeExecutable`).
+- Only `src/**`, `package.json`, the user guide (`docs/user/*.md`, shown in Help → User Guide…), the native modules (`native/*/build/*.node`, unpacked from the asar: `asarUnpack`) and the needed `node_modules` are packed; the native `claude` binaries of `@anthropic-ai/claude-agent-sdk-*` (~240 MB per platform) are excluded because the app runs the user's own Claude Code (`pathToClaudeCodeExecutable`).
 - `LICENSE` and `NOTICE` from the repository root travel in `Contents/Resources`.
 - macOS needs the **zip** next to the dmg: the self-update installs from it.
 

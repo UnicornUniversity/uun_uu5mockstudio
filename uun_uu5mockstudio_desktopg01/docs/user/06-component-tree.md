@@ -4,7 +4,7 @@ A screen is a tree of components. The component tree shows it as a diagram, in t
 
 ## Opening it
 
-- **Screen → Show Component Tree…**, or **Show component tree** in the context menu of a screen: the tree of the whole screen.
+- **Screen → Show Component Tree…**, or **Code → Show component tree** in the context menu of a screen: the tree of the whole screen.
 - **Show component tree** in the inspector: the tree of the component you picked (it becomes the root).
 
 The tree is read from the file; nothing is sent to Claude. It shows components in the order they are rendered. Components defined in the same file are opened, so you see what is inside them; `.map(…)` is a **×N** component; `cond && <X/>` and `cond ? <A/> : <B/>` give **R** conditions; a non-literal `disabled={…}` gives **D**; the data an item receives is shown. Plain HTML tags such as `div` are skipped.

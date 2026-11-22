@@ -17,6 +17,7 @@ import { createSettingsDialog } from "./settingsDialog.js";
 import { openHandoffDialog } from "./handoffDialog.js";
 import { openComponentStart } from "./componentStartDialog.js";
 import { createGuideDialog } from "./guideDialog.js";
+import { createHelpDialog } from "./helpDialog.js";
 import { createCommentsPanel } from "./commentsPanel.js";
 import { COMMENTS } from "./features.js";
 import { createFlowLayer } from "./flowLayer.js";
@@ -1118,7 +1119,7 @@ $("fit").onclick = () => { const m = mapZoom(); if (m) { m.fit(); syncZoomLabel(
 for (const [box, btn] of [["sizebox", "sz-cancel"], ["confirm", "cf-cancel"], ["dialog", "dlg-cancel"], ["jsonbox", "jb-cancel"], ["setup", "setup-close"]]) addDialogClose($(box).firstElementChild, () => $(btn).click());
 // Escape closes the topmost open dialog even when the focus is not inside it (after a click on its background or text, or on a button that
 // has gone). With the focus inside, the dialog's own handler does it (some, like the first-run setup, deliberately refuse).
-const MODALS = ["confirm", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "imgenbox", "guidebox", "cmtbox", "varbox", "branddlg", "setbox"]; // topmost first
+const MODALS = ["confirm", "helpbox", "jsonbox", "iconbox", "dialog", "structbox", "sizebox", "tour", "libbox", "actbox", "setup", "about", "descdlg", "rules", "tplbox", "rolebox", "imgenbox", "guidebox", "cmtbox", "varbox", "branddlg", "setbox"]; // topmost first
 addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
   const open = [...[...document.querySelectorAll(".docprev, .tsdbox")].reverse(), ...MODALS.map((id) => $(id))].filter((m) => m && !m.hidden);
@@ -2706,6 +2707,9 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
   const withScreen = (fn) => { const t = target(); if (t) fn(t); else toast("Select a screen first.", { err: true }); };
   const needProject = (fn) => (project ? fn() : toast("Open or create a project first.", { err: true }));
   const onMenuAction = async (action) => {
+    // a Help Topic picked in the search field of the macOS Help menu (helpSearch.mjs), or "Show All Help Topics" for the words typed there
+    if (action.startsWith("help:open:")) { const [file, anchor = ""] = action.slice("help:open:".length).split("#"); return help.open({ file, anchor }); }
+    if (action.startsWith("help:search:")) return help.open({ search: action.slice("help:search:".length) });
     if (action.startsWith("project:open:")) return changeProject(() => window.studio.openProject(action.slice("project:open:".length)));
     if (action.startsWith("screen:copyto:")) return withScreen((f) => copyScreenTo(f, action.slice("screen:copyto:".length)));
     if (action.startsWith("view:device:")) return canvas.setDeviceAll(action.slice("view:device:".length));
@@ -2763,6 +2767,7 @@ window.studio.onMenuOpened?.(() => { $("projmenu").hidden = true; }); // a menu-
       case "view:inspector": return needProject(() => $("inspect").click());
       case "view:chatmode": return $("chatmode").click();
       case "app:about": return openAbout();
+      case "app:help": return help.open();
       case "app:tour": return tour.open();
       case "app:role": return roleDialog.open(meta.role);
       case "imagegen:open": return imageGenDialog.open();
@@ -2820,6 +2825,7 @@ function applyRole(role, { preset = true } = {}) {
 }
 applyRole(meta.role, { preset: false });
 $("dash-role").onclick = () => roleDialog.open(meta.role);
+const help = createHelpDialog({ api: window.studio }); // Help → User Guide…: the chapters of docs/user with a search
 const guideDialog = createGuideDialog({ onDone: (a) => dashboard.fill(buildGuidePrompt(a), guideTemplate(a.type).template) }); // the request lands in the message field; nothing is sent
 $("dash-guide").onclick = () => guideDialog.open();
 const imageGenDialog = createImageGenDialog({ toast });

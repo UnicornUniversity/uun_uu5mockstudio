@@ -14,6 +14,7 @@ The renderer calls `window.studio.<function>(…)` (`preload.cjs`), which does `
 | `pluginsCheck` / `pluginsLater` / `pluginsUpdate` (`plugins:*`) | check updates (`force?`), postpone, update (`ids`) |
 | `checkUpdates` / `installUpdate` / `selfInstallUpdate` / `updateLater` / `openUpdate` (`update:*`) | GitHub releases: check, open the installer, install by itself (macOS), postpone, open the page |
 | `tourDone` (`tour:done`) | the welcome tour was shown |
+| `helpDocs` (`help:docs`) | `[{ file, text }]`: the Markdown files of `docs/user` (from `app.getAppPath()`; packed by `files` in `electron-builder.config.cjs`) |
 | `openExternal` (`open:external`), `docsOpen` (`docs:open`) | open a URL in the browser (only allowed hosts) |
 
 ### Templates
@@ -79,6 +80,27 @@ All take the **file name** of the screen; `ordinals` is the chain of ordinals (`
 | `iconCatalog` (`icons:catalog`), `uuBml` (`icons:bml`) | icon catalogs |
 | `exportHtml(file)`, `exportImage(file, format)`, `iconsMdi()` (the MDI catalog), `exportText(name, text)`, `copyText(text)`, `copyOut(kind, file)` (Copy of the Share menu: `png` image, `html` source, `zip` file), `exportZip`, `shareMail(kind, file)`, `dragPrepare(kind, file)`, `dragStart(path)` | export, share, native drag of a prepared file |
 | `cdnStatus`, `cdnSetOffline(v)`, `cdnClear`, `cdnWarmup` (`cdn:*`) | the CDN cache; progress arrives as `cdn:progress` |
+
+### Existing components and handoff
+
+See [15](15-existing-components.md). `screen` is the file name of a screen; without it the only baseline is used.
+
+| Function (channel) | Arguments → result |
+| --- | --- |
+| `repoRecent`, `repoPick`, `repoFilesAt(path, q)` (`repo:*`) | a repository before a project exists (the dashboard's Start from an existing component) |
+| `componentStart(file, { mode, name?, description? })` (`component:start`) | reads the component, saves the baseline (`mode: "extend"`) or reference (`"new"`) plan → `{ mode, name, screen, plan, files, nodes, brief }` |
+| `componentOrigin()` | `{ kind: "baseline", components: [{ name, file, plan, screens }] }`, `{ kind: "reference", name, ref, file, plan }` or `null` |
+| `componentBaseline(screen)`, `componentFocus(screen)` | the baseline of a screen `{ slug, file, name, tree }`; the root names its component tree starts at |
+| `componentReread(screen)` | reads the screen's component again into its plan → `{ slug, file, name, tree, files, nodes }` |
+| `componentUpdate(screen)` | Update from code → `{ upToDate: true, file, name }` or `{ slug, file, name, brief, changes, libs, additions, known }` |
+| `componentSynced(slug)` | the agent has done the update: the new reading becomes the starting point, one undo step → `{ ok, file }` |
+| `componentExceptions(files)` | `[{ file, origin, lines }]`: library components that differ from the code |
+| `handoffInfo(planSlug, only)`, `handoffCreate({ planSlug, branch, base, only })` (`handoff:*`) | the dialog's data; makes the package and the branch (`planSlug` may be `@screens` or `@redesign:<slug>`) |
+| `handoffSaveSpec(planSlug, name, spec)` | the choice and fields of one component (into the plan's tree or `.studio/links.json`) |
+| `handoffFetch`, `handoffBaseStatus(base)`, `handoffBranchInfo(branch)` | the base branch: fetch, behind its remote, an existing handoff branch |
+| `handoffWorkspace(branch, slug, prompt)`, `handoffWorkingCopy(branch, prompt)`, `handoffSwitch(branch, prompt)` | where to work: a worktree next to the repository, the state of the working copy, switching it to the branch; each with the `claude` / `codex` commands |
+| `handoffTools()` | the tools found on this computer `{ vscode, vscodeClaude, vscodeCodex, claudeApp, codexApp, claudeCli, codexCli, tabs }` |
+| `handoffOpenEditor(folder)`, `handoffReveal(folder)` | open the folder in VS Code / the file manager |
 
 ## Events (main → renderer)
 

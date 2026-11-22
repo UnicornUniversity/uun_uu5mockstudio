@@ -7,3 +7,6 @@ dist/
 # demo recordings
 *.mp4
 demo-output/
+
+# native modules are built by scripts/build-native.mjs
+native/*/build/

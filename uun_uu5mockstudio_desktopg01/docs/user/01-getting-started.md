@@ -28,7 +28,7 @@ On the first run a **setup dialog** checks what is missing and offers to fix it 
 2. Signed in? The dialog opens the sign-in of Claude Code.
 3. Plugins installed and up to date? The dialog installs or updates them. Plugin updates are offered, never applied silently.
 
-Then the app asks for your **role** (what you will design; it sets where the app starts, see [Your role](09-appearance-and-settings.md#your-role)). Then it shows the **dashboard** (see [Projects, screens and the canvas](02-projects-screens-canvas.md#the-dashboard)) and a short **welcome tour** (twelve cards: describing a screen, the chat, annotating, Plan mode, the sitemap, keeping requests small and cheap (context size, Eco), the canvas (variants, flow, notes, copying screens), editing components, frames from a real page, project memory, Plus4U documents (publish, upload and download), sharing; the simple view leaves out the Plan and frame cards). It opens only the first time, and once more after an update that adds new cards; **Help → Welcome Tour…** shows it again. **Esc** closes any dialog.
+Then the app asks for your **role** (what you will design; it sets where the app starts, see [Your role](09-appearance-and-settings.md#your-role)). Then it shows the **dashboard** (see [Projects, screens and the canvas](02-projects-screens-canvas.md#the-dashboard)) and a short **welcome tour** (thirteen cards: describing a screen, the chat, annotating, Plan mode, the sitemap, keeping requests small and cheap (context size, Eco), the canvas (variants, flow, notes, copying screens), editing components, frames from a real page, project memory, from your code and back (start from an existing component, Update from code, hand off), Plus4U documents (publish, upload and download), sharing; the simple view leaves out the Plan, frame and code cards). It opens only the first time, and once more after an update that adds new cards; **Help → Welcome Tour…** shows it again. **Esc** closes any dialog.
 
 ## Your first screen
 
@@ -37,3 +37,9 @@ Then the app asks for your **role** (what you will design; it sets where the app
 3. Ask for changes in the same chat, or click the target button and pick a component in the screen to talk about exactly that one ([the chat](03-chat-and-agent.md)).
 
 Next: [Projects, screens and the canvas](02-projects-screens-canvas.md).
+
+## The user guide in the app
+
+This guide is also inside the app: **Help → User Guide…** (⇧⌘/). On the left are the chapters (the open one lists its sections) and a **search field**: type a few words and the sections that contain all of them are listed, best first, each with a piece of its text. A click opens the section with the words marked. Common words like *from* or *the* are skipped. Links between the chapters open in the same window and **←** goes back. **⌘F** jumps to the search field. In the search field, **Esc** clears it; anywhere else, Esc closes the guide.
+
+On macOS the guide is also in the **search field of the Help menu**: type a few words and the sections of the guide are listed under the menu items (as *Update from code — Export and share*). Pick one and the guide opens at that section; **Show All Help Topics** opens the guide with the words in its search.

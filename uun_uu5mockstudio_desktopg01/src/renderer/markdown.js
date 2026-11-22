@@ -29,8 +29,10 @@ export function markdown(src) {
  * tables, quotes and rules, and `[[screen.html]]` links that focus a screen. Everything is HTML-escaped first, like `markdown()`.
  * `known(file)` says whether a screen exists (a link to a missing one is shown plain).
  */
-export function markdownDoc(src, { known = () => true } = {}) {
-  const inl = (s) => inline(s).replace(/\[\[([\w.-]+\.html)\]\]/g, (_m, f) => (known(f) ? `<a data-screen="${f}">${f.replace(/\.html$/, "")}</a>` : `<code>${f}</code>`));
+export function markdownDoc(src, { known = () => true, docLinks = false } = {}) {
+  const inl0 = (s) => inline(s).replace(/\[\[([\w.-]+\.html)\]\]/g, (_m, f) => (known(f) ? `<a data-screen="${f}">${f.replace(/\.html$/, "")}</a>` : `<code>${f}</code>`));
+  // `docLinks`: a link to another Markdown file or to a heading (`[text](08-export.md#hand-off)`, `[text](#notes)`) of the user guide
+  const inl = !docLinks ? inl0 : (s) => inl0(s).replace(/\[([^\]]+)\]\(([\w.-]+\.md)?(?:#([\w-]+))?\)/g, (m, t, f, a) => (f || a ? `<a data-doc="${f ?? ""}" data-anchor="${a ?? ""}">${t}</a>` : m));
   const out = [];
   const parts = String(src ?? "").split(/```[^\n]*\n([\s\S]*?)(?:```|$)/);
   parts.forEach((part, i) => {

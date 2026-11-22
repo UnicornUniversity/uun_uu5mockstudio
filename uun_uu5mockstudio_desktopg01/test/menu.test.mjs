@@ -132,7 +132,7 @@ test("the setups moved into Settings are not in Help, View or the app menu any m
   for (const p of ["darwin", "win32"]) {
     for (const moved of ["Your Role…", "Claude Code & Plugins…", "Codex & Plugins…", "uuAiChat MCP Server…", "Picture Generation…", "Appearance", "Offline Use"]) assert.ok(!labels(p).includes(moved), `${moved} (${p})`);
   }
-  assert.deepEqual(find(buildMenuTemplate({ platform: "darwin" }), "Help").submenu.map((i) => i.label).filter(Boolean), ["Welcome Tour…", "Check for Updates…"]);
+  assert.deepEqual(find(buildMenuTemplate({ platform: "darwin" }), "Help").submenu.map((i) => i.label).filter(Boolean), ["User Guide…", "Welcome Tour…", "Check for Updates…"]);
 });
 
 test("Screen has no own Undo / Redo (Edit does it) and offers Use This Variant only for a screen with variants", () => {

@@ -7,6 +7,7 @@ module.exports = {
   copyright: "uu5Mock Studio",
   directories: { output: "dist", buildResources: "build" },
   asar: true,
+  asarUnpack: ["native/**/*.node"], // a native module cannot be loaded from inside the asar archive
   electronLanguages: ["en", "cs"],
   artifactName: "uu5Mock-Studio-${version}-${arch}.${ext}",
   // the license texts travel with every build (Contents/Resources on macOS)
@@ -14,6 +15,8 @@ module.exports = {
   files: [
     "src/**/*",
     "package.json",
+    "docs/user/*.md", // the user guide shown in the app (Help → User Guide…)
+    "native/*/build/*.node", // native modules (macOS: the guide in the Help menu search, scripts/build-native.mjs)
     // The Agent SDK ships a ~240 MB native `claude` per platform. This app drives the user's own Claude Code
     // (pathToClaudeCodeExecutable), so those binaries are never used.
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",

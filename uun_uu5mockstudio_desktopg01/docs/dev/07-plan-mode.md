@@ -68,3 +68,5 @@ Edges go **from the child up to the parent** (arrow head at the parent); a small
 ## The component tree of an existing screen
 
 `structureDialog.js` shows the tree read by `jsx:structure` in the same diagram. Each drag is logged as an op `{ ordinal, target, position, name, targetName }` (ordinals of the nodes). **Regenerate**: `jsx:moves` applies the safe ops to the file (and records an undo step) and returns `{ applied, failed, structure }`; the renderer then shows the **preview bar**: the screen on the canvas is the preview, **Undo** calls `screen:undo`, **Keep** keeps it and, if some ops failed, sends `regenerateMessage({ file, original: <structure after the safe moves>, tree, notes, part })` to the agent (Agent mode). See [05](05-screen-source.md#moves).
+
+For a screen made from an existing component the dialog first shows the **Real structure**: the tree read from the code (the baseline plan) with the screen's new parts in their place (`realStructure` in `planTree.js`). How the baseline is read and which component a screen belongs to is in [15](15-existing-components.md).

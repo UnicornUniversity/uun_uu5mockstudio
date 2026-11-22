@@ -1878,3 +1878,35 @@ body.docview-on :is(#selbar,#selmenu){display:none!important} /* the bar of the 
 #insp-desc.long{cursor:pointer}#insp-desc.long:not(.open)::after{content:"Show more";display:block;color:var(--acc);margin-top:2px}
 
 .hod-tabs[hidden]{display:none}
+
+/* Help → User Guide… (helpDialog.js): contents or search results on the left, the chapter on the right */
+#helpbox{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:60}#helpbox[hidden]{display:none}
+#helpbox .card{width:min(1040px,94vw);height:min(760px,88vh);background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden}
+#helpbox .dlg-head{display:flex;align-items:center;gap:8px;padding:12px 14px 10px 16px;border-bottom:1px solid var(--line)}
+#helpbox h2{margin:0;font-size:16px;font-weight:600;flex:1}
+#helpbox .hp-back{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:none;color:var(--fg);cursor:pointer;font-size:15px;line-height:1}
+#helpbox .hp-back:disabled{opacity:.35;cursor:default}
+#helpbox .hp-main{flex:1;min-height:0;display:flex}
+#helpbox .hp-side{width:280px;flex:none;display:flex;flex-direction:column;gap:8px;padding:12px;border-right:1px solid var(--line);min-height:0}
+#helpbox .hp-q{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:13px}
+#helpbox .hp-q:focus{outline:2px solid var(--acc);outline-offset:-1px}
+#helpbox .hp-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:1px}
+#helpbox .hp-list button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--fg);font:inherit;cursor:pointer;border-radius:7px}
+#helpbox .hp-list button:hover{background:var(--code)}
+#helpbox .hp-ch{padding:6px 9px;font-size:13px}
+#helpbox .hp-ch.on{background:var(--code);font-weight:600}
+#helpbox .hp-sec{padding:4px 9px 4px 22px;font-size:12px;color:var(--mute)}
+#helpbox .hp-res{display:flex!important;flex-direction:column;gap:2px;padding:7px 9px;font-size:12px}
+#helpbox .hp-res b{font-size:13px;font-weight:600}#helpbox .hp-res small{font-size:11px}#helpbox .hp-res span{color:var(--mute);line-height:1.4}
+#helpbox .hp-count,#helpbox .hp-none{margin:2px 4px 6px;font-size:12px}
+#helpbox .hp-doc{flex:1;min-width:0;overflow:auto;padding:18px 28px 40px;font-size:14px;line-height:1.6;user-select:text;outline:none}
+#helpbox .hp-doc h1{font-size:22px;margin:.1em 0 .6em}#helpbox .hp-doc h2{font-size:18px;margin:1.3em 0 .4em}#helpbox .hp-doc h3{font-size:15px;margin:1.1em 0 .3em}#helpbox .hp-doc h4{font-size:13px;margin:1em 0 .3em;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+#helpbox .hp-doc :is(h1,h2,h3,h4){scroll-margin-top:12px}
+#helpbox .hp-doc p,#helpbox .hp-doc li{max-width:78ch}
+#helpbox .hp-doc table{border-collapse:collapse;margin:.6em 0;font-size:13px}#helpbox .hp-doc th,#helpbox .hp-doc td{border:1px solid var(--line);padding:4px 9px;text-align:left;vertical-align:top}#helpbox .hp-doc th{background:var(--code)}
+#helpbox .hp-doc code{background:var(--code);padding:1px 4px;border-radius:4px;font:12px ui-monospace,Menlo,monospace}
+#helpbox .hp-doc pre{background:var(--pre);padding:10px 12px;border-radius:8px;overflow:auto}#helpbox .hp-doc pre code{background:none;padding:0}
+#helpbox .hp-doc blockquote{margin:.5em 0;padding:2px 12px;border-left:3px solid var(--line);color:var(--mute)}
+#helpbox .hp-doc a{color:var(--acc);cursor:pointer;text-decoration:underline}
+#helpbox .hp-doc mark{background:rgba(255,200,0,.35);color:inherit;border-radius:2px}
+@media (max-width:720px){#helpbox .hp-side{width:200px}}

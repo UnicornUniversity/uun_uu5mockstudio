@@ -70,6 +70,7 @@ import { buildMenuTemplate } from "./menu.mjs";
 import { tagHtml, structureOf, structureOutline, moveElements, insertElement, removeElements, duplicateElements, editText, changeItems, describeElement, describeItem, elementNames, setProp, removeProp, setItemProp, removeItemProp, setBranch, setItemBranch, describeList, addItem, removeItem, moveItem, duplicateItem, replaceItem, setText } from "./jsxSource.mjs";
 import { createDocs, describeComponents } from "./uu5Docs.mjs";
 import { isRole } from "../renderer/role.js";
+import { installHelpSearch } from "./helpSearch.mjs";
 import { snippetFor, CORE_IMPORTS } from "./componentSnippets.mjs";
 import { loadIcons } from "./uuGdsIcons.mjs";
 import { loadMdi } from "./mdiIcons.mjs";
@@ -139,6 +140,11 @@ app.whenReady().then(async () => {
   });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; }); // links go to the system browser, never into a new app window
   const emit = (channel, payload) => !win.isDestroyed() && win.webContents.send(channel, payload);
+  // the user guide in the search field of the macOS Help menu: a Help Topic picked there opens the guide at that section
+  try {
+    const r = installHelpSearch({ appPath: app.getAppPath(), onAction: (action) => { if (win.isDestroyed()) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); emit("menu:action", action); } });
+    if (r !== true && process.platform === "darwin") console.warn(`Help search: ${r}`);
+  } catch (e) { console.warn(`Help search: ${e.message}`); }
   // Application menu. Custom items just tell the renderer what to do; it owns the dialogs and the UI state.
   // Glass Effect (macOS): translucent blurred panels. The choice is kept in the app state; macOS 'Reduce transparency' switches the effect off.
   let glass = process.platform === "darwin" && Boolean(loadApp().glass);
@@ -1721,6 +1727,12 @@ app.whenReady().then(async () => {
       return { error: e?.message ?? "The update failed." };
     } finally { fs.rmSync(work, { recursive: true, force: true }); }
   });
+  // the user guide (Help → User Guide…): the Markdown chapters of docs/user, packed with the app (electron-builder.config.cjs `files`)
+  ipcMain.handle("help:docs", guard(async () => {
+    const dir = path.join(app.getAppPath(), "docs", "user");
+    const names = (await fs.promises.readdir(dir)).filter((n) => /^[\w.-]+\.md$/.test(n));
+    return Promise.all(names.map(async (file) => ({ file, text: await fs.promises.readFile(path.join(dir, file), "utf8") })));
+  }));
   // the welcome tour is shown on the first run only (STUDIO_NO_TOUR: tests and the demo recorder start from a fresh profile)
   ipcMain.handle("tour:done", () => void saveApp({ tourSeen: TOUR_VERSION })); // the version seen: a newer tour opens once more (tourVersion.mjs)
   // the role of the user (role.js): chosen once, changeable in Help; an unknown value is refused

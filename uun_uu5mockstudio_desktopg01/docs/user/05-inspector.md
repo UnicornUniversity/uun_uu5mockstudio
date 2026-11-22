@@ -13,7 +13,7 @@ Click a uu5 component or a plain HTML element (a tile made of a `<div>`) in the 
 - the **breadcrumb**: the components it is nested in, for example `AlertBus › ContentContainer › Grid › Box`. **Click any of them to select that one instead**; the frame on the page moves to it. This is how you select a `Grid` that is covered by its items.
 - the name of the component, its text and its documentation (with a link), and the **props written in the file** as controls.
 - **Add prop…** to add a prop the component supports.
-- **Use in chat**: puts a link to the component into your message (see [the chat](03-chat-and-agent.md#picking-components-of-a-screen)).
+- **Use in chat**: puts a link to the component into your message (see [the chat](03-chat-and-agent.md#the-edit-mode)).
 - **Show component tree**: the structure inside the component ([chapter 6](06-component-tree.md)).
 
 **Several components at once:** Shift + click marks more of them (orange frames, up to eight), and **Use N in chat** takes them all.
