@@ -1782,6 +1782,9 @@ body[data-noproject] #projpick{display:none}
 /* the bar over a screen can be dragged up into the title bar of the window, which is a drag region of the window: the bar, its menu and the layer that
    follows the pointer while it moves must not be part of it, or the bar cannot be grabbed there any more */
 #selbar,#selmenu,.sb-cover{-webkit-app-region:no-drag}
+/* present mode lies over the whole window, but the drag regions of the window under it (the header, the bar) still take the mouse in Electron: a click on the top
+   of the presented screen (a logo that links to another screen) moved the window instead of reaching the page. While presenting there is no drag region. */
+body[data-fs] .drag,#fs,#fs *{-webkit-app-region:no-drag}
 /* In the glass layout the top bar is a layer over the whole width of the canvas (z-index 25): a bar dragged up under it was visible but every click hit the
    transparent bar instead. The bar over a screen and its menu lie above it, so that they can be grabbed (and clicked) wherever they are put. */
 #selbar{z-index:26}

@@ -17,8 +17,13 @@ window.addEventListener("wheel", (e) => {
 window.addEventListener("keydown", (e) => {
   if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") || ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !/^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName || ""))) { e.preventDefault(); ipcRenderer.sendToHost("studio-fullscreen"); }
 }, true);
-// Esc leaves present mode unless the mockup used it itself (a modal closes, a menu shuts: it calls preventDefault).
-window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.defaultPrevented) ipcRenderer.sendToHost("studio-escape"); });
+// Esc leaves present mode unless the mockup used it itself: a page that calls preventDefault, or a layer that was open when the key came (a uu5 Modal
+// is a native <dialog>: the browser closes it on Esc without preventDefault, so the open layer is looked up before the page handles the key).
+const LAYERS = "dialog[open],[aria-modal='true'],[role='dialog'],[role='alertdialog'],[role='menu'],[role='listbox']";
+const layerOpen = () => { try { if (document.querySelector(":popover-open")) return true; } catch { /* no popover API */ } return [...document.querySelectorAll(LAYERS)].some((el) => el.getClientRects().length > 0); };
+let escUsed = false;
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") escUsed = layerOpen(); }, true);
+window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.defaultPrevented && !escUsed) ipcRenderer.sendToHost("studio-escape"); });
 // A right click inside a screen opens the app's menu (add a note here, ...): the page cannot show it, the canvas can.
 window.addEventListener("contextmenu", (e) => {
   // macOS turns Ctrl + click into a context menu (with the left button): in the Edit mode that click picks one copy of a component (the inspector handles it)
