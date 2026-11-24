@@ -57,6 +57,32 @@ body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,
   border:1px solid var(--glass-edge)!important;box-shadow:var(--glass-shadow-md),0 0 0 .5px var(--glass-hairline),inset 0 1px 0 var(--glass-hi)!important}
 body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#modemenu,#devmenu,.pm-pop,.rc-sugg,#ecotip){border-radius:14px!important}
 body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub,#projmenu,#histmenu,#branchmenu,#selmenu,#mentions,#devmenu,.pm-pop,.rc-sugg) :is(button,.item,[role=menuitem]):hover{background:var(--glass-hover)}
+/* context menu: near-white frosted glass with a faint cool tint at the top, soft grey hover / open-parent state, light separators.
+   The menu's glass is painted by its ::before, not by the menu itself: a backdrop-filter on the menu would make it the backdrop root
+   of the submenu inside it, and the submenu would then blur only the menu, not the screen behind it. */
+body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub){
+  border:1px solid rgba(255,255,255,.9)!important;
+  box-shadow:0 14px 40px rgba(25,35,80,.16),0 0 0 .5px rgba(20,30,60,.14),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  color:#1d1d1f;padding:6px!important;border-radius:18px!important}
+body[data-glass] #ctxmenu{background:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
+body[data-glass] #ctxmenu::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgba(243,246,252,.92),rgba(251,251,254,.95) 55%,rgba(253,253,255,.96));
+  -webkit-backdrop-filter:blur(40px) saturate(150%);backdrop-filter:blur(40px) saturate(150%)}
+/* the submenu: the same material as the menu. Its backdrop blur does not always reach the screen (the menu's layer is in the way),
+   so it is a little more opaque, then it looks the same as the menu whether the blur works or not */
+body[data-glass] #ctxmenu .ctx-sub{z-index:1;
+  background:linear-gradient(180deg,rgba(245,247,252,.97),rgba(251,251,254,.98) 55%,rgba(253,253,255,.985))!important;
+  -webkit-backdrop-filter:blur(40px) saturate(150%);backdrop-filter:blur(40px) saturate(150%)}
+:root[data-theme="dark"] body[data-glass] :is(#ctxmenu,#ctxmenu .ctx-sub){color:#ececf1;
+  border-color:rgba(255,255,255,.14)!important;box-shadow:0 14px 40px rgba(0,0,0,.5),0 0 0 .5px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1)!important}
+:root[data-theme="dark"] body[data-glass] #ctxmenu::before{background:linear-gradient(180deg,rgba(50,54,68,.92),rgba(40,42,52,.94))}
+:root[data-theme="dark"] body[data-glass] #ctxmenu .ctx-sub{background:linear-gradient(180deg,rgba(50,54,68,.97),rgba(40,42,52,.98))!important}
+body[data-glass] #ctxmenu button{color:inherit;border-radius:10px;padding:8px 12px}
+body[data-glass] #ctxmenu button:hover,body[data-glass] #ctxmenu .ctx-parent.on{background:rgba(20,30,60,.06)}
+:root[data-theme="dark"] body[data-glass] #ctxmenu button:hover,:root[data-theme="dark"] body[data-glass] #ctxmenu .ctx-parent.on{background:rgba(255,255,255,.08)}
+body[data-glass] #ctxmenu hr{border-top-color:rgba(20,30,60,.1);margin:5px 6px;width:auto}
+:root[data-theme="dark"] body[data-glass] #ctxmenu hr{border-top-color:rgba(255,255,255,.09)}
+body[data-glass] #ctxmenu button.danger{color:#ec7880}
 body[data-glass] #histmenu .row:hover{background:var(--glass-hover)}body[data-glass] #histmenu :is(.open,.del):hover{background:none}
 body[data-glass] #toast{border-radius:999px!important}
 

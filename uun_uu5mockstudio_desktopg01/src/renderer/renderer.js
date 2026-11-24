@@ -2027,7 +2027,7 @@ function fillCtxMenu(m, items) {
       sub.append(...what.map((x) => { const c = row(x); if (c.tagName === "BUTTON") c.onmouseenter = null; return c; }));
       m.append(sub); open = { sub, btn: b }; b.classList.add("on");
       const r = b.getBoundingClientRect(), mr = m.getBoundingClientRect(), w = sub.offsetWidth, h = sub.offsetHeight;
-      sub.style.left = (mr.right + w + 4 <= innerWidth ? mr.width - 6 : -w + 6) + "px";
+      sub.style.left = (mr.right + w + 6 <= innerWidth ? mr.width + 4 : -w - 4) + "px"; // a small gap: the two glass panels must not overlap
       sub.style.top = Math.max(-mr.top + 8, Math.min(r.top - mr.top - 5, innerHeight - mr.top - h - 8)) + "px";
     };
     b.onmouseenter = show;
