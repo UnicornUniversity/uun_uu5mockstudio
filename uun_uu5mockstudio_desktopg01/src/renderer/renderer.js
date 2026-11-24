@@ -2991,7 +2991,8 @@ $("prompt").addEventListener("paste", (e) => {
   if (files.length) { e.preventDefault(); addImages(files); return; }
   docCards.scan(e.clipboardData?.getData("text") ?? ""); // a link to a uuBookKit / uuManagementKit document stays in the text and gets a card
 });
-$("prompt").addEventListener("input", () => docCards.sync($("prompt").value)); // a link deleted from the text takes its card away
+$("prompt").addEventListener("input", () => { const v = $("prompt").value; docCards.sync(v); docCards.typed(v); }); // a link deleted from the text takes its card away, a typed one gets its card
+$("prompt").addEventListener("blur", () => docCards.scan($("prompt").value)); // a link typed at the end of the text is finished once the user leaves the field
 $("attach").onclick = () => $("attachfile").click();
 $("attachfile").onchange = (e) => { addImages(e.target.files); e.target.value = ""; };
 {

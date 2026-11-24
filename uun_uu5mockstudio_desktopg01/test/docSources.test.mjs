@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { parseDocUrl, parseLink, webSnapshot, findDocUrls, loadArgs, snapshotName, serverUrl, readTerritory, writeTerritory, presetsFor, toSnapshot, uu5Text, extractSections, agentTools, BUILTIN_PRESETS } from "../src/main/docSources.mjs";
+import { parseDocUrl, parseLink, webSnapshot, findDocUrls, findTypedUrls, loadArgs, snapshotName, serverUrl, readTerritory, writeTerritory, presetsFor, toSnapshot, uu5Text, extractSections, agentTools, BUILTIN_PRESETS } from "../src/main/docSources.mjs";
 
 const BOOK = "https://uuapp.plus4u.net/uu-bookkit-maing01/0238a88bac124b3ca828835b57144ffa/book/page?code=39741830";
 const ECC = "https://uuapp.plus4u.net/uu-managementkit-maing02/091b197154354ec2975b249b5d10831f/document/ecc?oid=6578abcd1234ef5678901234";
@@ -325,4 +325,12 @@ test("pictures a web page held only in memory are kept as files and listed in it
   const snap = webSnapshot(parseLink("https://example.com/"), { title: "T", text: "x", files });
   assert.match(snap.markdown, /## Pictures \(downloaded, in \.studio\/sources\)[\s\S]*document_picture[\s\S]*\n- \S+web-[0-9a-f]{10}\.png — Jan Novák \(400×300\)\n/);
   assert.deepEqual(await saveBlobPictures(dir, undefined), []);
+});
+
+test("findTypedUrls takes only the typed links that are finished (something follows them)", () => {
+  assert.deepEqual(findTypedUrls("see https://exa"), []);
+  assert.deepEqual(findTypedUrls("see https://example.com/page"), []);
+  assert.deepEqual(findTypedUrls("see https://example.com/page ").map((d) => d.url), ["https://example.com/page"]);
+  assert.deepEqual(findTypedUrls("https://example.com/a\nand https://exa").map((d) => d.url), ["https://example.com/a"]);
+  assert.deepEqual(findTypedUrls(`${BOOK} and more`).map((d) => d.kind), ["bookkit"]);
 });

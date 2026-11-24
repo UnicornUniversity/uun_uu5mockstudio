@@ -2,9 +2,9 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { parseDocUrl, parseWebUrl, parseLink, findDocUrls } from "../renderer/docLinks.js";
+import { parseDocUrl, parseWebUrl, parseLink, findDocUrls, findTypedUrls } from "../renderer/docLinks.js";
 
-export { parseDocUrl, parseWebUrl, parseLink, findDocUrls };
+export { parseDocUrl, parseWebUrl, parseLink, findDocUrls, findTypedUrls };
 
 /**
  * Documents of Plus4U (a page of a uuBookKit book, an ECC document of uuManagementKit) as input for a mockup. They are read through the

@@ -55,5 +55,15 @@ export function findDocUrls(text) {
   return out;
 }
 
+/**
+ * The links of a text being typed that are finished: something follows them (a space, a new line, more text). A link still touching the end
+ * of the text may be half-typed (`https://exa`), so it waits until the user goes on, leaves the field or sends the message.
+ */
+export function findTypedUrls(text) {
+  const s = String(text ?? "");
+  const m = /https?:\/\/[^\s<>"'`)\]]*$/.exec(s);
+  return findDocUrls(m ? s.slice(0, m.index) : s);
+}
+
 /** The name of the kind of a parsed link, for the UI. */
 export const kindLabel = (kind) => (kind === "bookkit" ? "uuBookKit" : kind === "mkEcc" ? "uuManagementKit" : kind === "web" ? "Web page" : kind);

@@ -1,4 +1,4 @@
-import { findDocUrls, kindLabel } from "./docLinks.js";
+import { findDocUrls, findTypedUrls, kindLabel } from "./docLinks.js";
 import { markdown } from "./markdown.js";
 import { defaultChecked, pickOutline } from "./siteStructure.js";
 
@@ -65,6 +65,17 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
     }
     if (added) onChange();
     return added;
+  }
+
+  /**
+   * The text was typed (not pasted): a moment after the user stops typing, each finished link (something follows it) gets its card. A link at the
+   * very end of the text waits for a space, for leaving the field (`scan` on blur) or for sending.
+   */
+  let typedTimer = null;
+  function typed(text) {
+    clearTimeout(typedTimer);
+    if (!findTypedUrls(text).some((d) => !cards.some((c) => c.url === d.url))) return;
+    typedTimer = setTimeout(() => { typedTimer = null; scan(findTypedUrls(text).map((d) => d.url).join(" ")); }, 500);
   }
 
   const reloadWaiting = () => { for (const c of cards) if (c.state === "territory" || c.state === "error") load(c); };
@@ -142,6 +153,7 @@ export function createDocCards({ studio = window.studio, onChange = () => {}, to
 
   return {
     scan,
+    typed,
     sync,
     /** Appends the cards to the attachments box. */
     renderInto: (box) => { for (const c of cards) box.append(cardEl(c)); },

@@ -170,7 +170,8 @@ export function createDashboard({ api, docs, images, onPaint, toast = () => {}, 
     if (r?.path) { $("dash-path").textContent = r.path.split(/[\\/]/).filter(Boolean).pop() ?? r.path; $("dash-path").title = r.path; $("dash-change").disabled = Boolean(r.locked); }
   }
 
-  prompt.addEventListener("input", () => { docs?.sync(prompt.value); refreshSend(); }); // a link deleted from the text takes its card away
+  prompt.addEventListener("input", () => { docs?.sync(prompt.value); docs?.typed(prompt.value); refreshSend(); }); // a link deleted from the text takes its card away, a typed one gets its card
+  prompt.addEventListener("blur", () => docs?.scan(prompt.value)); // a link typed at the end of the text is finished once the user leaves the field
   prompt.addEventListener("paste", (e) => {
     const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
     if (files.length && images) { e.preventDefault(); images.add(files); return; } // a screenshot from the clipboard becomes an attachment
