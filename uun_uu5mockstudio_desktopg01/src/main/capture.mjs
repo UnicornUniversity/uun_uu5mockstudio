@@ -65,7 +65,8 @@ export async function captureScreen(wc, { format = "png", scale = 2, quality = 9
       format: fmt === "jpg" ? "jpeg" : "png", ...(fmt === "jpg" ? { quality } : {}), fromSurface: true, clip: { x: 0, ...clip, width, scale: k },
     })).data, "base64");
     const strips = slices(full, Math.max(200, view.height));
-    if (strips.length === 1 || !nativeImage) return shot({ y: 0, height: full }, format);
+    // awaited here: a bare `return shot(...)` let `finally` detach the debugger before the picture came ("target closed while handling command")
+    if (strips.length === 1 || !nativeImage) return await shot({ y: 0, height: full }, format);
     const parts = [];
     for (const s of strips) parts.push(nativeImage.createFromBuffer(await shot(s)));
     const pw = parts[0].getSize().width;

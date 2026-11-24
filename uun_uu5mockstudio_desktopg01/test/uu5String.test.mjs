@@ -143,6 +143,43 @@ test("descendant rules and inherited colours are resolved against the real DOM, 
   assert.deepEqual(tree.report.cssLost.sort(), [".hero h1:hover", ".lead"]);
 });
 
+test("with the real DOM the rules follow the cascade: specificity beats the order of the sheets, a reset does not win over `.hero h1`", () => {
+  const sels = new Set(["h1", ".hero h1", "a", ".chips a", ".gradtext"]);
+  const mk = (ok, computed = {}) => ({ computed, matches: (s) => ok.includes(s) });
+  const h1Dom = mk(["h1", ".hero h1"]), aDom = mk(["a", ".chips a"]);
+  const gDom = mk([".gradtext"], { backgroundImage: "linear-gradient(90deg, rgb(255, 255, 255), rgb(0, 183, 198))", backgroundPositionX: "0%" });
+  const root = rootOf(el("div", {}, el("h1", {}, "T"), el("a", { href: "#" }, "L"), el("span", { className: "gradtext" }, "G")));
+  const h1 = root.child.child, a = h1.sibling, g = a.sibling;
+  h1.stateNode = h1Dom; a.stateNode = aDom; g.stateNode = gDom;
+  const tree = collectUu5Tree({
+    rootFiber: root, computed: (d) => d.computed || {},
+    styleRules: [
+      { selector: ".hero h1", cssText: "margin: 0px 0px 20px; font-size: 40px;" },
+      { selector: ".chips a", cssText: "background: rgba(255, 255, 255, 0.1); color: white;" },
+      { selector: "h1", cssText: "font-size: 2em; margin: 0.67em 0px;" }, // a reset that comes later in the sheets
+      { selector: "a", cssText: "background-color: transparent;" },
+      // Chrome: `background: linear-gradient(…var(--x))` gives its longhands no value
+      { selector: ".gradtext", cssText: "background-image: ; background-position-x: ; background-clip: text; color: transparent;" },
+    ].filter((r) => sels.has(r.selector)),
+  });
+  const { text } = toUu5String(tree);
+  assert.match(text, /<h1 style='<uu5json\/>\{"margin":"0px 0px 20px","fontSize":"40px"\}'>T<\/h1>/);
+  assert.match(text, /<a href="#" style='<uu5json\/>\{"background":"rgba\(255, 255, 255, 0.1\)","color":"white"\}'>L<\/a>/); // the longhand of the reset is overridden by the shorthand: left out
+  assert.match(text, /"backgroundImage":"linear-gradient\(90deg, rgb\(255, 255, 255\), rgb\(0, 183, 198\)\)","backgroundClip":"text"/);
+  assert.doesNotMatch(text, /backgroundPositionX/); // initial values are not written
+});
+
+test("a library component that clones its children (Uu5Bricks.Background): the rendered element is found by its source mark", () => {
+  const Background = named("Uu5Bricks.Background");
+  const child = el("h1", { "data-uu5-src": "7" }, "Title");
+  const root = rootOf(el(Background, {}, child));
+  const h1 = root.child.child;
+  h1.memoizedProps = { ...child.props }; // the clone: other props object
+  h1.stateNode = { computed: {}, matches: (s) => s === ".hero h1" };
+  const tree = collectUu5Tree({ rootFiber: root, computed: (d) => d.computed, styleRules: [{ selector: ".hero h1", cssText: "font-size: 40px;" }] });
+  assert.match(toUu5String(tree).text, /<h1 style='<uu5json\/>\{"fontSize":"40px"\}'>Title<\/h1>/);
+});
+
 test("a component of the screen that is not rendered (an inactive tab) is called for its elements; one that needs hooks is reported", () => {
   const Item = named("Uu5Bricks.Tabs.Item");
   const Tab = function Tab(p) { return el("div", {}, el(Text, {}, p.title), el(Inner, {})); };
@@ -188,6 +225,17 @@ test("var(--…) in styles (class rules, inline, gradients) is written as its va
   assert.match(text, /radial-gradient\(circle at 80% 20%, #0057b8 0%, #000000 55%\)/);
   assert.match(text, /"fontFamily":"Inter, sans-serif"/);
   assert.match(text, /"color":"#fff"/);
+});
+
+test("var(--…) in the props of a component (a gradient, colours in an item list) is written as its value", () => {
+  const vars = { "--brand-blue": "#0057b8", "--brand-green": "#00b7c6" };
+  const Background = named("Uu5Bricks.Background"), Menu = named("Uu5Bricks.Menu");
+  const root = rootOf(el("div", {}, el(Background, { gradient: "radial-gradient(800px at 15% 0%, var(--brand-green) 0%, transparent 60%), var(--brand-blue)" }, "x"),
+    el(Menu, { itemList: [{ label: "A", style: { color: "var(--brand-blue)" } }] })), new Map());
+  const { text } = toUu5String(collectUu5Tree({ rootFiber: root, styleRules: [], varLookup: (n) => vars[n] ?? "" }));
+  assert.doesNotMatch(text, /var\(/);
+  assert.match(text, /gradient="radial-gradient\(800px at 15% 0%, #00b7c6 0%, transparent 60%\), #0057b8"/);
+  assert.match(text, /"color":"#0057b8"/);
 });
 
 test("a Card with a dark background becomes the Background (margin, radius) with its content padding in a div", () => {

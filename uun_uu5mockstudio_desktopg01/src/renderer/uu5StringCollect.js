@@ -41,25 +41,36 @@ export function collectUu5Tree(opts = {}) {
   };
   const root = findRoot();
   if (!root) return { error: "No React tree was found in the screen." };
-  const byProps = new Map(), all = [];
+  const byProps = new Map(), bySrc = new Map(), usedSrc = new Set(), all = [];
   (function index(f) {
     for (let n = f; n; n = n.sibling) {
       all.push(n);
       if (n.memoizedProps && typeof n.memoizedProps === "object" && !byProps.has(n.memoizedProps)) byProps.set(n.memoizedProps, n);
+      const src = n.memoizedProps && typeof n.memoizedProps === "object" ? n.memoizedProps[SRC] : undefined;
+      if (src !== undefined && src !== null) (bySrc.get(String(src)) || bySrc.set(String(src), []).get(String(src))).push(n);
       if (n.child) index(n.child);
     }
   })(root.child);
 
   // ---------- CSS classes of the page → style objects ----------
   const camel = (p) => (p.startsWith("--") ? p : p.replace(/^-ms-/, "ms-").replace(/-([a-z])/g, (m, c) => c.toUpperCase()));
-  /** Declarations of a rule; `important` (a Set), when given, gets the names of those written with `!important`. */
-  const declarations = (cssText, important) => {
+  /** Declarations of a rule; `important` (a Set), when given, gets the names of those written with `!important`. With `keepEmpty`, a longhand
+   *  left empty is kept as "" (a shorthand written with `var()`: Chrome gives its longhands no value); the computed value of the element fills it. */
+  const declarations = (cssText, important, keepEmpty = false) => {
     const out = {}; let depth = 0, cur = "";
-    const flush = () => { const i = cur.indexOf(":"); if (i > 0) { const k = cur.slice(0, i).trim(), raw = cur.slice(i + 1).trim(), v = raw.replace(/\s*!important\s*$/, "").trim(); if (k && v) { out[camel(k)] = v; if (important && v !== raw) important.add(camel(k)); } } cur = ""; };
+    const flush = () => { const i = cur.indexOf(":"); if (i > 0) { const k = cur.slice(0, i).trim(), raw = cur.slice(i + 1).trim(), v = raw.replace(/\s*!important\s*$/, "").trim(); if (k && v) { out[camel(k)] = v; if (important && v !== raw) important.add(camel(k)); } else if (k && !raw && keepEmpty) out[camel(k)] = ""; } cur = ""; };
     for (const ch of cssText) { if (ch === "(") depth++; else if (ch === ")") depth--; if (ch === ";" && depth === 0) flush(); else cur += ch; }
     flush(); return out;
   };
   const classRules = { plain: {}, important: {}, hover: {}, other: {} }; // class -> declarations (and which of them are !important); class -> `.name:hover` declarations; class -> selectors that cannot be inlined (descendants, …)
+  const ruleList = []; // every rule usable against a real element: { selector, style, important, spec, order }
+  /** Specificity [ids, classes / attributes / pseudo-classes, types] of one selector (good enough for the selectors of a mockup). */
+  const specOf = (sel) => {
+    const x = sel.replace(/:(not|is|where|has)\(/g, " (").replace(/"[^"]*"|'[^']*'/g, "");
+    return [(x.match(/#[\w-]+/g) || []).length, (x.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+/g) || []).length, (x.replace(/\[[^\]]*\]/g, "").match(/(^|[\s>+~(])[a-zA-Z][\w-]*|::[\w-]+/g) || []).length];
+  };
+  const SHORTHANDS = ["background", "margin", "padding", "font", "flex", "overflow", "inset", "transition", "animation", "gap", "outline"];
+  const bySpec = (a, b) => a.spec[0] - b.spec[0] || a.spec[1] - b.spec[1] || a.spec[2] - b.spec[2] || a.order - b.order;
   const matchable = []; // rules with a selector beyond `.name` that the real element can be tested against (`.hero h1`, `.grid > .card`)
   const DYNAMIC = /::|:(hover|focus|focus-within|focus-visible|active|visited|before|after|first-line|first-letter|placeholder)/;
   const mediaMatches = opts.mediaMatches || ((text) => { try { return matchMedia(text).matches; } catch { return false; } });
@@ -77,10 +88,10 @@ export function collectUu5Tree(opts = {}) {
   for (const r of rules) {
     for (const sel of String(r.selector).split(",").map((x) => x.trim())) {
       const m = sel.match(/^\.([\w-]+)$/);
-      if (m) { const imp = new Set(); mergeClass(m[1], declarations(r.cssText, imp), imp); continue; }
+      if (m) { const imp = new Set(); mergeClass(m[1], declarations(r.cssText, imp), imp); const imp2 = new Set(); ruleList.push({ selector: sel, style: declarations(r.cssText, imp2, true), important: imp2, spec: specOf(sel), order: ruleList.length }); continue; }
       const h = sel.match(/^\.([\w-]+):hover$/); // a hover style cannot be inlined or written into a uu5String; it is only counted
       if (h) { classRules.hover[h[1]] = Object.assign(classRules.hover[h[1]] || {}, declarations(r.cssText)); continue; }
-      if (!DYNAMIC.test(sel)) matchable.push({ selector: sel, style: declarations(r.cssText) });
+      if (!DYNAMIC.test(sel)) { const imp = new Set(); const x = { selector: sel, style: declarations(r.cssText, imp, true), important: imp, spec: specOf(sel), order: ruleList.length }; matchable.push(x); ruleList.push(x); }
       for (const c of sel.match(/\.[\w-]+/g) || []) (classRules.other[c.slice(1)] = classRules.other[c.slice(1)] || []).push(sel);
     }
   }
@@ -97,10 +108,29 @@ export function collectUu5Tree(opts = {}) {
       }
     }
     if (!hasDom(dom)) return style;
-    const matched = {};
-    for (const r of matchable) { let ok = false; try { ok = dom.matches(r.selector); } catch { /* a selector this engine does not know */ } if (ok) Object.assign(matched, r.style); }
-    if (Object.keys(matched).length) { style = Object.assign(style || {}, matched); report.cssClasses++; }
+    // with the real element: every rule that matches it (its classes too), in the order of the cascade (specificity, then the order of the
+    // sheets; !important over both), so that a reset like `h1 { font-size: 2em }` does not win over `.hero h1`
+    const hits = ruleList.filter((r) => { try { return dom.matches(r.selector); } catch { return false; } }).sort(bySpec);
+    if (hits.length) {
+      const st = {}, imp = new Set();
+      for (const r of hits) for (const k of Object.keys(r.style)) {
+        if (imp.has(k) && !r.important.has(k)) continue;
+        delete st[k]; st[k] = r.style[k]; // re-inserted: a later longhand stays after the shorthand it overrides
+        if (r.important.has(k)) imp.add(k);
+      }
+      // a longhand followed by its shorthand (`a { background-color }` then `.chips a { background }`) is overridden by it: left out
+      const keys = Object.keys(st);
+      keys.forEach((k, i) => { if (keys.slice(i + 1).some((K) => SHORTHANDS.includes(K) && k.startsWith(K) && /^[A-Z]/.test(k.slice(K.length)))) delete st[k]; });
+      style = st; report.cssClasses++;
+    }
     let cs = null; try { cs = getComputed(dom); } catch { /* detached */ }
+    const INITIAL = /^(0%|0px|auto|repeat|scroll|padding-box|border-box|none|normal|rgba\(0, 0, 0, 0\))$/;
+    for (const k of Object.keys(style || {})) {
+      if (style[k] !== "") continue;
+      const v = cs && cs[k]; // a longhand of a shorthand with var(): its computed value, unless it is the initial one
+      if (v && !INITIAL.test(v)) style[k] = v; else delete style[k];
+    }
+    if (style && !Object.keys(style).length) style = null;
     if (cs) {
       for (const k of Object.keys(style || {})) if (typeof style[k] === "string" && style[k].includes("var(") && cs[k]) style[k] = cs[k];
       const parent = dom.parentElement;
@@ -156,6 +186,13 @@ export function collectUu5Tree(opts = {}) {
     const out = v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (m, name, fallback) => varLookup(name, dom) || (fallback !== undefined ? fallback.trim() : m));
     return out === v ? v : resolveVars(out, dom, depth + 1);
   };
+  /** The same for any prop value (a `gradient` of Uu5Bricks.Background, a colour in an item list, …): strings inside JSON data too, never the JSX in `$nodes`. */
+  const resolveDeep = (v, dom) => {
+    if (typeof v === "string") return resolveVars(v, dom);
+    if (Array.isArray(v)) return v.map((x) => resolveDeep(x, dom));
+    if (v && typeof v === "object" && !v.$nodes) { const o = {}; for (const k of Object.keys(v)) o[k] = resolveDeep(v[k], dom); return o; }
+    return v;
+  };
   const withStyle = (props, classStyle, out, dom) => {
     const own = props.style && typeof props.style === "object" && !Array.isArray(props.style) ? toData(props.style, "style", 0) : null;
     if (classStyle || own) {
@@ -187,7 +224,8 @@ export function collectUu5Tree(opts = {}) {
       const v = props[k];
       if (k === "children" || k === "className" || k === "style" || k === "key" || k === "ref" || k === SRC || k === "dangerouslySetInnerHTML") continue;
       if (typeof v === "function") { if (/^on[A-Z]/.test(k)) bump(report.fn, k); continue; }
-      if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") p[k] = v;
+      if (typeof v === "string") p[k] = resolveVars(v, dom);
+      else if ((typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") p[k] = v;
     }
     withStyle(props, styleOfClasses(props.className, dom), p, dom);
     if (hoverOf(props.className)) report.hover++; // a uu5String cannot hold :hover: only counted, for the note
@@ -203,7 +241,7 @@ export function collectUu5Tree(opts = {}) {
       if (k === "children" || k === "key" || k === "ref" || k === SRC || k === "className" || k === "style") continue;
       if (k in defaults && Object.is(defaults[k], props[k])) continue; // filled in by the component, not written by the author
       const e = encode(props[k], k);
-      if (e !== undefined) p[k] = e;
+      if (e !== undefined) p[k] = resolveDeep(e);
     }
     withStyle(props, styleOfClasses(props.className), p);
     for (const c of classesOf(props.className)) if (classRules.hover[c]) report.cssLost["." + c + ":hover"] = true; // a library component keeps its own hover; the one of the class is lost
@@ -226,7 +264,13 @@ export function collectUu5Tree(opts = {}) {
   function childFibers(f) { const list = []; for (let c = f.child; c; c = c.sibling) push(list, ofFiber(c)); return list; }
   let depth = 0;
   function ofElement(el) {
-    const f = byProps.get(el.props);
+    let f = byProps.get(el.props);
+    // a library component may clone its children (Uu5Bricks.Background does it to those with content): the clone has new props, so the
+    // rendered fiber is found by the source mark of the element instead (in the order of rendering: an element inside `.map` has one per item)
+    if (!f && el.props && el.props[SRC] !== undefined && el.props[SRC] !== null) {
+      f = (bySrc.get(String(el.props[SRC])) || []).find((x) => x.type === el.type && !usedSrc.has(x));
+      if (f) usedSrc.add(f);
+    }
     if (f) return ofFiber(f);
     const t = el.type;
     if (t === FRAG) return ofChildren(el.props.children);

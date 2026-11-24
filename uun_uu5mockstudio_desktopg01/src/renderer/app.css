@@ -1569,6 +1569,8 @@ body[data-glass] #docview .sm-node.ns:not(#a){background:color-mix(in srgb,var(-
 
 /* Share menu: Publish as a split button (publish again | choose another page or document) and where it goes */
 :is(#selmenu,.fmt-panel) .fmt-split{display:flex;min-width:0}
+/* with Publish the row keeps its width (that of the tiles) but Publish gets more of it: icon, text and the caret did not fit 92 px */
+:is(#selmenu,.fmt-panel) .fmt-acts:has(.fmt-split){grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.5fr)}
 :is(#selmenu,.fmt-panel) .fmt-split>button:first-child{flex:1;min-width:0}
 :is(#selmenu,.fmt-panel) .fmt-split:has(.fmt-caret)>button:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
 :is(#selmenu,.fmt-panel) .fmt-split .fmt-caret{width:24px;flex:none;padding:0;display:grid;place-items:center;border-top-left-radius:0;border-bottom-left-radius:0;border-left:0}
