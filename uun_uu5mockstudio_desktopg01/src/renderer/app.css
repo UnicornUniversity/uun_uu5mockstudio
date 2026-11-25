@@ -1917,3 +1917,5 @@ body.docview-on :is(#selbar,#selmenu){display:none!important} /* the bar of the 
 #helpbox .hp-doc a{color:var(--acc);cursor:pointer;text-decoration:underline}
 #helpbox .hp-doc mark{background:rgba(255,200,0,.35);color:inherit;border-radius:2px}
 @media (max-width:720px){#helpbox .hp-side{width:200px}}
+/* a message sent in Plan mode: the agent only proposed a plan */
+.msg.user .sent-plan{display:inline-block;margin-right:6px;padding:0 6px;border-radius:5px;background:rgba(255,255,255,.22);font-size:11px;font-weight:600;letter-spacing:.02em;line-height:18px;vertical-align:1px}

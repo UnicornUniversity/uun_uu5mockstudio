@@ -180,6 +180,27 @@ test("a library component that clones its children (Uu5Bricks.Background): the r
   assert.match(toUu5String(tree).text, /<h1 style='<uu5json\/>\{"fontSize":"40px"\}'>Title<\/h1>/);
 });
 
+test("a prop added by a parent that clones its children (nestingLevel) is left out; one the author wrote stays", () => {
+  const Background = named("Uu5Bricks.Background"), Card = named("Uu5Bricks.Card");
+  const deep = el(Button, { "data-uu5-src": "3", colorScheme: "blue", nestingLevel: undefined }, "Timetable"); // defaultProps filled in by React
+  const mine = el(Button, { "data-uu5-src": "4", nestingLevel: "box" }, "Mine");
+  const foot = el(Button, { "data-uu5-src": "6", icon: "uugds-send" }, "Send");
+  const root = rootOf(el(Background, {}, el("div", {}, deep, mine), el(Card, { "data-uu5-src": "5", footer: foot }, "x")));
+  // the library renders clones with nestingLevel added, in the place of the authored elements
+  const div = root.child.child, b1 = div.child, b2 = b1.sibling, card = div.sibling;
+  b1.memoizedProps = { ...deep.props, nestingLevel: "areaCollection" };
+  b2.memoizedProps = { ...mine.props, nestingLevel: "areaCollection" };
+  card.memoizedProps = { ...card.memoizedProps, nestingLevel: "areaCollection" };
+  const fb = { tag: 0, type: Button, memoizedProps: { ...foot.props, nestingLevel: "inline" }, return: card };
+  card.child = fb;
+  const { text } = toUu5String(collectUu5Tree({ rootFiber: root, styleRules: [] }));
+  assert.match(text, /<Uu5Elements\.Button colorScheme="blue">Timetable<\/Uu5Elements\.Button>/);
+  assert.match(text, /<Uu5Elements\.Button nestingLevel="areaCollection">Mine<\/Uu5Elements\.Button>/); // written by the author (its value from the parent)
+  assert.match(text, /footer='<uu5string\/><Uu5Elements\.Button icon="uugds-send">Send<\/Uu5Elements\.Button>'/);
+  assert.doesNotMatch(text, /nestingLevel="inline"/);
+  assert.match(text, /<Uu5Bricks\.Card footer=/);
+});
+
 test("a component of the screen that is not rendered (an inactive tab) is called for its elements; one that needs hooks is reported", () => {
   const Item = named("Uu5Bricks.Tabs.Item");
   const Tab = function Tab(p) { return el("div", {}, el(Text, {}, p.title), el(Inner, {})); };

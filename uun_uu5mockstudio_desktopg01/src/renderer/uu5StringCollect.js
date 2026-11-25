@@ -51,6 +51,31 @@ export function collectUu5Tree(opts = {}) {
       if (n.child) index(n.child);
     }
   })(root.child);
+  // The elements as the author wrote them, by source mark (found in the props of every fiber: `children`, `footer`, items of lists, …).
+  // A library component that clones its children (Uu5Bricks.Background, Card, Layout.Item, Tile, …) adds props to the clone, e.g.
+  // `nestingLevel`; the rendered fiber has the clone, so a prop missing on an authored element of the same mark is the parent's, not the author's.
+  const authored = new Map(), seenEl = new Set();
+  const gather = (v, d) => {
+    if (!v || typeof v !== "object" || d > 12) return;
+    if (Array.isArray(v)) { for (const x of v) gather(x, d + 1); return; }
+    if (isEl(v)) {
+      if (seenEl.has(v)) return;
+      seenEl.add(v);
+      const p = v.props, s = p && p[SRC];
+      if (s !== undefined && s !== null && typeof v.type !== "string") (authored.get(String(s)) || authored.set(String(s), []).get(String(s))).push(v);
+      if (p && typeof p === "object") for (const k of Object.keys(p)) gather(p[k], d + 1);
+      return;
+    }
+    if (isPlain(v)) for (const k of Object.keys(v)) gather(v[k], d + 1);
+  };
+  for (const n of all) if (n.memoizedProps && typeof n.memoizedProps === "object") for (const k of Object.keys(n.memoizedProps)) gather(n.memoizedProps[k], 0);
+  /** Whether `k` of the rendered props was added by a parent: an element of the same source mark and type was written without it
+   *  (React fills `defaultProps` into the element, and uu5 components list `nestingLevel: undefined` there: an undefined value is "without"). */
+  const injected = (props, type, k) => {
+    const s = props[SRC];
+    if (s === undefined || s === null || props[k] === undefined) return false;
+    return (authored.get(String(s)) || []).some((e) => e.type === type && e.props !== props && e.props[k] === undefined);
+  };
 
   // ---------- CSS classes of the page → style objects ----------
   const camel = (p) => (p.startsWith("--") ? p : p.replace(/^-ms-/, "ms-").replace(/-([a-z])/g, (m, c) => c.toUpperCase()));
@@ -240,6 +265,7 @@ export function collectUu5Tree(opts = {}) {
     for (const k of Object.keys(props)) {
       if (k === "children" || k === "key" || k === "ref" || k === SRC || k === "className" || k === "style") continue;
       if (k in defaults && Object.is(defaults[k], props[k])) continue; // filled in by the component, not written by the author
+      if (injected(props, type, k)) continue; // added by a parent that cloned the element (nestingLevel, …)
       const e = encode(props[k], k);
       if (e !== undefined) p[k] = resolveDeep(e);
     }

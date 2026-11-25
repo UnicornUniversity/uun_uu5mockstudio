@@ -110,6 +110,7 @@ function entryEl(e) {
   else if (e.kind === "ai") el.innerHTML = markdown(splitNextStep(e.text).body); // the <next-step> line goes to the message field, not into the bubble
   else if (e.kind === "user") {
     el.innerHTML = highlightMentions(e.text);
+    if (e.plan) el.prepend(Object.assign(document.createElement("span"), { className: "sent-plan", textContent: "Plan", title: "Sent in Plan mode: the agent proposes a plan and changes no files" }));
     if (e.images?.length) { const row = Object.assign(document.createElement("div"), { className: "atts" }); for (const im of e.images) row.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: im.name ?? "attachment", title: im.name ?? "" })); el.append(row); }
     if (e.annotations?.length) {
       const ol = Object.assign(document.createElement("ol"), { className: "annos" });
@@ -268,15 +269,27 @@ setEconomy(economy);
 // ---------- plan mode: the agent proposes a plan with a tree of components, the user edits it, then it is built
 const PLAN_KEY = "uu5studio.planMode";
 let planMode = false, planPending = false;
+/** Plan switched on by an action of the app (Change @screen, a sitemap, Revise…) holds for the next message only: the mode the user set comes back after it. */
+let planReturn = null;
 try { planMode = localStorage.getItem(PLAN_KEY) === "1"; } catch { /* default: build */ }
-function setPlanMode(on) {
-  planMode = Boolean(on); try { localStorage.setItem(PLAN_KEY, planMode ? "1" : "0"); } catch { /* not remembered */ }
+/** `remember: false`: a switch for the next message, the user's own choice stays in the storage. */
+function setPlanMode(on, { remember = true } = {}) {
+  planMode = Boolean(on);
+  if (remember) { planReturn = null; try { localStorage.setItem(PLAN_KEY, planMode ? "1" : "0"); } catch { /* not remembered */ } }
+  $("modebtn").title = planReturn !== null && planMode ? "Plan for this message only, then back to Agent" : "What the agent does with the message";
   for (const b of document.querySelectorAll("#modemenu .mm-item")) { const on = (b.dataset.mode === "plan") === planMode; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
   $("mode-label").textContent = planMode ? "Plan" : "Agent";
   $("mode-ico").innerHTML = planMode ? '<path d="M9 4h6a2 2 0 0 1 2 2v14l-5-3-5 3V6a2 2 0 0 1 2-2z"/>' : '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>';
   updateBuildBtn();
   syncPlaceholder();
 }
+/** An action of the app wants the next message planned: Plan for it, then back to Agent (a Plan the user chose stays as it is). */
+function planNextMessage() {
+  if (planMode) return;
+  planReturn = false; setPlanMode(true, { remember: false });
+}
+/** After a message from the field: a one-off Plan goes back to the mode of the user. */
+function endOneOffPlan() { if (planReturn !== null) setPlanMode(planReturn); }
 /** `suggestion` (declared at the top): the next step the agent suggested at the end of its last answer, the hint of the empty message field; Tab (or →) puts it there. */
 function setSuggestion(text) { suggestion = text || null; syncPlaceholder(); }
 /** The hint in the message field follows what is in front of the user: no project, the sitemap, an open plan, or the canvas (Plan or Agent). */
@@ -306,12 +319,17 @@ async function refreshKnown(e) {
   const known = r?.names ?? [];
   if (JSON.stringify(known) !== JSON.stringify(e.known ?? [])) { e.known = known; paint(e); persist(); }
 }
+/** A plan without a block is still a plan when it is headed like one: a Markdown heading of level 1 or 2. */
+const isPlanText = (text) => /^#{1,2}\s+\S/m.test(text);
 /** The answer of a message sent in plan mode becomes a plan (when it holds a tree). */
 function convertPlan() {
   let i = entries.length - 1; while (i >= 0 && entries[i].kind !== "ai") { if (entries[i].kind === "user") return; i--; }
   const ai = entries[i]; if (!ai) return;
   const { text, tree, questions, sitemap } = extractPlan(ai.text);
   if (!text.trim() && !tree && !questions.length && !sitemap) return;
+  // a plan has a block (tree, sitemap, questions) or starts with its heading (planPrompt); another answer (a question first, or a report
+  // that something could not be done) stays an ordinary message, not a draft plan with that text as its title
+  if (!tree && !questions.length && !sitemap && !isPlanText(text)) return;
   const plan = { kind: "plan", text, tree, questions, sitemap, answers: {}, mode: "diagram", original: { text, tree: tree ? JSON.parse(JSON.stringify(tree)) : null, sitemap: sitemap ? JSON.parse(JSON.stringify(sitemap)) : null }, state: "proposed", editing: false, sel: [], known: [] };
   // a revised plan (answers, "Revise…") replaces the plan before it: the same file and card, not a second one
   const prev = [...entries].reverse().find((x) => x.kind === "plan" && x.planSlug && (x.state === "proposed" || x.state === "superseded"));
@@ -372,7 +390,7 @@ async function onPlansChanged(list) {
  *  The Agent / Plan switch of the chat stays as the user set it: the next message typed in the chat is not turned into a plan. */
 async function revisePlanFromCard(message, label) {
   if (busy || !ready) return toast(busy ? "Wait until the agent has finished." : NO_AI, { err: true });
-  push({ kind: "user", text: label });
+  push({ kind: "user", text: label, plan: true });
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
   setBusy(true); sentModel = $("model").value; setPlanPending(true);
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
@@ -505,7 +523,7 @@ const planCtx = {
   persist: () => persist(),
   checkNames: (e) => refreshKnown(e),
   chooseComponent: async () => (await libraryPicker.open())?.[0] ?? null,
-  revise: () => { setPlanMode(true); const t = $("prompt"); t.value = "Revise the plan: "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+  revise: () => { planNextMessage(); const t = $("prompt"); t.value = "Revise the plan: "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
   discard: (e) => { e.state = "discarded"; e.editing = false; paint(e); persist(); },
   build: (e) => buildPlan(e),
   answer: (e) => answerPlan(e),
@@ -527,8 +545,7 @@ async function answerPlan(e) {
   const message = ["My answers to your questions:", answersText(e.questions, e.answers),
     ...(e.tree ? ["", "Update the plan with them. This is the current component tree, including my edits; keep them unless the answers change it:", "```uu5-tree", serializeTree(e.tree), "```"] : [])].join("\n");
   e.state = "superseded"; e.editing = false; paint(e); persist();
-  push({ kind: "user", text: "Here are my answers, update the plan." });
-  setPlanMode(true);
+  push({ kind: "user", text: "Here are my answers, update the plan.", plan: true }); // sent in Plan by itself: the switch of the field stays as the user set it
   if (window.__plan?.dryRun) { window.__plan.lastAnswer = message; return; }
   setBusy(true); sentModel = $("model").value; setPlanPending(true);
   window.studio.send(message, sentModel || undefined, { plan: true, economy });
@@ -918,7 +935,7 @@ const menuActions = {
     setProjectSitemap(r); planCards.focus("@sitemap");
   },
   fromLink: () => pickFromLink(),
-  askAgent: () => { setPlanMode(true); const t = $("prompt"); t.value = "Propose the sitemap of the pages (a map of the web site or portal): "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+  askAgent: () => { planNextMessage(); const t = $("prompt"); t.value = "Propose the sitemap of the pages (a map of the web site or portal): "; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
 };
 /** A structure of pages picked from a link that waits for the next message to the agent ({ url, title, outline, count }), shown among the attachments. */
 let sitePick = null;
@@ -942,7 +959,7 @@ function pickFromLink(url = "", card = false, preloaded = null) {
       // nothing is sent yet: say so, the picker just closed
       toast(`${pick.count} page${pick.count === 1 ? "" : "s"} of “${pick.title}” ${pick.count === 1 ? "is" : "are"} attached to your next message. ${has ? "The agent will propose how to extend the sitemap with them" : "The agent will propose the sitemap from them"}: add what you want and send.`);
       if (card && docCards.setPick(url, pick)) { t.focus(); return; } // opened from the card of a pasted link: the pages stay on that card
-      sitePick = pick; renderAttachments(); setPlanMode(true);
+      sitePick = pick; renderAttachments(); planNextMessage();
       if (!t.value.trim()) t.value = has ? `Go through the attached pages of “${pick.title}” and propose how to extend the sitemap of the project with them: ` : `Propose the sitemap of the pages from the attached structure of “${pick.title}”: `;
       t.focus(); t.setSelectionRange(t.value.length, t.value.length);
     },
@@ -1222,7 +1239,7 @@ const structureDialog = createStructureDialog({ api: {
     }
     showPreviewBar({ file, name, done, failed, message });
   },
-  plan: (file) => { setPlanMode(true); const t = $("prompt"); t.value = `Change @${file.replace(/\.html$/, "")}: `; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
+  plan: (file) => { planNextMessage(); const t = $("prompt"); t.value = `Change @${file.replace(/\.html$/, "")}: `; t.focus(); t.setSelectionRange(t.value.length, t.value.length); },
 } });
 window.__structure = structureDialog;
 $("insp-back").onclick = () => { const f = structFrom; $("insp-back").hidden = true; structFrom = null; if (f) structureDialog.open(f.file, f.part); };
@@ -2921,7 +2938,7 @@ function finishCodeUpdate(changed) {
   window.studio.componentSynced(u.slug).then((r) => { if (r?.ok) toast(`${u.file.replace(/\.html$/, "")} follows the code again.`, { action: { label: "Undo", run: () => stepScreen(u.file, "undo") } }); }).catch(() => {});
 }
 let preparing = 0;
-const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true, card.tree), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") setPlanMode(true); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
+const docCards = createDocCards({ onChange: () => renderAttachments(), toast, structure: (card) => pickFromLink(card.url, true, card.tree), offerStructure: () => mapOffered(), onUse: (use) => { if (use === "sitemap") planNextMessage(); } }); // a sitemap is proposed in Plan mode // Plus4U documents pasted as links, with a picture of how they look
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 const toBlob = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
 /** Normalizes any image to a PNG (or JPEG when huge) of at most 2000 px plus a small thumbnail. */
@@ -3046,7 +3063,9 @@ $("form").onsubmit = async (e) => {
   }
   const all = chips.slice(), ctx = all.filter((c) => c.kind !== "sitemap"), mapNotes = all.filter((c) => c.kind === "sitemap");
   const shown = pages ? `${prompt}\n🗺 Pages picked from “${pages.title}” (${pages.count})` : prompt;
-  push({ kind: "user", text: shown, ...(all.length ? { annotations: historyOf(all) } : {}), ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
+  // annotations of the map of a plan are answered with a revised plan; those of the map of the project in Agent mode change it at once (the previous map is kept, the user can take it back)
+  const plan = planMode || (mapNotes.length > 0 && !mapDirect(mapNotes));
+  push({ kind: "user", text: shown, ...(plan ? { plan: true } : {}), ...(all.length ? { annotations: historyOf(all) } : {}), ...(imgs.length ? { images: imgs.map(({ thumb, name, asset }) => ({ thumb, name, asset })) } : {}), ...(docs.length ? { docs: docs.map(({ title, url, kind, thumb }) => ({ title, url, kind, thumb })) } : {}) });
   $("prompt").value = ""; pending = []; sitePick = null; renderAttachments(); setPlanPending(planMode); setBusy(true); // Plan mode: the empty canvas says a plan is coming, not a screen
   const refs = mentionedScreens(prompt), repoRefs = mentionedRepoFiles(prompt), libNames = mentionedComponents(prompt);
   const libBlock = libNames.length ? (await window.studio.docsDescribe(libNames).catch(() => null))?.text ?? "" : "";
@@ -3068,8 +3087,7 @@ $("form").onsubmit = async (e) => {
     componentBrief, // Start from an existing component: the task of building its screen (once)
   ].filter(Boolean);
   componentBrief = null;
-  // annotations of the map of a plan are answered with a revised plan; those of the map of the project in Agent mode change it at once (the previous map is kept, the user can take it back)
-  const plan = planMode || (mapNotes.length > 0 && !mapDirect(mapNotes));
+  endOneOffPlan(); // a Plan switched on by an action was for this message only
   if (window.__plan?.dryRun) { window.__plan.lastSend = { message: extra.length ? `${prompt}\n\n${extra.join("\n")}` : prompt, plan }; setBusy(false); clearChips(); if (chatPick) setInspect(false); return; } // the automated checks read the message instead of starting the agent
   sentModel = $("model").value;
   setPlanPending(plan);

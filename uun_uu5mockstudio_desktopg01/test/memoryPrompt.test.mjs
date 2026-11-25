@@ -39,6 +39,13 @@ test("the agent records business rules itself: the ones the user states and the 
   assert.match(planPrompt(), /business rules the plan implies/);
 });
 
+test("in Plan mode the agent knows the file tools are taken away on purpose and heads a plan so the app can tell it from another answer", async () => {
+  const { planPrompt } = await import("../src/main/claudeService.mjs");
+  assert.match(planPrompt(), /taken Write, Edit and the other tools that change files away ON PURPOSE/);
+  assert.match(planPrompt(), /never report them as missing, disabled or not working/);
+  assert.match(planPrompt(), /Start the plan with a level-1 Markdown heading/);
+});
+
 test("the Economy mode adds a short rule and the screenshot for the agent is small", async () => {
   const { ECONOMY_MODE } = await import("../src/main/claudeService.mjs");
   assert.match(ECONOMY_MODE, /smallest change/); assert.match(ECONOMY_MODE, /two or three sentences/);
